@@ -6,9 +6,9 @@
 ## 初始化阶段
 | 任务ID | 任务 | 级别 | Owner | 状态 |
 |---|---|---|---|---|
-| T-001 | 仓库连接 + 目录架构 + 治理文件（.gitignore/README/AGENTS/STATUS/TODO/HANDOFF/DECISIONS/api-spec） | B | 豆包 | 🔵进行中(豆包) — 文件已就绪，待 Git 安装后补 git init/push |
+| T-001 | 仓库连接 + 目录架构 + 治理文件（.gitignore/README/AGENTS/STATUS/TODO/HANDOFF/DECISIONS/api-spec） | B | 豆包 | ✅完成 |
 | T-002 | 后端工程骨架（pom.xml/LimsApplication.yml/统一响应/异常/JWT 骨架）+ api-spec 首批登录 me 接口 | S | Copilot | ⬜待办 |
-| T-003 | 前端工程骨架（vite/package.json/路由/axios 封装/登录页壳） | A | GLM | ⬜待办（等 T-002 契约） |
+| T-003 | 前端工程骨架（vite/package.json/路由/axios 封装/登录页壳） | A | GLM | ✅完成（待 Copilot review；认证域字段命名待 T-002 契约终审） |
 
 ## 阶段一：基础数据准备（对应 7.1 第 1 步）
 | 任务ID | 任务 | 级别 | Owner | 状态 |
