@@ -3,13 +3,16 @@
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
 ## 当前工作分支
-- 豆包：`agent/doubao`（本轮：仓库初始化 + 目录架构 + 治理文件）
+- 豆包：`agent/doubao`（本轮：仓库初始化 + 目录架构 + 治理文件）✅ 完成
+
+## 项目位置
+- 本地仓库：`D:\lims`（远程 https://github.com/BrokenHeart31/lims.git ）
 
 ## 本轮占用文件
-- 豆包：根目录 `AGENTS.md` / `README.md` / `.gitignore` / `STATUS.md` / `TODO.md` / `HANDOFF.md` / `DECISIONS.md`、`docs/api/api-spec.md`、`prompts/*`
+- 豆包：根目录治理文件 + docs/api/api-spec.md + prompts/*（已提交并推送）
 
 ## 他人占用
 - （无）
 
 ## 当前阻塞
-- ⚠️ 本机 Git 未安装 / 不在 PATH（`C:\Users\Chen\Desktop\Git\cmd` 不存在），`git init` / 远程推送暂未执行。待 Git 安装并配置 GitHub PAT 后由豆包补做。
+- ✅ 已解除：仓库已初始化并推送，五个分支就绪。

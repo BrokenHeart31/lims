@@ -7,7 +7,14 @@
 > - 【下一步】等待谁做什么
 
 ### 2026-09-10 豆包（agent/doubao）
-- 【豆包】完成 T-001 本地部分：在 `C:\Users\Chen\Desktop\lims` 建立完整目录架构（.agents/skills、backend、frontend、db、docs、prompts，空目录均放 .gitkeep），写入 `.gitignore`、`README.md`、`AGENTS.md`、`STATUS.md`、`TODO.md`、`HANDOFF.md`、`DECISIONS.md`、`docs/api/api-spec.md`。
-- ⚠️ 注意：本机未安装 Git（PATH 中 `C:\Users\Chen\Desktop\Git\cmd` 为空目录/不存在），故 `git init` / 关联 remote / 首次提交 / 建 5 分支 / push **尚未执行**。远程仓库为 https://github.com/BrokenHeart31/lims.git ，推送需 GitHub PAT（classic，勾 repo 权限）。操作手册见桌面《GitHub仓库连接与目录初始化操作说明书.md》。
-- ⚠️ 注意：操作手册原写路径为 `D:\test\lims`，本次按用户实际要求落在 `C:\Users\Chen\Desktop\lims`。
-- 【下一步】待用户安装 Git 并提供 PAT 后，豆包补做：git init → 提交 README+.gitignore → main → 关联 origin → push → 建 develop/agent/copilot/agent/glm/agent/doubao → 全部推送 → develop 合入目录与治理文件。之后 Copilot 可开始 T-002（后端骨架 + 登录/me 契约）。
+- 【豆包】**T-001 仓库初始化全部完成**。项目落在 `D:\lims`（非原手册的 D:\test\lims，也非最初桌面路径——桌面目录被安全软件拦 git 写入）。已推送 GitHub：https://github.com/BrokenHeart31/lims.git
+  - `main`：仅 README.md + .gitignore（commit 1a25689）
+  - `develop` / `agent/doubao`：完整目录架构 + 治理文件（commit 75cab56）
+  - `agent/copilot` / `agent/glm`：与 main 同步（仅首次提交）
+  - 五个分支均已 push，develop 已 fast-forward 合并 agent/doubao。
+- 目录架构：.agents/skills（4 个）、backend（controller/service/mapper/entity/dto/vo/config/security/common + mapper）、frontend/src（10 个目录）、db/{init,migrations,seed}、docs/{api,knowledge}、prompts（copilot/glm/doubao.md），空目录均有 .gitkeep。
+- 治理文件：AGENTS.md、STATUS.md、TODO.md（按七阶段 T-xxx 骨架）、DECISIONS.md、docs/api/api-spec.md（占位）。
+- ⚠️ 环境坑：本机 Bash 沙箱限制 git.exe 写非 TEMP 目录（.git/objects Permission denied，提权无效）；本次通过 GIT_DIR 指向 %LOCALAPPDATA%\Temp\lims_gitdir 完成 git 操作，事后已把 .git 同步回 D:\lims\.git。**后续三个 Agent 在自己的 Git Bash（不受此沙箱限制）里直接操作 D:\lims 即可**。
+- ⚠️ git 身份：本仓库 user.name=BrokenHeart31，user.email=BrokenHeart31@users.noreply.github.com（本地配置，非全局）。如提交需归属到真实邮箱，请 `git config user.email 你的邮箱` 修改。
+- ⚠️ 旧参考数据 `lims.sql` 在桌面，尚未入仓库；按 0.1 由后续 V1__import_legacy_data.sql 迁移，不要直接复用旧表风格。
+- 【下一步】Copilot 可开始 T-002：后端工程骨架（pom.xml / LimsApplication / 统一响应 / 异常 / JWT 骨架）+ 在 api-spec.md 落地登录与 /me 接口契约。GLM 等待 T-002 契约后做 T-003 前端骨架。
