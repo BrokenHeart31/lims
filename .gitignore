@@ -23,6 +23,10 @@ frontend/pnpm-debug.log*
 frontend/.env.local
 frontend/.env.*.local
 
+# ============ 本机数据（勿提交） ============
+.workbuddy/
+lims.sql
+
 # ============ 通用 ============
 *.log
 *.tmp

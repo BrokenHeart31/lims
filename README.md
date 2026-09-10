@@ -9,7 +9,7 @@
 
 ## 协作分支
 
-`agent/glm`（首席架构师 + 后端核心） · `agent/copilot`（前端主力） · `agent/doubao`（文档/数据/状态维护）
+`agent/copilot`（首席架构师 + 后端核心） · `agent/glm`（前端主力） · `agent/doubao`（文档/数据/状态维护）
 
 合并路径：`agent/xxx → develop → main`。
 
