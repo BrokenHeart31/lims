@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Fold, Monitor, SwitchButton } from '@element-plus/icons-vue'
+import { Fold, List, Monitor, SwitchButton } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -34,7 +34,10 @@ async function handleLogout(): Promise<void> {
 
 <template>
   <el-container class="main-layout">
-    <el-aside width="220px" class="layout-aside">
+    <el-aside
+      width="220px"
+      class="layout-aside"
+    >
       <div class="aside-brand">
         <span>LIMS 管理系统</span>
       </div>
@@ -48,7 +51,15 @@ async function handleLogout(): Promise<void> {
       >
         <el-menu-item index="/dashboard">
           <el-icon><Monitor /></el-icon>
-          <template #title>工作台</template>
+          <template #title>
+            工作台
+          </template>
+        </el-menu-item>
+        <el-menu-item index="/task">
+          <el-icon><List /></el-icon>
+          <template #title>
+            监抽任务
+          </template>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -56,7 +67,9 @@ async function handleLogout(): Promise<void> {
     <el-container>
       <el-header class="layout-header">
         <div class="header-left">
-          <el-icon :size="18"><Fold /></el-icon>
+          <el-icon :size="18">
+            <Fold />
+          </el-icon>
           <span class="header-breadcrumb">{{ route.meta.title ?? '' }}</span>
         </div>
         <div class="header-right">
@@ -67,7 +80,9 @@ async function handleLogout(): Promise<void> {
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="logout">
+                  退出登录
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>

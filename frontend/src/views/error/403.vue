@@ -15,7 +15,12 @@ function goHome(): void {
     sub-title="抱歉，您没有权限访问该页面。"
   >
     <template #extra>
-      <el-button type="primary" @click="goHome">返回首页</el-button>
+      <el-button
+        type="primary"
+        @click="goHome"
+      >
+        返回首页
+      </el-button>
     </template>
   </el-result>
 </template>

@@ -53,8 +53,12 @@ async function handleLogin(): Promise<void> {
   <div class="login-page">
     <div class="login-card">
       <div class="login-header">
-        <h1 class="login-title">LIMS</h1>
-        <p class="login-subtitle">食品质量检验测试中心 · 实验室信息管理系统</p>
+        <h1 class="login-title">
+          LIMS
+        </h1>
+        <p class="login-subtitle">
+          食品质量检验测试中心 · 实验室信息管理系统
+        </p>
       </div>
       <el-form
         ref="formRef"

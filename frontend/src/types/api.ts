@@ -7,3 +7,14 @@ export interface ApiResponse<T> {
   msg: string
   data: T
 }
+
+/**
+ * 统一分页响应（api-spec 0.3）
+ * 请求：pageNum（从 1 起）/ pageSize（默认 10，上限 500）
+ */
+export interface PageResult<T> {
+  records: T[]
+  total: number
+  current: number
+  size: number
+}

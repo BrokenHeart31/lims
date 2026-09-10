@@ -36,7 +36,10 @@ const stages = [
 
 <template>
   <div class="dashboard">
-    <el-card shadow="never" class="welcome-card">
+    <el-card
+      shadow="never"
+      class="welcome-card"
+    >
       <template #header>
         <span>工作台</span>
       </template>
@@ -48,16 +51,29 @@ const stages = [
       </p>
     </el-card>
 
-    <el-card shadow="never" class="stage-card">
+    <el-card
+      shadow="never"
+      class="stage-card"
+    >
       <template #header>
         <span>业务流程（七阶段）</span>
       </template>
       <el-row :gutter="12">
-        <el-col v-for="(stage, index) in stages" :key="stage.title" :span="6">
+        <el-col
+          v-for="(stage, index) in stages"
+          :key="stage.title"
+          :span="6"
+        >
           <div class="stage-item">
-            <div class="stage-index">{{ index + 1 }}</div>
-            <div class="stage-title">{{ stage.title }}</div>
-            <div class="stage-desc">{{ stage.desc }}</div>
+            <div class="stage-index">
+              {{ index + 1 }}
+            </div>
+            <div class="stage-title">
+              {{ stage.title }}
+            </div>
+            <div class="stage-desc">
+              {{ stage.desc }}
+            </div>
           </div>
         </el-col>
       </el-row>
