@@ -12,8 +12,8 @@
 
 | Agent | 工作分支 | 定位 | 模型 |
 |---|---|---|---|
-| Copilot CLI | `agent/copilot` | 首席架构师 + 后端核心 + 终审 + Skill 提炼 | Kimi K3 / GPT5.6 Luna |
-| WorkBuddy | `agent/glm` | 前端主力 + 常规 CRUD | GLM5.3（额度不足降级 HY4 preview） |
+| WorkBuddy | `agent/glm` | 首席架构师 + 后端核心 + 终审 + Skill 提炼 |  GLM5.3（额度不足降级 HY4 preview）| 额度不足时交接给workbuddy |
+| Copilot CLI | `agent/gpt` | 前端主力 + 常规 CRUD |  auto模型  |
 | 豆包 | `agent/doubao` | 文档 / 数据 / 状态维护 / 杂务 | 豆包 2.1 Turbo |
 
 三个 Agent 必须同时遵守本文件与 `STATUS.md`、`TODO.md`、`HANDOFF.md`、`DECISIONS.md` 的约束。**开工前必读这四个状态文件，收工后必更新 HANDOFF.md。**
@@ -84,8 +84,8 @@
 
 ### 2.3 任务分级与降级
 
-- **S 级**（架构/状态机/判定引擎/报告引擎/终审）：仅 Copilot。GLM/豆包遇到 S 级问题停止并提 TODO。
-- **A 级**（页面/常规 CRUD/接口对接）：GLM。
+- **S 级**（架构/状态机/判定引擎/报告引擎/终审）：仅 glm。GLM/豆包遇到 S 级问题停止并提 TODO。
+- **A 级**（页面/常规 CRUD/接口对接）：copilot。
 - **B 级**（文档/数据/模板/状态维护）：豆包。
 - 降级：GLM5.3 额度不足 → 任务拆小，体力部分转豆包；切 HY4 preview 后只做纯 CRUD，S/A+ 任务排队；**严禁为省额度让低能力模型做 S 级任务**（返工成本 > 省下额度）。
 
@@ -124,7 +124,7 @@ lims/
 │   ├── migrations/          # 增量迁移 V1__import_legacy_data.sql ...
 │   └── seed/                 # 测试数据（豆包维护）
 ├── docs/
-│   ├── api/api-spec.md       # 接口契约（Copilot 独有）
+│   ├── api/api-spec.md       # 接口契约（glm 独有）
 │   ├── knowledge/            # 网上搜集的最佳实践沉淀
 │   └── database-dictionary.md# 数据字典（豆包维护）
 ├── .agents/skills/           # 可复用技能库（做完项目拷走即复现）
@@ -261,8 +261,8 @@ R100 综合管理（审核签发/权限管理/全部查询）；R1 样品登记�
 
 ## 12. 行为约束清单
 
-**Copilot**：契约先行；核心业务只写完整可编译文件；每完成一个核心模块提炼 `.agents/skills/<模块>/SKILL.md`（含触发场景/前置/步骤/完整代码模板/踩坑）；定期执行 TODO 中"侦察"任务，把 GitHub 优秀实践（RuoYi-Vue-Plus、vue-element-plus-admin 等）沉淀进 `docs/knowledge/` 并转化为 skill；终审他人代码不通过须在 TODO 退回并写明原因。
+**GLM**：契约先行；核心业务只写完整可编译文件；每完成一个核心模块提炼 `.agents/skills/<模块>/SKILL.md`（含触发场景/前置/步骤/完整代码模板/踩坑）；定期执行 TODO 中"侦察"任务，把 GitHub 优秀实践（RuoYi-Vue-Plus、vue-element-plus-admin 等）沉淀进 `docs/knowledge/` 并转化为 skill；终审他人代码不通过须在 TODO 退回并写明原因。
 
-**GLM**：严格按 api-spec.md 对接，契约缺失即停工提问；开工先查 `.agents/skills/` 套用模板；交付前跑通质量门禁；额度不足按 2.3 降级，不硬扛 S 级。
+**Copilot**：严格按 api-spec.md 对接，契约缺失即停工提问；开工先查 `.agents/skills/` 套用模板；交付前跑通质量门禁；额度不足按 2.3 降级，不硬扛 S 级。
 
 **豆包**：维护 STATUS/HANDOFF/TODO 状态（最高优先，每 2 小时或收工一次）；以代码为准修正文档不一致；数据脚本独立小提交（`data:` 前缀）；遇到设计/决策问题不自行解决，提 TODO 给 Copilot。
