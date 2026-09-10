@@ -7,12 +7,16 @@ import 'element-plus/dist/index.css'
 
 import App from './App.vue'
 import router from './router'
+import { vPermission } from './directives/permission'
 
 const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
+
+// 按钮级权限指令（T-102）：v-permission="'resource:action'"
+app.directive('permission', vPermission)
 
 // 全局注册 Element Plus 图标组件
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {

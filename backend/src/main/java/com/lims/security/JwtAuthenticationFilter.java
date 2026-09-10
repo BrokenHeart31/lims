@@ -9,22 +9,22 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.List;
 
 /**
  * JWT 认证过滤器：解析 Authorization: Bearer &lt;token&gt;，合法则把认证信息放入 SecurityContext。
  *
- * <p>骨架说明（T-002）：权限标识取自 token 的 perms claim；
- * T-102 落地 RBAC 后，改为按 username 加载 LoginUser（UserDetailsService），
- * 权限以数据库为准，token claim 仅作兜底。</p>
+ * <p>T-102 落地：parse 出 username 后经 {@link UserDetailsServiceImpl} 装配 {@link LoginUser}，
+ * 权限以数据库为权威源（token 内 perms claim 仅为签发时快照，不作鉴权依据）。
+ * token 非法/过期/用户被删除：不阻断链路，保持匿名，由安全层 EntryPoint 统一回 401。</p>
  */
 @Slf4j
 @Component
@@ -33,6 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
+    private final UserDetailsServiceImpl userDetailsService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -44,17 +45,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 Claims claims = jwtTokenProvider.parseToken(token);
                 String username = jwtTokenProvider.getUsername(claims);
-                List<SimpleGrantedAuthority> authorities = jwtTokenProvider.getPermissions(claims)
-                        .stream()
-                        .map(SimpleGrantedAuthority::new)
-                        .toList();
+                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
                 UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(username, null, authorities);
+                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-            } catch (JwtException | IllegalArgumentException e) {
-                // token 非法/过期：不阻断链路，保持匿名，由安全层 EntryPoint 统一回 401
+            } catch (JwtException | IllegalArgumentException | UsernameNotFoundException e) {
                 log.debug("JWT 校验未通过: {}", e.getMessage());
                 SecurityContextHolder.clearContext();
             }

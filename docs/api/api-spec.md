@@ -52,7 +52,7 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ## 1. 认证域 `/api/auth`
 
-> 实现状态：契约已定稿（T-002）；接口实现在 T-102 落地。
+> 实现状态：契约与实现均已落地（T-002 契约 / T-102 实现，2026-09-10）。
 > 角色与权限标识全集见 AGENTS.md 8.1/8.2。
 
 ### 1.1 登录（公开）
@@ -154,13 +154,71 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ---
 
-## 2. 待落地域（占位，按七阶段顺序补充）
+## 2. 监抽任务域 `/api/task`（T-201）
+
+> 实现状态：前后端均已落地（2026-09-10）。实体 `supervise_task`（db/init/03_task_tables.sql）。
+> 前端对接文件：`frontend/src/api/task.ts`（已核对，与本契约一致）。
+
+### 2.1 字段模型（SuperviseTask，camelCase）
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| id | number | 更新必填 | 主键，新建不填 |
+| taskNo | string | ✅ | 任务编号，全局唯一，≤50 |
+| taskName | string | ✅ | 任务名称，≤200 |
+| taskNature | string | ✅ | 字典：监督抽检/委托抽样/委托送样 |
+| taskSource | string | | 任务来源（下达单位） |
+| regionLevel | string | | 字典：省级/市级/区级 |
+| leader | string | | 负责人 |
+| batchNo | string | | 批次 |
+| receiveDate / issueDate / completeDate | string(yyyy-MM-dd) | | 接受/下达/完成日期 |
+| priority | string | | 任务等级 |
+| positiveRateRequirement | string | | 阳性率要求 |
+| samplingStage | string | | 字典：生产/流通/餐饮 |
+| testScope | string | | 检测项目范围，≤500 |
+| status | string | | 字典：草稿/进行中/已完成/已中止；新建缺省=草稿 |
+| remark | string | | 备注，≤500 |
+| createdBy / createdAt / updatedAt | string | 只读 | 审计字段（后端自动填充） |
+
+### 2.2 分页查询
+
+`GET /api/task/page?pageNum=1&pageSize=10&taskNo=&taskName=&status=`　权限：`task:list`
+
+- taskNo：前缀匹配；taskName：模糊匹配；status：精确匹配；均选填。按 id 倒序。
+- 响应 data：分页结构（见 0.3），records 元素为 2.1 字段模型。
+
+### 2.3 详情
+
+`GET /api/task/{id}`　权限：`task:list`
+响应 data：2.1 字段模型。失败：`code=400` 任务不存在或已删除。
+
+### 2.4 新建
+
+`POST /api/task`　权限：`task:add`
+请求 body：2.1 字段模型（不含 id/审计字段）。校验失败 `code=400`（msg 为首个字段错误）。
+失败：`code=400` 任务编号已存在。响应 data：创建后的完整对象（含 id/审计字段/缺省 status=草稿）。
+
+### 2.5 更新
+
+`PUT /api/task`　权限：`task:edit`
+请求 body：同 2.4 但 **id 必填**。status 缺省时保留原值。
+失败：`code=400` id 为空 / 任务不存在 / 任务编号与他条重复。响应 data：`null`。
+
+### 2.6 删除（逻辑删除）
+
+`DELETE /api/task/{id}`　权限：`task:remove`
+响应 data：`null`。失败：`code=400` 任务不存在或已删除。
+
+---
+
+## 3. 待落地域（占位，按七阶段顺序补充）
 
 | 域 | 前缀 | 对应任务 | 状态 |
 |---|---|---|---|
-| 系统管理（用户/角色/菜单/部门） | /api/sys/* | T-101/T-102 | ⬜ |
+| 认证 | /api/auth/* | T-102 | ✅（第 1 章） |
+| 监抽任务 | /api/task/* | T-201 | ✅（第 2 章） |
+| 系统管理（用户/角色/菜单/部门） | /api/sys/* | T-101 后续 | ⬜ |
 | 基础数据（lib/basis/tester-method/customer） | /api/base/* | T-103 | ⬜ |
-| 监抽任务 | /api/task/* | T-201 | ⬜ |
 | 样品登记（Excel 导入） | /api/sample/* | T-301 | ⬜ |
 | 项目分解 | /api/item/* | T-401 | ⬜ |
 | 任务安排 | /api/assign/* | T-501 | ⬜ |

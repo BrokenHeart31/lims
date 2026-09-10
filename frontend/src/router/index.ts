@@ -31,6 +31,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '工作台' },
       },
       {
+        path: 'task',
+        name: 'supervise-task',
+        component: () => import('@/views/task/index.vue'),
+        meta: { title: '监抽任务' },
+      },
+      {
         path: '403',
         name: 'forbidden',
         component: () => import('@/views/error/403.vue'),
@@ -54,15 +60,24 @@ const router = createRouter({
 /**
  * 全局路由守卫：
  * - 无 Token → /login（携带回跳地址）
- * - 无菜单权限 → /403（待 T-002 契约落地后按 /me 菜单动态生成路由时启用）
+ * - 已登录但权限数据未加载 → 先 await fetchMe（保证 v-permission 与动态路由数据就绪，T-102）
+ * - 无菜单权限 → /403（待动态路由落地后按 /me 菜单生成路由时启用）
  */
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
   if (to.meta.public) {
     return true
   }
   if (!authStore.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (!authStore.me) {
+    try {
+      await authStore.fetchMe()
+    } catch {
+      // /me 失败（如 token 过期）：请求层已统一处理 401 跳转，这里放行由后续拦截兜底
+      return true
+    }
   }
   return true
 })
