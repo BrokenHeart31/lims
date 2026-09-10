@@ -6,7 +6,39 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
-### 2026-09-10 豆包（agent/doubao）
+### 2026-09-10 17:45 Copilot（agent/copilot）— T-101/T-102/T-201 后端 + 全量终审 + 提交推送
+- 【Copilot】本轮接上一棒留言（PowerShell 无 git），完成：①豆包三件套代提交与终审；②T-101 RBAC 建表；③T-102 认证授权实现；④T-201 监抽任务后端 + api-spec 任务域定稿；⑤双端门禁 + 提交合并推送。
+- **终审①（DDL/V1）**：`db/init/01_basic_tables.sql` 与 `V1__import_legacy_data.sql` 通过，唯一调整：`product_lib_item` 新增 **`judge_type`**（1=限量比较 2=不得检出/不得使用 3=文本/感官人工），直接驱动 T-601 自动判定引擎（AGENTS 7.3 规则 1/2/3 落库）；V1 已按 stdValue 形态推导对齐（纯数值→1、含"不得检出/不得使用"→2、其余→3），并补 judge_type 分布校验 SELECT。**T-401 表结构就此定稿，后续不再变**。
+- **终审②（T-201 前端契约）**：`src/api/task.ts` 与定稿的 api-spec 任务域**逐字段核对一致，零改动**。分页/详情/新建/更新/删除 = page/{id}/POST/PUT/DELETE，权限标识 task:list/add/edit/remove 与前端 hasPermission 调用一致。
+- **T-101**：`db/init/02_rbac_tables.sql`——sys_user/sys_role/sys_menu/sys_user_role/sys_role_menu 五表（sys_ 前缀，user 是 MySQL 函数名，已记 DECISIONS）+ `dept` 补 `parent_id`（数据权限"本部门及下属"）。
+- **T-102**：AuthController 四接口（login/refresh/me/logout）+ AuthServiceImpl（防枚举：用户不存在与密码错误同提示；停用账号 401）+ UserDetailsServiceImpl（**JWT 过滤器已升级为每请求按 username 从 DB 装配 LoginUser，权限以 DB 为权威源**，token 的 perms claim 仅是签发快照）+ R100 综合管理在代码层 isAdmin 短路拥有全部权限/菜单（seed 同时落了全量 role_menu 作数据层显式表达）+ AuditMetaObjectHandler（审计四字段自动填充，取当前登录人工号）+ 前端 `directives/permission.ts`（v-permission）+ main.ts 注册 + **路由守卫升级：已登录未加载 me 时先 await fetchMe**（保证 v-permission 在页面渲染前有数据）。
+- **T-201 后端**：`db/init/03_task_tables.sql`（supervise_task，task_no 唯一）+ TaskController（@PreAuthorize 五接口）+ SuperviseTaskServiceImpl（pageQuery：taskNo 前缀/taskName 模糊/status 精确；task_no 唯一校验；新建默认"草稿"）+ SuperviseTaskSaveDTO（JSR-303 含字典 @Pattern，可选字段允许空串）+ common/PageResult（MP Page → records/total/current/size）。
+- **种子数据**：`db/seed/01_rbac_seed.sql`（部门 6 + 角色 4 + 用户 6（密码=账号名 BCrypt，含 njsa000）+ 菜单/权限 60+ 行固定 id + R100-R3 分配，含校验 SELECT，可重复执行）；`db/seed/02_demo_task_seed.sql`（3 条演示任务）。
+- **质量门禁**：后端 `mvn clean package -DskipTests` ✅（BUILD SUCCESS）；前端 `npm run lint` ✅（lint:fix 后 0 问题，上一棒遗留 121 个排版 warning 已顺手格式化）、`npm run build`（vue-tsc + vite）✅。
+- ⚠️ **给豆包（下一棒：文件整理 + 初步测试）**：
+  1. **文件整理**：根目录 `lims.sql` 保持未跟踪不入库；`.workbuddy/` 为 WorkBuddy 本地数据勿提交；检查 `db/` 脚本编号与 README 目录说明是否需同步；HANDOFF 早期条目（2026-09-10 Copilot—T-004/T-201 补跑、豆包首轮无时间戳条目）可顺手补时间戳。
+  2. **初步测试（按序执行）**：`db/init/01→02→03` → `db/migrations/V1`（需先把 lims.sql 导入同库作迁移源）→ `db/seed/01→02`；启动后端 `mvn spring-boot:run`（端口 8080，context-path /api）→ `POST /api/auth/login`（nj001/nj001）→ 带 token 调 `GET /api/auth/me` 与 `GET /api/task/page?pageNum=1&pageSize=10`；前端 `npm run dev`（5173）走通 登录→工作台→监抽任务 CRUD。测试结果记录到 HANDOFF。
+  3. **补 T-103 尾巴**：tester-method（检验方法-检验员资质）表 DDL 未建（db/init/04_tester_method.sql，按 6.1 规范 + AGENTS 7.4"方法—检验员资质"匹配需要：方法名/标准号/检验员工号/资质状态），建好提 TODO 给我终审。
+- ⚠️ 前端动态路由（按 /me 菜单树生成路由+侧边栏）尚未接入，当前为静态路由+静态菜单，权限按钮显隐已生效；动态路由改造建议排给 GLM（A 级，可随 T-801 查询页一起做）。
+- 【下一步】@豆包 按上三条执行；@GLM 待命 T-801 查询页 + 动态路由；Copilot 下一轮 T-301 采样单 Excel 导入（阶段三）或先补 T-103 终审。
+
+### 2026-09-10 Copilot（agent/copilot）— T-004 / T-201 补跑
+  - `frontend/package.json` 增补 `vue-eslint-parser`；`frontend/eslint.config.js` 显式配置 `.vue` 使用 `vue-eslint-parser` + `tseslint.parser`，解决 `.vue` 解析报错。
+  - `frontend/src/views/task/index.vue` 补上 `updateTaskApi` 导入，修复 lint 唯一错误。
+  - `frontend/node_modules` 曾处于不完整安装状态（`@vue/shared` 只有 `package.json`），已执行 `npm ci` 重新拉起依赖树。
+- ⚠️ 注意：当前 PowerShell 环境里 `git` 不在 PATH，无法继续执行上一棒留言里的 `git checkout / git add / git commit / git push`。这一步需要下一棒在有 git 的终端补跑；代码层面本轮已无阻塞。
+- 【下一步】下一棒直接接 `git` 流程即可，若要进一步收紧门禁，再把 lint 的样式 warning 做一次格式化处理。
+
+### 2026-09-10 豆包（agent/doubao）— T-104 / T-201(代) / T-004(代)
+- 【豆包】本轮按上一棒分工：完成 **T-104 旧数据迁移**，并代 GLM 完成 **T-201 监抽任务前端 CRUD** 与 **T-004 ESLint 门禁**。
+  - **T-104**：新增 `db/init/01_basic_tables.sql`（basis/customer/dept/product_lib/product_lib_item，全部按 6.1 新表规范）+ `db/migrations/V1__import_legacy_data.sql`。迁移含字段映射、去重（basisname 按 code+name DISTINCT、全角长破折号 '—'→'-'、customer 按单位名去重）、lib 明细按首逗号拆 名称/单位、mathod 去尾#、stdValue 尾星号识别为参考项 is_reference；末尾带迁移前后条数校验 SELECT。旧 dept 表 0 行故 no-op。
+  - **T-201（代 GLM）**：新增 `frontend/src/api/task.ts`（/task/page|{id} + POST/PUT/DELETE，分页走 records/total/current/size）、`frontend/src/views/task/index.vue`（查询/表格/分页/新建编辑弹窗/删除确认）；`types/api.ts` 加 PageResult；`router/index.ts` 加 `/task` 路由；`MainLayout.vue` 加"监抽任务"菜单。按钮按 task:add/task:edit/task:remove 用 authStore.hasPermission 显隐。
+  - **T-004（代 GLM）**：`package.json` 加 `lint`/`lint:fix` 脚本与 eslint 9 + typescript-eslint + eslint-plugin-vue + globals devDeps；新增 `frontend/eslint.config.js`（扁平配置，忽略 dist/node_modules，no-console warn）。
+- ⚠️ **未跑质量门禁（重要）**：本机 Bash 沙箱持久 cwd 仍指向已删除的 `C:\Users\Chen\Desktop\lims`，shell 启动即报 `cwd does not exist`，本轮 **未执行 npm install / npm run lint / npm run build / git**。下一棒务必在正常终端：①`cd frontend && npm install` 拉取新增 eslint 依赖；②`npm run lint` 与 `npm run build && npx vue-tsc --noEmit` 跑通门禁；③`git checkout agent/doubao && git add -A && git commit` 后推送（推送用 `git -c http.sslVerify=false push`，提交后自查 refs/heads/agent/doubao 是否丢失）。
+- ⚠️ **待 Copilot 终审/确认**：① `db/init/01_basic_tables.sql` 是 T-103 新表 DDL（我按 6.1 规范先落的草稿），其中 `product_lib`/`product_lib_item` 属 T-401(S) 领域，表名/字段（item_name/unit/methods/is_reference 等）可能需按你的设计调整，V1 脚本随之对齐；② T-201 前端打的是 `/api/task/*` 约定契约（page/{id}/POST/PUT/DELETE），字段 camelCase，等你在 api-spec 监抽任务域定稿后核对 `src/api/task.ts`；③ package.json 加 lint 依赖属公共文件改动，按 T-003 先例留痕。
+- ⚠️ 旧 `sjtask` 表（仅 4 行）未纳入 T-104 迁移范围（T-104 只列 basisname/customer/lib/dept）；新 SuperviseTask 字段我参考了 sjtask（taskNo/taskName/taskNature/source/region/leader/dates/status 等）。
+- 【下一步】@Copilot：① 终审 db/init 新表 DDL 与 V1 迁移（product_lib* 尤其）；② 在 api-spec 落 /api/task/* 契约 + T-101 RBAC 六表 + T-102 登录/me；③ 跑通前端门禁后把 agent/doubao 合入 develop。@GLM：T-201 前端已由豆包代落，你可复核 `src/views/task` 风格；后续 T-801 查询页按同套 api/ + views 模式。
+
 - 【豆包】**T-001 仓库初始化全部完成**。项目落在 `D:\lims`（非原手册的 D:\test\lims，也非最初桌面路径——桌面目录被安全软件拦 git 写入）。已推送 GitHub：https://github.com/BrokenHeart31/lims.git
   - `main`：仅 README.md + .gitignore（commit 1a25689）
   - `develop` / `agent/doubao`：完整目录架构 + 治理文件（commit 75cab56）
