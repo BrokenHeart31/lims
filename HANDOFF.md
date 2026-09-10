@@ -19,6 +19,29 @@
 - ⚠️ 旧参考数据 `lims.sql` 在桌面，尚未入仓库；按 0.1 由后续 V1__import_legacy_data.sql 迁移，不要直接复用旧表风格。
 - 【下一步】Copilot 可开始 T-002：后端工程骨架（pom.xml / LimsApplication / 统一响应 / 异常 / JWT 骨架）+ 在 api-spec.md 落地登录与 /me 接口契约。GLM 等待 T-002 契约后做 T-003 前端骨架。
 
+### 2026-09-10 16:30 Copilot（agent/copilot）
+- 【Copilot】**T-002 后端工程骨架完成 + api-spec 认证域契约终审落地**。提交在 `agent/copilot` 分支：
+  - 工程：`backend/pom.xml`（Spring Boot 3.3.2 / Java 17 / MyBatis-Plus 3.5.7 / jjwt 0.12.6 / Lombok / mysql-connector-j BOM 管理）、`application.yml`（**context-path=/api**、MP 逻辑删除配置、lims.jwt.*）、`LimsApplication`（@MapperScan com.lims.mapper）
+  - 统一响应：`common/R.java`（ok/fail 工厂 + 链式 data）、`common/ResultCode.java`（0/400/401/403/500）、`common/exception/BizException.java`、`common/handler/GlobalExceptionHandler.java`（JSR-303/绑定/参数/权限/兜底全覆盖，业务异常 HTTP 200 + body.code）
+  - 安全骨架：`SecurityConfig`（无状态、/auth/login+/auth/refresh+/error 放行、@EnableMethodSecurity、BCryptPasswordEncoder）、`JwtTokenProvider`（HS256 签发/解析，access 2h + refresh 7d，perms claim）、`JwtAuthenticationFilter`（非法 token 不阻断、保持匿名交 EntryPoint）、`RestAuthenticationEntryPoint`（HTTP 401+R）、`RestAccessDeniedHandler`（HTTP 403+R）、`LoginUser`（UserDetails 骨架，T-102 由 UserDetailsServiceImpl 装配）、`SecurityUtils`
+  - 其他：`MybatisPlusConfig`（分页插件，单页上限 500）、`WebConfig`（CORS 放行本机 5173，bean 名 corsConfigurationSource 被 Security 自动拾取）
+  - **质量门禁**：`mvn clean compile` ✅、`mvn clean package -DskipTests` ✅（lims-backend.jar 32.8MB）
+- 【契约终审】api-spec.md 认证域已定稿：**采纳 GLM 的 camelCase 命名（accessToken/refreshToken、user/permissions/menus），前端零改动**。新增约定：expiresIn（登录响应）、user.deptId、MenuNode.parentId（前端类型可在动态路由任务补声明，运行时无影响）。通用约定章：/api 前缀、分页 records/total/current/size（pageNum/pageSize，上限 500）、JSON 一律 camelCase。
+- 【T-003 终审】**通过**。package.json/vite.config/tsconfig/router/request/auth.ts/stores/登录页均符合 AGENTS.md 第 5 章；公共文件（package.json/vite.config/router）由 GLM 创建一事予以确认追认（T-003 任务指派优先于 2.1 所有权表，已留痕 DECISIONS）。唯一缺口：缺 ESLint（AGENTS 第 9 章门禁含 npm run lint），已立 T-004，T-201 前补齐即可。
+- 【勘误裁定】共享检验员账号定为 **njsa000**（与 njna000/njxa000 对齐，AGENTS.md 7.4/8.1 为准）；说明书"njsa00"系笔误，其密码列三行同为 njna000 亦按账号名即初始密码理解。@豆包 种子数据按 njna000/njxa000/njsa000 落。
+- ⚠️ **构建环境（后续 agent 必读）**：本机 JDK 21（D:\Program Files\Java\jdk-21.0.10）可用，无全局 mvn；Maven 3.9.12 在 ~/.m2/wrapper/dists 有缓存，但 mvn 脚本在 WorkBuddy 沙箱内解析 MAVEN_HOME 失败（ClassNotFoundException Launcher），**需直启 classworlds**，启动器脚本：
+  ```bash
+  D="$HOME/.m2/wrapper/dists/apache-maven-3.9.12/59fe215c0ad6947fea90184bf7add084544567b927287592651fda3782e0e798"
+  export JAVA_HOME="/d/Program Files/Java/jdk-21.0.10"
+  java -classpath "$(cygpath -m "$D/boot/plexus-classworlds-2.9.0.jar")" \
+    -Dclassworlds.conf="$(cygpath -m "$D/bin/m2.conf")" -Dmaven.home="$(cygpath -m "$D")" \
+    -Dmaven.multiModuleProjectDirectory="$(cygpath -m "$(pwd)")" \
+    org.codehaus.plexus.classworlds.launcher.Launcher clean compile
+  ```
+  Maven 拉取 Maven Central 直连可用（不受 git 推送的 MITM 证书问题影响）。
+- ⚠️ Spring Boot 定版 **3.3.2**（AGENTS 约束 3.x；本地 .m2 另有 4.0.3 缓存但与 MP 3.5.7 兼容性未验证，不用）。新增依赖 Lombok 已登记 DECISIONS。
+- 【下一步】@GLM：按已定稿契约推进 **T-201 监抽任务 CRUD**（接口契约我随后补进 api-spec 任务域，先以第 0 章通用约定 + 实体字段为准；动态路由接入可在 T-102 落地 /me 后做）。@豆包：T-104 旧数据迁移脚本可开工（lims.sql 在桌面），共享检验员账号按 njsa000。Copilot 下一轮做 T-101 RBAC 六表 + T-102 登录/me 实现。
+
 ### 2026-09-10 16:00 GLM（agent/glm）
 - 【GLM】**T-003 前端工程骨架完成**（用户指示不等 T-002 契约先行交付，认证域按 AGENTS.md 4.1/8.3 已定义约定实现）。提交在 `agent/glm` 分支：
   - 工程配置：`frontend/package.json`（vue3.5/vue-router4/pinia/element-plus/axios）、`vite.config.ts`（@ 别名 + dev 代理 /api→localhost:8080）、`tsconfig.json`（strict、noUnused*、禁 any）、`tsconfig.node.json`、`index.html`、`.env.development/.env.production`（VITE_API_BASE_URL）
