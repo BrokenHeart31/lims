@@ -1,0 +1,268 @@
+# LIMS Project - Agents Guide（多 Agent 协作开发版）
+
+**项目名称**：食品质量检验测试中心 实验室信息管理系统（LIMS）
+**技术架构**：前后端分离
+- 前端 `frontend/`：Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router 4
+- 后端 `backend/`：Spring Boot 3 + Java 17 + Maven + MyBatis-Plus
+- 数据库：MySQL 8（InnoDB / utf8mb4），开发账号 root / 11111111
+- 权限模型：RBAC（用户 / 角色 / 权限 / 菜单 / 部门 / 数据权限）
+- 参考数据：`lims.sql` 为旧系统导出数据，仅作迁移参考（见 0.1）
+
+**协作模式**：本仓库由三个 AI Agent 协作开发，各自提示词存于 `prompts/` 目录：
+
+| Agent | 工作分支 | 定位 | 模型 |
+|---|---|---|---|
+| Copilot CLI | `agent/copilot` | 首席架构师 + 后端核心 + 终审 + Skill 提炼 | Kimi K3 / GPT5.6 Luna |
+| WorkBuddy | `agent/glm` | 前端主力 + 常规 CRUD | GLM5.3（额度不足降级 HY4 preview） |
+| 豆包 | `agent/doubao` | 文档 / 数据 / 状态维护 / 杂务 | 豆包 2.1 Turbo |
+
+三个 Agent 必须同时遵守本文件与 `STATUS.md`、`TODO.md`、`HANDOFF.md`、`DECISIONS.md` 的约束。**开工前必读这四个状态文件，收工后必更新 HANDOFF.md。**
+
+---
+
+## 0. 三个核心优化决策（本次修订重点，任何 Agent 不得违反）
+
+### 0.1 新旧数据库并存原则【数据规范决策】
+
+- **新表规范**：本项目所有**新建表**必须遵循第 6.1 章新表规范：`id BIGINT AUTO_INCREMENT` 主键、snake_case 字段名、`created_by/created_at/updated_by/updated_at` 审计四字段、`deleted` 逻辑删除字段。
+- **旧库定位**：`lims.sql` 是旧系统导出的**参考数据**，其风格（int 主键、驼峰列名如 `customerId`/`basisName`、无审计字段、无逻辑删除）**禁止在新代码中复用**。
+- **迁移方式**：旧数据（basisname 约 1150 条判定依据、customer 9 家、lib 项目标准库、dept）由 `db/migrations/V1__import_legacy_data.sql` 清洗迁移至新表结构，脚本必须包含字段映射与去重逻辑；迁移完成后旧表废弃。
+- **Entity 过渡规则**：迁移完成前如确需读取旧表做数据比对，Entity 必须用 `@TableField` 显式映射列名并加注释标记 `// [LEGACY] 旧表过渡，禁止新代码依赖`，比对完成后删除。
+
+### 0.2 业务模块与状态机先行【需求建模决策】
+
+- 系统业务主线固定为**七阶段**（见第 7 章），任务拆分、接口命名、权限标识、合并顺序全部按业务阶段对齐，**禁止跨阶段跳做**（例：未完成 T-4xx 分解相关任务，不得开始 T-5xx 安排相关任务）。
+- 样品状态机 **S10 → S90**（见 7.2）是全系统唯一状态流转标准：后端以枚举 + 流转白名单实现，前端按状态渲染操作按钮，任何 Agent 不得私增状态或跳态流转。
+- 结果自动判定规则（见 7.3）只能由 Copilot 实现于后端，检验员不可手改单项结论，前端不可自算结论。
+
+### 0.3 分支策略升级【协作决策】
+
+- 在实训"三分支"基础上升级为 **三分支 + Agent 专属分支**：
+  - `main`：受保护。**每周实训结束由组长操作 develop → main 固化一次**，作为每周考核版本，禁止任何人直接提交；
+  - `develop`：集成分支，仅接受三个 Agent 分支的合并；
+  - `agent/copilot`、`agent/glm`、`agent/doubao`：三个 Agent 的长期工作分支，各自只在本人分支提交。
+- 合并路径唯一：`agent/xxx → develop → main`。**任何 Agent 禁止直接 commit/push 到 main 和 develop。**
+- Commit 规范沿用 Conventional Commits：`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` / `data:`（豆包数据脚本专用）。
+
+---
+
+## 1. 总体原则
+
+- **不偏离技术栈**：前端只用 Vue3 生态，后端只用 Spring Boot 3 生态。引入新依赖必须写入 DECISIONS.md 说明用途并获确认。
+- **安全第一**：权限校验、数据校验、业务安全逻辑必须在后端实现；前端仅做体验层展示控制。密码 BCrypt 加密，VO 禁止出现 password/salt。
+- **契约先行**：任何需要前后端联调的功能，Copilot 必须先把接口定义写入 `docs/api/api-spec.md`（路径/方法/请求/响应/权限标识），全员以契约为唯一依据，禁止自创接口格式。
+- **改表必同步**：SQL 迁移脚本 → Entity → Mapper → DTO/VO → 前端接口与页面，五件套缺一不可。
+- **可构建原则**：交付必须保证 `mvn clean compile` 与 `npm run build && npx vue-tsc --noEmit` 通过，禁止无法编译的示意代码。
+- **小步提交**：一个可编译、可验证的小功能 = 一次提交，禁止攒大招。
+- **敏感信息零提交**：不提交密码、密钥、Token、`application-dev.yml` 真实配置（已在 .gitignore 排除）。
+- **状态同步**：开工读 STATUS/TODO/HANDOFF/DECISIONS，收工写 HANDOFF（格式见 prompts/doubao.md）。
+
+## 2. 多 Agent 协作规则
+
+### 2.1 文件所有权（越界即冲突，严禁违反）
+
+| 目录 / 文件 | Copilot | WorkBuddy/GLM | 豆包 |
+|---|---|---|---|
+| `backend/` 核心（config/security/RBAC/业务主流程/判定引擎/报告引擎） | ✅ 独有 | ❌ | ❌ |
+| `backend/` 简单 CRUD（customer/dept/basis/菜单页对应模块） | ✅ review | ✅ 可写（新建文件为主） | ❌ |
+| `frontend/` | 仅架构与疑难页面 | ✅ 主要所有者 | 仅纯静态页/文案 |
+| `docs/api/api-spec.md` | ✅ 独有（写契约） | 只读 | 只读 |
+| `db/migrations/`、`db/seed/` | 审核 | 只读 | ✅ 主要维护 |
+| `docs/`（除 api-spec）、`*.md` 治理文件 | 决策类 | 技术类 | ✅ 主要维护 |
+| `.agents/skills/` | ✅ 创建/审核 | 只读使用 | 只读使用 |
+| 公共文件（pom.xml、package.json、路由配置、vite.config） | ✅ 独有 | 提 TODO 申请 | ❌ |
+
+规则：需要改公共文件或他人领地 → 在 TODO.md 提任务给对应 Owner，Owner 统一修改。
+
+### 2.2 开工五步（三个 Agent 每次会话必须执行）
+
+1. `git checkout agent/<自己> && git pull origin agent/<自己>`
+2. 依次阅读：`STATUS.md` → `TODO.md` → `HANDOFF.md` → `DECISIONS.md`（+ 本轮相关 `docs/api/api-spec.md` 与 `.agents/skills/`）
+3. 检查 STATUS.md 中他人占用文件，确认无冲突后声明本轮自己要改的文件
+4. 从 TODO.md 领取**自己级别**的任务并标记 🔵进行中(名字)
+5. 开发 → 自查 → 提交 → 更新 HANDOFF.md 并 @ 下一人
+
+### 2.3 任务分级与降级
+
+- **S 级**（架构/状态机/判定引擎/报告引擎/终审）：仅 Copilot。GLM/豆包遇到 S 级问题停止并提 TODO。
+- **A 级**（页面/常规 CRUD/接口对接）：GLM。
+- **B 级**（文档/数据/模板/状态维护）：豆包。
+- 降级：GLM5.3 额度不足 → 任务拆小，体力部分转豆包；切 HY4 preview 后只做纯 CRUD，S/A+ 任务排队；**严禁为省额度让低能力模型做 S 级任务**（返工成本 > 省下额度）。
+
+### 2.4 冲突处理
+
+- 冲突必须由涉及双方代码的 Owner（通常是 Copilot + 当事 Agent）共同核对，禁止强推覆盖；
+- 公共文件冲突一律以 Copilot 版本为基准，他人重放自己的增量。
+
+## 3. 目录结构约定
+
+```
+lims/
+├── frontend/                 # Vue3 前端工程
+│   ├── src/
+│   │   ├── api/              # 接口请求封装 (Axios)
+│   │   ├── views/            # 页面组件（按业务模块分子目录）
+│   │   ├── components/       # 通用/业务组件
+│   │   ├── stores/           # Pinia
+│   │   ├── router/           # 路由（含动态路由生成）
+│   │   ├── utils/  types/  layouts/  directives/
+│   │   ├── App.vue  main.ts
+│   ├── .env.development  .env.production
+│   └── vite.config.ts  tsconfig.json  package.json
+├── backend/                  # Spring Boot 3 后端工程
+│   ├── src/main/java/com/lims/
+│   │   ├── controller/  service/  mapper/  entity/
+│   │   ├── dto/（含 JSR-303 校验）  vo/（脱敏）
+│   │   ├── config/  security/  common/
+│   │   └── LimsApplication.java
+│   ├── src/main/resources/
+│   │   ├── application.yml  application-dev.yml
+│   │   └── mapper/           # MyBatis XML
+│   └── pom.xml
+├── db/
+│   ├── init/                 # 建库建表脚本（新表规范）
+│   ├── migrations/          # 增量迁移 V1__import_legacy_data.sql ...
+│   └── seed/                 # 测试数据（豆包维护）
+├── docs/
+│   ├── api/api-spec.md       # 接口契约（Copilot 独有）
+│   ├── knowledge/            # 网上搜集的最佳实践沉淀
+│   └── database-dictionary.md# 数据字典（豆包维护）
+├── .agents/skills/           # 可复用技能库（做完项目拷走即复现）
+│   ├── rbac-backend/SKILL.md
+│   ├── mybatisplus-crud/SKILL.md
+│   ├── vue3-crud-page/SKILL.md
+│   └── excel-import/SKILL.md
+├── prompts/                  # 三个 Agent 的提示词
+├── AGENTS.md  README.md  .gitignore
+├── STATUS.md  TODO.md  HANDOFF.md  DECISIONS.md
+```
+
+## 4. 后端开发规范
+
+### 4.1 技术约束
+- JDK 17+，Spring Boot 3.x，Maven 3.8+，MyBatis-Plus 3.5.x+。
+- 认证：JWT（access_token + refresh_token）。
+- 授权：Spring Security + `@PreAuthorize("hasAuthority('权限标识')")`。
+- 统一响应：`{ "code": 0, "msg": "success", "data": {} }`；code=0 成功；401 未认证；403 无权限；400 参数错误；500 系统异常。
+
+### 4.2 分层职责
+| 层 | 职责 | 禁止 |
+|---|---|---|
+| Controller | 参数校验、调用 Service、返回统一响应 | 写业务逻辑、直接操作数据库 |
+| Service | 业务编排、事务管理（@Transactional） | 暴露 Mapper 细节 |
+| Mapper | 继承 BaseMapper | 字符串拼接 SQL |
+| Entity | 表映射，MP 注解 | 业务方法 |
+| DTO | 请求对象 + JSR-303 | 复杂业务逻辑 |
+| VO | 响应对象，脱敏 | password/salt/secret |
+
+### 4.3 MyBatis-Plus 规范
+- 只用 `LambdaQueryWrapper/LambdaUpdateWrapper`；分页用 `Page<T>` + `PaginationInnerInterceptor`。
+- 业务状态字段（如样品状态）在后端用**枚举**定义，禁止魔法数字；状态流转必须经 Service 层校验白名单。
+- 自动判定等核心业务规则必须写**单元测试**（参考 db/seed 中豆包准备的测试数据集）。
+
+## 5. 前端开发规范
+
+- Vue 3 Composition API（`<script setup lang="ts">`），TS strict，**禁止 any**。
+- 业务状态入 Pinia；跨组件通信优先 Props/Emits。
+- 按钮级权限用 `v-permission="'权限标识'"`；**前端权限只做显隐，安全由后端兜底**。
+- 路由守卫：无 Token → /login；无菜单权限 → /403；登录后根据 `/api/auth/me` 动态生成路由。
+- 禁止硬编码 API 地址（用 `import.meta.env.VITE_API_BASE_URL`）；禁止 Token 放 URL；生产代码禁 console.log。
+
+## 6. 数据库规范
+
+### 6.1 新表规范（所有新建表必须满足）
+- InnoDB，utf8mb4 / utf8mb4_general_ci；表名字段名全小写下划线。
+- 主键 `id BIGINT NOT NULL AUTO_INCREMENT`；时间用 DATETIME；枚举用 TINYINT + 字典，不用 ENUM。
+- 审计四字段：`created_by VARCHAR(64)`、`created_at DATETIME`、`updated_by VARCHAR(64)`、`updated_at DATETIME`；逻辑删除 `deleted TINYINT DEFAULT 0`。
+- 高频查询字段、外键字段必须建索引。
+
+### 6.2 新旧并存与迁移（对应优化决策 0.1）
+- 新功能一律建新表（6.1 规范）；旧表数据只经 `db/migrations/` 脚本单向迁移进新表，迁移脚本须含：字段映射、去重规则、迁移前后条数校验 SELECT。
+- Entity 禁止驼峰映射新表；旧表过渡映射必须标 `// [LEGACY]`。
+
+### 6.3 修改流程
+增量迁移 SQL → Entity → Mapper/DTO/VO → 前端接口与页面 → commit message 注明影响范围。
+
+## 7. 业务建模（全员必读，对应业务说明书）
+
+### 7.1 业务七阶段（任务与接口命名按此对齐）
+基础数据准备 → 监抽任务管理 → 样品登记（采样单导入）→ 检验项目分解（自动套库）→ 检验任务安排 → 检验数据录入（自动判定）→ 报告审核签发 → 报告生成打印 →（查询 / 省平台上报）。
+
+### 7.2 样品状态机（唯一标准，S/A/B 级全员引用，禁止私改）
+
+| 状态 | 编码 | 触发 | 下一允许操作 |
+|---|---|---|---|
+| 已登记 | S10 | 采样单导入成功 | 登记维护/确认 |
+| 登记确认 | S20 | 登记员确认 | 项目分解 |
+| 已分解 | S30 | 分解确认保存 | 任务安排 |
+| 已安排 | S40 | 安排确认保存 | 检验数据录入 |
+| 检验中 | S50 | 检验员首次录入 | 继续录入 |
+| 检验完成 | S60 | 全部项目录齐 | 提交审核 |
+| 已审核 | S70 | 领导审核通过 | 签发 |
+| 已签发 | S80 | 领导签发 | 报告生成 |
+| 已出报告 | S90 | 报告生成完成 | 上报导出/归档 |
+| （退回） | — | 审核退回 | S50 并通知检验员 |
+
+### 7.3 结果自动判定规则（仅 Copilot 实现于后端）
+1. 标准值 `≤X` 型：检验值 ≤ X → 合格，> X → 不合格；
+2. `不得检出/不得使用` 型：未检出 → 合格，检出 → 不合格；
+3. 文本描述型（感官项目）：检验员选合格/不合格；
+4. 检验值低于最低检出限 → 按"未检出"处理；
+5. 带 `*` 的参考性限量参与计算但结论中标注"参考"；
+6. 任一单项不合格 → 样品整体不合格；单项结论自动生成，不可手改。
+
+### 7.4 任务安排自动分配规则
+- 样品编号含 `NA` → njna000（农）；含 `XA` → njxa000（畜）；含 `SA` → njsa000（水）；
+- 其余项目按"检验方法—检验员资质"自动匹配可执行人，允许人工改派（仅列出有资质者）。
+
+## 8. RBAC 权限设计
+
+### 8.1 预置角色
+R100 综合管理（审核签发/权限管理/全部查询）；R1 样品登记员；R2 任务管理员（分解/安排/资质维护）；R3 检验员（含 R3-NA/XA/SA 共享检验员账号 njna000/njxa000/njsa000）。
+
+### 8.2 权限标识（resource:action，与业务模块对齐，供接口与 v-permission 共用）
+`sys:user:*`、`sys:role:*`、`sys:menu:*`、`sys:dept:*`、`base:lib:*`、`base:basis:*`、`base:tester-method:*`、`base:customer:*`、`task:*`、`sample:import`、`sample:confirm`、`sample:query`、`item:decompose`、`assign:confirm`、`assign:reassign`、`result:entry`、`result:export-excel`、`report:audit`、`report:sign`、`report:generate`、`report:print`、`query:testing`、`query:history`、`export:province`、`log:view`。
+
+### 8.3 鉴权流程
+`POST /api/auth/login` 返回 JWT → `GET /api/auth/me` 返回用户+角色+权限标识集合+菜单树 → 接口按权限标识鉴权 → 数据权限：普通用户仅本部门及下属部门，R100 全部。
+
+### 8.4 安全红线
+- ❌ 前端传 role/permission 参数决定放行；❌ 前端判断管理员控制数据可见性；❌ 前端隐藏即安全。
+- ✅ 后端必须二次校验；菜单/按钮显隐只是体验层。
+
+## 9. 构建与质量门禁
+
+**前端**：`cd frontend && npm install && npm run build && npx vue-tsc --noEmit && npm run lint`
+**后端**：`cd backend && mvn clean compile -q && mvn clean package -DskipTests`
+任何 Agent 交付前必须通过本人端门禁；合入 develop 前必须通过 Copilot 终审。
+
+## 10. Git 工作流（对应优化决策 0.3）
+
+- 每日流程：`git pull origin 自己的分支` → 开发 → 提交 → `git checkout develop && git merge agent/自己`（先 pull origin develop 解冲突）→ `git push origin develop` → 回到自己分支。
+- 每周固化：组长执行 `git checkout main && git merge develop && git push origin main`。
+- 禁止：force push main/develop、reset --hard 强推、提交 node_modules/target/.env/IDE 配置。
+
+## 11. LIMS 领域术语对照
+
+| 中文 | 英文 | 说明 |
+|---|---|---|
+| 样品 | Sample | 被检测对象（含采样单信息） |
+| 监抽任务 | SuperviseTask | 监督抽检任务 |
+| 检验项目/检测单项 | TestItem | 具体检测指标（如铅、氯霉素） |
+| 项目标准库 | ProductLib | 产品应检项目+判定标准+方法库 |
+| 判定依据 | Basis | 判定标准文件（GB xxxx 等） |
+| 检验方法 | Method | 检测方法标准 |
+| 检验任务 | TestTask | 项目×检验员的一次工作安排 |
+| 检验数据 | TestResult | 录入结果+单项结论 |
+| 报告 | Report | CMA / CMA-CATL 检验报告 |
+| 客户 | Customer | 受检单位 |
+| 共享检验员 | SharedTester | njna000 / njxa000 / njsa000 |
+| 省平台上报 | ProvinceExport | 检验结果汇总 Excel 导出 |
+
+## 12. 行为约束清单
+
+**Copilot**：契约先行；核心业务只写完整可编译文件；每完成一个核心模块提炼 `.agents/skills/<模块>/SKILL.md`（含触发场景/前置/步骤/完整代码模板/踩坑）；定期执行 TODO 中"侦察"任务，把 GitHub 优秀实践（RuoYi-Vue-Plus、vue-element-plus-admin 等）沉淀进 `docs/knowledge/` 并转化为 skill；终审他人代码不通过须在 TODO 退回并写明原因。
+
+**GLM**：严格按 api-spec.md 对接，契约缺失即停工提问；开工先查 `.agents/skills/` 套用模板；交付前跑通质量门禁；额度不足按 2.3 降级，不硬扛 S 级。
+
+**豆包**：维护 STATUS/HANDOFF/TODO 状态（最高优先，每 2 小时或收工一次）；以代码为准修正文档不一致；数据脚本独立小提交（`data:` 前缀）；遇到设计/决策问题不自行解决，提 TODO 给 Copilot。
