@@ -25,3 +25,5 @@
 | 2026-09-10 | product_lib_item 增加 judge_type（1=限量比较 2=不得检出/不得使用 3=文本/感官人工），V1 按 stdValue 形态推导；T-401 表结构就此定稿 | T-601 自动判定引擎（AGENTS 7.3 规则 1/2/3）直接消费，避免引擎每次重判文本形态 | Copilot |
 | 2026-09-10 | JWT 过滤器每请求按 username 从 DB 装配 LoginUser，token 内 perms claim 仅作签发快照不作鉴权依据；R100 在代码层 isAdmin 短路拥有全部权限/菜单 | 权限变更即时生效（踢人/改权无需等 token 过期）；小系统 DB 查询开销可接受 | Copilot |
 | 2026-09-10 | 路由守卫对已登录未加载 me 的导航先 await fetchMe | 保证 v-permission 指令在页面渲染前拿到权限数据，避免按钮被误移除 | Copilot |
+
+| 2026-09-10 | V1 迁移源旧表以 customer_legacy/dept_legacy 后缀导入（lims.sql 旧 customer/dept 与 01 新建表同名异构），V1 源表同步改名；lims.sql 本身不入库 | 同库并存前提下旧表与新表同名会覆盖/1050 冲突；_legacy 后缀最小改动，第 5 节校验仍读新表 | 豆包（实测发现，待 Copilot 终审） |
