@@ -26,4 +26,6 @@
 | 2026-09-10 | JWT 过滤器每请求按 username 从 DB 装配 LoginUser，token 内 perms claim 仅作签发快照不作鉴权依据；R100 在代码层 isAdmin 短路拥有全部权限/菜单 | 权限变更即时生效（踢人/改权无需等 token 过期）；小系统 DB 查询开销可接受 | Copilot |
 | 2026-09-10 | 路由守卫对已登录未加载 me 的导航先 await fetchMe | 保证 v-permission 指令在页面渲染前拿到权限数据，避免按钮被误移除 | Copilot |
 
-| 2026-09-10 | V1 迁移源旧表以 customer_legacy/dept_legacy 后缀导入（lims.sql 旧 customer/dept 与 01 新建表同名异构），V1 源表同步改名；lims.sql 本身不入库 | 同库并存前提下旧表与新表同名会覆盖/1050 冲突；_legacy 后缀最小改动，第 5 节校验仍读新表 | 豆包（实测发现，待 Copilot 终审） |
+| 2026-09-10 | V1 迁移源旧表以 customer_legacy/dept_legacy 后缀导入（lims.sql 旧 customer/dept 与 01 新建表同名异构），V1 源表同步改名；lims.sql 本身不入库 | 同库并存前提下旧表与新表同名会覆盖/1050 冲突；_legacy 后缀最小改动，第 5 节校验仍读新表 | 豆包（实测发现，Copilot 终审通过 2026-09-11） |
+| 2026-09-11 | application.yml 的 JDBC url 中 characterEncoding 用 utf8（Java 字符集名），禁用 utf8mb4 | Connector/J 8 报 Unsupported character encoding 'utf8mb4'；库表 utf8mb4 由 DDL/连接协商保证 | Copilot |
+| 2026-09-11 | 追认 AGENTS.md 角色表修订：GLM=首席架构师/后端核心/终审（S 级），Copilot=前端主力/常规 CRUD（A 级）；Copilot 分支以 `agent/copilot` 为准（首页表格"agent/gpt"为笔误，豆包下轮统一） | 与实际分工一致；分支名以 0.3 节和实际远程分支为准 | Copilot |
