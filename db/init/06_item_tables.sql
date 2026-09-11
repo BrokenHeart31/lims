@@ -1,6 +1,7 @@
 -- =============================================================================
 -- 06_item_tables.sql  检验项目分解表建表脚本（T-401，新表规范 AGENTS 6.1）
 -- 对应任务：T-401 检验项目分解（自动套库）+ S20→S30
+--           T-501 检验任务安排（本表追加指派字段）+ S30→S40
 -- 业务依据：业务说明书「五、检验业务流程之二：样品检验明细项目分解（自动套用项目库）」
 --   「项目分解是根据项目检测单项标准数据库自动加载全部检测单项，可根据项目的具体要求
 --     在此基础进行检测单项的增加、删减等调整。项目分解完毕后请按'确认保存'按钮，
@@ -48,6 +49,15 @@ CREATE TABLE `sample_item` (
   `source_type`    TINYINT      NOT NULL DEFAULT 1 COMMENT '来源 1=标准库自动套用 2=人工新增',
   `remark`         VARCHAR(255) DEFAULT NULL COMMENT '备注（调整原因等）',
 
+  -- ---- 任务安排字段（T-501，S30→S40）----
+  -- 指派粒度为「检测单项」：同一样品不同单项方法不同，可能指派不同检验员（AGENTS 7.4）。
+  `assign_status`  TINYINT      NOT NULL DEFAULT 0 COMMENT '指派状态 0=待指派 1=已指派',
+  `assign_type`    TINYINT      NOT NULL DEFAULT 0 COMMENT '指派方式 0=未指派 1=分类规则(编号含NA/XA/SA) 2=方法资质 3=人工改派',
+  `tester_no`      VARCHAR(32)  DEFAULT NULL COMMENT '检验员工号（sys_user.username）',
+  `tester_name`    VARCHAR(64)  DEFAULT NULL COMMENT '检验员姓名（sys_user.nickname，出网冗余便于列表展示）',
+  `assigned_at`    DATETIME     DEFAULT NULL COMMENT '指派时间',
+  `assigned_by`    VARCHAR(64)  DEFAULT NULL COMMENT '指派操作人工号',
+
   `created_by`     VARCHAR(64)  DEFAULT NULL COMMENT '创建人',
   `created_at`     DATETIME     DEFAULT NULL COMMENT '创建时间',
   `updated_by`     VARCHAR(64)  DEFAULT NULL COMMENT '更新人',
@@ -58,5 +68,7 @@ CREATE TABLE `sample_item` (
   UNIQUE KEY `uk_sample_item_order` (`sample_id`, `item_order`, `deleted`),
   KEY `idx_sample_item_sample_id` (`sample_id`),
   KEY `idx_sample_item_name` (`item_name`),
-  KEY `idx_sample_item_judge_type` (`judge_type`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='样品检验单项（项目分解结果，T-401）';
+  KEY `idx_sample_item_judge_type` (`judge_type`),
+  KEY `idx_sample_item_tester_no` (`tester_no`),
+  KEY `idx_sample_item_assign_status` (`assign_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='样品检验单项（项目分解结果 T-401 + 任务安排 T-501）';

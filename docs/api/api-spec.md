@@ -476,7 +476,96 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ---
 
-## 5. 待落地域（占位，按七阶段顺序补充）
+## 5. 检验任务安排域 `/api/assign`（T-501）
+
+> 阶段五：检验项目分解完成后，把每个**检测单项**指派给有资格的检验员（S30 → S40）。
+> 规则来源：AGENTS 7.4。**指派粒度为「检测单项」**（不同单项方法不同 → 可能是不同检验员）。
+
+### 5.0 自动分配规则
+
+1. **分类规则（优先）**：样品编号含 `NA` → 农残共享检验员；含 `XA` → 畜残；含 `SA` → 水产。
+   - 代码 → 工号的映射以 **`user_method`** 表（`method` 列为 `NA`/`XA`/`SA`）为**数据源**；
+     该表缺行时回退到 AGENTS 7.4 约定的默认工号 `njna000` / `njxa000` / `njsa000`。
+   - 编号同时含多个代码时按固定顺序 `NA` → `XA` → `SA` 取**先命中者**。
+   - 命中则 `assignType = 1`。
+2. **方法资质规则**：分类规则未命中时，取该单项的 `methods`（可能以 `#` 分隔多个方法标准号），
+   匹配 `tester_method.method_no` 且 `qual_status = 1` 的记录；命中即指派该检验员 → `assignType = 2`。
+3. **兜底（fail-loud）**：两条规则均未命中 → **不指派**，`assignStatus = 0`（待人工指派），
+   `testerNo` 保持 NULL。**禁止默认指派任意检验员**。
+4. **人工改派**：`assignType = 3`。仅允许指派**有资质者**——候选列表接口只返回具备资质者；
+   无资质者不出现在候选中（若某单项无任何有资质者，候选为空，需先补录资质）。
+
+> ⚠️ **数据现状（2026-09-11 实测，务必知悉）**：`tester_method` 当前 **0 行**，且旧表 `user_item`
+> 引用的 `nj009`/`nj010` **不在 `sys_user`** 中。即「方法资质规则」当前**无数据可用**，
+> 实际会自动落到 `assignStatus=0`（待人工指派）。这是**数据缺口而非实现缺陷**——
+> 由业务方补录资质（`/api/base/tester-method`）后规则自然生效。
+> 分类规则有数据（`user_method` 3 行 + `sys_user` 3 个共享检验员），可正常命中。
+
+### 5.1 字段模型（`sample_item` 分配字段增量，camelCase）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `assignStatus` | int | 0=待指派 1=已指派 |
+| `assignType` | int | 0=未指派 1=分类规则 2=方法资质 3=人工改派 |
+| `testerNo` | string\|null | 检验员工号（`sys_user.username`） |
+| `testerName` | string\|null | 检验员姓名（出网冗余字段，取自 `sys_user.nickname`，便于列表展示） |
+| `assignedAt` | datetime\|null | 指派时间 |
+| `assignedBy` | string\|null | 指派操作人（工号） |
+
+样品层增量：`assignTotal`（单项总数）、`assignDone`（已指派数）。
+
+### 5.2 分页查询待安排样品
+
+- `GET /api/assign/pending`
+- 权限：`assign:confirm`
+- 参数：`current`（默认 1）、`size`（默认 10，≤500）、`sampleNo`（模糊）、`sampleName`（模糊）
+- 仅返回 **status = S30（已分解）** 的样品；无分解明细的样品不出现在列表中。
+- 响应 `data`：`{ records, total, current, size }`，`records[]` 字段：
+  `id / sampleNo / sampleName / clientName / taskNo / inspectType / samplingDate / status / statusLabel / assignTotal / assignDone`
+
+### 5.3 查询样品安排明细
+
+- `GET /api/assign/detail/{sampleId}`
+- 权限：`assign:confirm`
+- 响应 `data`：
+  - `sampleId / sampleNo / sampleName / status / statusLabel / assignTotal / assignDone / inputPermitted`
+    （`inputPermitted` = 是否已全部指派，前端据此决定「确认安排」是否可点）
+  - `items[]`：`{ id, itemOrder, itemName, methods, unit, stdValue, judgeType, isReference,
+    assignStatus, assignType, testerNo, testerName, assignedAt }`
+  - `candidates[]`：`{ testerNo, testerName, matchedMethodNo, source }`
+    （**仅含对当前样品任一单项具备资质者**；`source` = `METHOD`(方法资质) / `CATEGORY`(分类规则)）
+
+### 5.4 执行自动分配（可重跑）
+
+- `POST /api/assign/auto`，body `{ "sampleId": 1 }`
+- 权限：`assign:confirm`
+- 语义：对该样品**所有单项**重跑 5.0 的规则；**已人工改派（`assignType=3`）的单项不覆盖**。
+- 幂等：重复执行结果一致。
+- 响应 `data`：`{ sampleId, total, assigned, pending, details: [{ itemOrder, itemName, assignStatus, assignType, testerNo, testerName, reason }] }`
+  （`reason` 为未指派原因，如 `未命中分类规则且无方法资质`）
+
+### 5.5 人工改派
+
+- `POST /api/assign/reassign`，body `{ "itemId": 12, "testerNo": "njsa000" }`
+- 权限：`assign:reassign`
+- 校验：① 单项存在；② 样品处于 **S30**；③ `testerNo` 存在于 `sys_user` 且 `status=1`；
+  ④ **该检验员对该单项具备资质**（分类规则命中的代码一致，或 `tester_method` 命中其方法之一）；
+  否则返回 `code=400` 并给出原因（**仅列出有资质者**，AGENTS 7.4）。
+- 成功后 `assignType = 3`、`assignStatus = 1`。
+- 响应 `data`：`{ itemId, testerNo, testerName, assignType, assignStatus }`
+
+### 5.6 安排确认（S30 → S40）
+
+- `POST /api/assign/confirm`，body `{ "sampleId": 1 }`
+- 权限：`assign:confirm`
+- 校验：① 样品流转 `S30 → S40`（状态机白名单）；② **全部单项必须已指派**，否则 `code=400`
+  并提示「仍有 N 个检测单项待指派」。
+- 并发：乐观条件 UPDATE（`WHERE id=? AND status=30`），`updated==0` → 「样品状态已变更，请刷新后重试」。
+- 响应 `data`：`{ sampleId, status, statusLabel }`
+
+---
+
+## 6. 待落地域（占位，按七阶段顺序补充）
 
 | 域 | 前缀 | 对应任务 | 状态 |
 |---|---|---|---|
@@ -486,7 +575,7 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 | 基础数据（lib/basis/tester-method/customer） | /api/base/* | T-103 | ⬜ |
 | 样品登记（Excel 导入） | /api/sample/* | T-301 | ✅（第 3 章） |
 | 项目分解 | /api/item/* | T-401 | ✅（第 4 章） |
-| 任务安排 | /api/assign/* | T-501 | ⬜ |
+| 任务安排 | /api/assign/* | T-501 | ✅（第 5 章） |
 | 结果录入（自动判定） | /api/result/* | T-601 | ⬜ |
 | 报告审核签发/生成 | /api/report/* | T-701/T-702 | ⬜ |
 | 查询与省平台上报 | /api/query/* /api/export/* | T-801/T-802 | ⬜ |

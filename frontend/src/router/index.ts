@@ -49,6 +49,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '项目分解', permissions: ['item:decompose'] },
       },
       {
+        path: 'assign/index',
+        name: 'assign-index',
+        component: () => import('@/views/assign/index.vue'),
+        meta: { title: '任务安排', permissions: ['assign:confirm'] },
+      },
+      {
         path: '403',
         name: 'forbidden',
         component: () => import('@/views/error/403.vue'),

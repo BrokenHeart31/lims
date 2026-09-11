@@ -11,6 +11,7 @@ import {
   Monitor,
   Operation,
   SwitchButton,
+  UserFilled,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -28,6 +29,7 @@ const menus = [
   { path: '/task', title: '监抽任务', icon: markRaw(List) },
   { path: '/sample', title: '样品登记', icon: markRaw(Document) },
   { path: '/item/decompose', title: '项目分解', icon: markRaw(Operation) },
+  { path: '/assign/index', title: '任务安排', icon: markRaw(UserFilled) },
 ]
 
 /** 侧栏折叠（专注录入时可收起，给数据区让出宽度） */

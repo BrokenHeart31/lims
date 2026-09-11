@@ -3,8 +3,11 @@ package com.lims.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
 
 /**
  * 样品检验单项（sample_item，T-401 项目分解结果）。
@@ -71,4 +74,28 @@ public class SampleItem extends BaseEntity {
 
     /** 备注（调整原因等） */
     private String remark;
+
+    // ---------------------------------------------------------------------
+    // 任务安排字段（T-501，S30→S40）
+    // 指派粒度为「检测单项」：同一样品不同单项方法不同，可能指派不同检验员（AGENTS 7.4）。
+    // ---------------------------------------------------------------------
+
+    /** 指派状态：0=待指派 1=已指派 */
+    private Integer assignStatus;
+
+    /** 指派方式：0=未指派 1=分类规则（样品编号含 NA/XA/SA） 2=方法资质 3=人工改派 */
+    private Integer assignType;
+
+    /** 检验员工号（sys_user.username） */
+    private String testerNo;
+
+    /** 检验员姓名（sys_user.nickname，出网冗余便于列表展示，避免前端二次查询） */
+    private String testerName;
+
+    /** 指派时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime assignedAt;
+
+    /** 指派操作人工号 */
+    private String assignedBy;
 }
