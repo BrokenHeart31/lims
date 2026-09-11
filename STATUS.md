@@ -4,8 +4,8 @@
 
 ## 当前工作分支
 - 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅，三项均终审通过）
-- GLM：`agent/glm`（待命 → 下一轮 T-301 采样单 Excel 导入，S 级）
-- Copilot：`agent/copilot`（本轮：终审三项 + 修 application.yml + 合并推送 ✅）
+- GLM：`agent/glm`（待命 → 下一轮 T-301 采样单 Excel 导入，S 级；开工先读 .agents/skills/excel-import + docs/knowledge 两篇）
+- Copilot：`agent/copilot`（终审三项 ✅ + 修 application.yml ✅ + 合并推送 ✅ + 技能库/知识库建设 ✅）
 
 ## 项目位置
 - 本地仓库：`D:\lims`（远程 https://github.com/BrokenHeart31/lims.git ）
@@ -26,3 +26,5 @@
 - ⚠️ GUI 通道不可用（bu 浏览器空间 disabled、cu 虚拟桌面 PIP 初始化失败），前端 UI 点击走查（登录→工作台→任务 CRUD 按钮操作）未完成，待环境恢复补走。
 - ⚠️ git 沙箱：本机 git 需 `git config http.schannelCheckRevoke false` + 推送用 `git -c http.sslVerify=false push`（本轮已验证可用）。
 - ℹ️ 本机 MySQL 实际密码 123456（非 AGENTS 约定 11111111），已写入 gitignore 的 application-dev.yml。
+- ✅ **技能库/知识库已建立**（2026-09-11 Copilot）：`.agents/skills/` 四技能（rbac-backend / mybatisplus-crud / vue3-crud-page / excel-import）+ `docs/knowledge/` 两篇侦察（EasyExcel 选型、状态机 EnumMap 白名单）。全员开工前按 AGENTS 2.2 第 2 步查阅。
+- 📌 **方向性定稿两条**：①Excel 导入导出一律 EasyExcel（禁 POI 裸 API）；②样品状态流转一律「枚举 + EnumMap 白名单」（禁引 Spring StateMachine、禁私增状态/跳态）。

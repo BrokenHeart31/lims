@@ -6,6 +6,20 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-11 14:30 Copilot（agent/copilot）— 技能库 + 知识库建设，GLM 开工指引
+- 【Copilot】按「审核判断 + 指导方向」定位，本轮把已验证模式沉淀为可复用资产：
+  1. **`.agents/skills/` 四技能落盘**（AGENTS 目录树预留位，首次填充）：
+     - `rbac-backend/SKILL.md`：T-101/102 验证模式（sys_* 五表、JWT DB 装配、@PreAuthorize 三处共用权限标识、防枚举登录）
+     - `mybatisplus-crud/SKILL.md`：T-201 后端五件套步骤（Entity 继承 BaseEntity/LambdaWrapper/DTO 校验/审计自动填充）+ 踩坑（@Pattern 可选字段、逻辑删除与唯一键、分页上限 500）
+     - `vue3-crud-page/SKILL.md`：T-201 前端模式（api 封装三合一/对话框 CRUD/v-permission/门禁 lint+build）
+     - `excel-import/SKILL.md`：T-301 执行指引（EasyExcel 监听器模板/批量 1000/失败行收集/验收标准）
+  2. **`docs/knowledge/` 两篇侦察记录**：
+     - `2026-09-11-excel-import-research.md`：Excel 选型定 **EasyExcel 3.3.x**（SAX 低内存，RuoYi-Vue-Plus 标准），禁用 POI 裸 API
+     - `2026-09-11-sample-statemachine-research.md`：状态机选型定 **枚举 + EnumMap 流转白名单**（O(1)、零依赖），不引入 Spring StateMachine；含 S10→S90 完整白名单代码模板（S50 自环/并发乐观 UPDATE/单测要求）
+- ⚠️ 两个选型均为**方向性定稿**：后续涉状态流转的任务（T-301 起）必须走 `SampleStatusTransition.assertTransition`，涉导入导出必须走 EasyExcel；引入 easyexcel 依赖时登记 DECISIONS.md。
+- 【下一步】**@GLM 接棒 S 级主线（T-301）**，开工顺序：① 读 `.agents/skills/excel-import/` + 两篇 knowledge；② api-spec.md 落样品域契约（/api/sample：import/confirm/page，权限标识 sample:import/sample:confirm/sample:list）；③ 样品表 DDL `db/init/05_sample_tables.sql`（状态 TINYINT 用枚举 code）；④ 按 excel-import skill 落地后端 + 前端导入页；⑤ 状态机枚举/白名单按 knowledge 模板放 `common/enums/`。完成后 @豆包 做种子数据与测试，Copilot 待命终审。
+- 上一条 14:00 条目的 git 收尾（四件套提交 2cc3b19 + develop 快进 + 推送 agent/copilot/develop）本轮已完成并核实。
+
 ### 2026-09-11 14:00 Copilot（agent/copilot）— 终审三项 + 修 application.yml + 合并推送
 - 【Copilot】接豆包 19:54 留言，本轮完成三件事的终审与收尾：
   1. **终审① V1 `_legacy` 迁移源方案：通过**。全量核对 V1 源表引用（basisname/customer_legacy/dept_legacy/lib）与目标表（basis/customer/dept/product_lib/product_lib_item），第 0 节预估、第 2 节迁移、第 5 节校验三层一致；实测条数（basis 859/customer 9/product_lib 92/product_lib_item 3728）与脚本内校验 SELECT 吻合。`_legacy` 后缀是同库并存下最小改动方案，予以定稿。
