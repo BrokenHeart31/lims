@@ -1,6 +1,9 @@
 -- =============================================================================
 -- V1__import_legacy_data.sql  旧数据迁移脚本（T-104）
 -- 源：旧系统导出 lims.sql 中的 basisname / customer / dept / lib（同库保留作迁移源）
+-- 注意：lims.sql 的旧 customer/dept 与 01_basic_tables.sql 新建表同名（旧结构），
+--       导入 lims.sql 时须将旧表改名为 customer_legacy / dept_legacy（本地导入前替换，
+--       lims.sql 不入库），故本节迁移源为 customer_legacy；dept 旧表 0 行 no-op。
 -- 目标：新表 basis / customer / dept / product_lib / product_lib_item（见 db/init/01_basic_tables.sql）
 -- 原则（AGENTS 0.1 / 6.2）：
 --   - 单向清洗迁移；禁止在新代码复用旧表驼峰列名/无审计字段风格；
@@ -17,8 +20,8 @@ SET NAMES utf8mb4;
 -- 0. 迁移前条数（人工核对用）
 -- -----------------------------------------------------------------------------
 SELECT 'legacy basisname'  AS src, COUNT(*) AS cnt FROM `basisname`
-UNION ALL SELECT 'legacy customer', COUNT(*) FROM `customer`
-UNION ALL SELECT 'legacy dept',     COUNT(*) FROM `dept`
+UNION ALL SELECT 'legacy customer', COUNT(*) FROM `customer_legacy`
+UNION ALL SELECT 'legacy dept',     COUNT(*) FROM `dept_legacy`
 UNION ALL SELECT 'legacy lib',      COUNT(*) FROM `lib`;
 
 -- =============================================================================
@@ -38,7 +41,7 @@ WHERE TRIM(IFNULL(`basis`, '')) <> ''
   AND TRIM(IFNULL(`basisName`, '')) <> '';
 
 -- =============================================================================
--- 2. customer → customer（客户/受检单位）
+-- 2. customer_legacy → customer（客户/受检单位）
 --    映射：company→name, lxr→contact_person, leader→leader,
 --          lxrMobileNo→contact_mobile, leaderMobileNO→leader_mobile,
 --          addr→address, type→business_type, bank→bank, bankNo→bank_account, status→status
@@ -61,7 +64,7 @@ SELECT DISTINCT
        NULLIF(TRIM(`status`), '')                            AS status,
        NULLIF(TRIM(`fenlei`), '')                            AS remark,
        'migration-v1', NOW(), 'migration-v1', NOW(), 0
-FROM `customer`
+FROM `customer_legacy`
 WHERE TRIM(IFNULL(`company`, '')) <> '';
 
 -- =============================================================================
