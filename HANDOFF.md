@@ -6,6 +6,28 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-11 15:00 GLM（agent/glm）— T-301 采样单 Excel 导入 + S10→S20 登记确认 完成
+- 【GLM】**T-301 全链路完成，并已合入 `develop` 与 `main`**（本轮按用户指示执行 `agent/glm → develop → main` 固化）。产出：
+  1. **契约**：`docs/api/api-spec.md` 新增第 3 章「样品登记域 /api/sample」（导入/分页/详情/登记维护/登记确认），原「待落地域」顺延为第 4 章。权限标识 **`sample:import` / `sample:confirm` / `sample:query`**。
+  2. **数据库**：`db/init/05_sample_tables.sql` —— `sample_info`（样品登记，状态 TINYINT=枚举 code）+ `sample_import_batch`（A1 文件标记防重复导入）。
+  3. **后端**（按 `.agents/skills/excel-import` + 两篇 knowledge 落地）：
+     - `common/enums/SampleStatus.java`（S10..S90，`@EnumValue` 落库 code / `@JsonValue` 出网 code / `getStatusLabel()` 派生中文）、`common/enums/SampleStatusTransition.java`（EnumMap 白名单：canTransition/assertTransition/nextAllowed）。
+     - `entity/Sample.java`、`entity/SampleImportBatch.java`、2 个 Mapper、`dto/SampleImportDTO`(22 列 `@ExcelProperty` 按 index 绑定)、`dto/SampleUpdateDTO`、`dto/SampleConfirmDTO`、`vo/SampleImportResultVO`(total/successCount/failCount/errors[rowNum,sampleNo,message])。
+     - `service/excel/SampleImportListener.java`：SAX 流式，批 1000 刷盘，行号=`readRowHolder().getRowIndex()+1`，逐行校验（必填/长度/日期宽松解析/费用/文件内+库内查重/task_no 必须存在），**失败逐条收集不中断、不整批回滚**；「以下空白」终止行与空白行忽略。
+     - `service/impl/SampleServiceImpl.java`：导入（含 A1 标记两遍读 + 同标记整文件拒绝）、分页、登记维护（仅 S10 可改）、登记确认（`assertTransition(S10→S20)` + 乐观 UPDATE `WHERE id=? AND status=旧值` + 写 confirmedBy/At）。
+     - `controller/SampleController.java`：5 个接口，`@PreAuthorize` 与 seed 权限标识同值。
+     - `pom.xml`：新增 **EasyExcel 3.3.4**（已登记 DECISIONS）。
+  4. **前端**：`api/sample.ts`（含状态字典）、`views/sample/index.vue`（查询/表格/多选/导入 el-upload/导入结果对话框含失败明细+一键复制/登记维护弹窗/详情）、`router` 与 `MainLayout` 增「样品登记」、`public/templates/sample_import_template.xlsx`（22 列模板，A1 标记 + 2 行演示数据 + 末行「以下空白」）。
+- ✅ **质量门禁全通过**：后端 `mvn clean compile`/`package` ✅、`mvn test` **9 项全过**（`SampleStatusTransitionTest` 7 项 + `SampleImportListenerTest` 2 项）；前端 `npm run lint` 0 问题、`npm run build`（vue-tsc+vite）✅。
+- ✅ **运行期端到端实测通过**（本机 MySQL 8 + `db/init/05` + `java -jar`，账号 nj002/R1）：登录 → `/me` 下发 `sample:import/confirm/query` → 导入模板 `{total:2,successCount:2}` → 分页 total=2（`status:10`、`statusLabel:"已登记"`、审计 `createdBy=nj002`）→ 同文件重导 `code=400 该采样单已导入过` → 详情 → 登记确认 `{confirmedCount:2}` → 重复确认 `code=400 不允许从「登记确认」流转到「登记确认」` → 状态过滤 total=2 → 含错误行文件 `{successCount:1,failCount:1,errors:[第4行 样品名称不能为空；任务编号不存在]}` 且合法行已入库（**不整批回滚**）→ S20 样品 PUT 被拒 `仅「已登记」状态可维护` → S10 样品 PUT 成功且 `updatedBy` 自动填充 → njna000(R3) 调 `/sample/*` 被拒 `code=403`。
+- ⚠️ **坑1：表名 `sample` 是 SQL 关键字**。实测 MyBatis-Plus 分页 count SQL 优化报 `Encountered unexpected token "FROM"`（JSqlParser 把 SAMPLE 当关键字），**已改表名为 `sample_info`**（同 `user`→`sys_user` 原则，已记 DECISIONS）；API 路径 `/api/sample/*` 与权限标识 `sample:*` 不受影响。**后续建表务必避开 SQL 关键字**（建议先用 JSqlParser 试解析一次）。
+- ⚠️ **坑2：EasyExcel `head(List<List<String>>)` 结构是「外层=列，内层=该列各表头行」**（不是「行→列」），写表头时极易写反（本轮单测踩过一次）。
+- ⚠️ **发现（非本任务引入，提 Copilot 终审）**：`@PreAuthorize` 无权限时由 `GlobalExceptionHandler` 兜底返回 **HTTP 200 + body.code=403**，与 api-spec 0.2「安全层返回 HTTP 401/403」表述不一致（filter 层未认证仍是 HTTP 401）。前端按 `body.code` 处理无影响，是否统一为 HTTP 403 请 Copilot 定夺。
+- ⚠️ **契约待 Copilot 终审**：api-spec 样品域由 GLM 起草（T-301 改派 GLM 执行），字段/权限标识/返回结构请终审确认。
+- ⚠️ **沙箱 git 坑复现**：`git merge --ff-only develop`（快进）会**删除整个 `.git/refs/heads/agent/` 目录**，本轮已用 reflog + shell 回填 3 次（glm/copilot/doubao）。任何 git.exe 操作后必须 `git branch -v` 自查。
+- ⚠️ 本机 `curl` 是 Windows 版：`-F "file=@/d/lims/..."` 取不到文件，须用 `$(cygpath -w <path>)`；且本机 curl 走 MITM 代理，访问 localhost 需 `--noproxy '*'`。
+- 【下一步】**@Copilot**：① 终审 api-spec 样品域 + 本文件「坑2/发现」；② 下一棒按七阶段接 **T-401 项目分解（自动套库）**（product_lib/product_lib_item 已定稿含 judge_type，V1 已迁 92/3728 条数据，S20→S30 用 SampleStatusTransition）；③ 前端动态路由待接（A 级）。**@豆包**：统一 AGENTS 首页表格 `agent/gpt`→`agent/copilot`；可补 `db/seed/03_demo_sample_seed.sql`（可选，导入模板已含演示数据）。
+
 ### 2026-09-11 14:30 Copilot（agent/copilot）— 技能库 + 知识库建设，GLM 开工指引
 - 【Copilot】按「审核判断 + 指导方向」定位，本轮把已验证模式沉淀为可复用资产：
   1. **`.agents/skills/` 四技能落盘**（AGENTS 目录树预留位，首次填充）：

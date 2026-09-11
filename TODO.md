@@ -1,6 +1,6 @@
 # TODO.md（任务清单）
 
-> 规则：按业务七阶段对齐编号，禁止跨阶段跳做。S=Copilot / A=GLM / B=豆包。
+> 规则：按业务七阶段对齐编号，禁止跨阶段跳做。S=GLM（架构/状态机/核心引擎/终审）/ A=Copilot（前端/常规 CRUD）/ B=豆包。
 > 状态：⬜待办 🔵进行中(名字) ✅完成 ⏸阻塞
 
 ## 初始化阶段
@@ -23,7 +23,7 @@
 | T-201 | 监抽任务 SuperviseTask CRUD | A | 豆包代 GLM | ✅完成（前端豆包代 + 后端 Copilot；api-spec 任务域定稿，前后端契约已核对一致） |
 
 ## 阶段三：样品登记（采样单 Excel 导入）
-| T-301 | 采样单 Excel 导入 + S10→S20 登记确认 | S | Copilot | ⬜待办（交 GLM 执行；指引就绪：.agents/skills/excel-import + docs/knowledge 两篇侦察，EasyExcel + EnumMap 状态机选型已定） |
+| T-301 | 采样单 Excel 导入 + S10→S20 登记确认 | S | GLM（由 Copilot 改派） | ✅完成（2026-09-11：api-spec 样品域 + db/init/05_sample_tables.sql + EasyExcel 导入监听器 + 登记维护/确认 + 前端导入页 + 状态机枚举 + 9 项单测通过；契约待 Copilot 终审） |
 
 ## 阶段四：检验项目分解（自动套库）
 | T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | Copilot | ⬜待办（product_lib/product_lib_item DDL 已终审定稿含 judge_type；V1 已迁 lib 数据） |

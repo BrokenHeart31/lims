@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Fold, List, Monitor, SwitchButton } from '@element-plus/icons-vue'
+import { Document, Fold, List, Monitor, SwitchButton } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -59,6 +59,12 @@ async function handleLogout(): Promise<void> {
           <el-icon><List /></el-icon>
           <template #title>
             监抽任务
+          </template>
+        </el-menu-item>
+        <el-menu-item index="/sample">
+          <el-icon><Document /></el-icon>
+          <template #title>
+            样品登记
           </template>
         </el-menu-item>
       </el-menu>

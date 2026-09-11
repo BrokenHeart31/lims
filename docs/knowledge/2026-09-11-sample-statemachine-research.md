@@ -65,3 +65,22 @@ public final class SampleStatusTransition {
 4. **前端**：按 /me 返回或详情接口中的当前状态渲染操作按钮（AGENTS 7.2），前端不自算下一态。
 5. **驳回/回退分支**（如审核不通过 S70→S50）在 T-701 设计时由 Copilot 补充进白名单并同步 api-spec，他人不得私加。
 6. **单测**：白名单每个 entry 一条断言 + 至少一条非法流转断言（AGENTS 4.3 要求核心业务规则必测）。
+
+## 落地补充（T-301 实测，2026-09-11 GLM）
+
+按本项目技术栈（MyBatis-Plus 3.5.7 + Spring Jackson）落地时，模板另需两处映射注解，否则枚举与 TINYINT/JSON 之间存在歧义：
+
+1. **持久化**：`SampleStatus.code` 上加 `@com.baomidou.mybatisplus.annotation.EnumValue`，
+   MP 才会以 code 值读写 TINYINT（否则默认按 `name()` 或 ordinal，与 DB 值 10/20/… 不符）。
+   `LambdaQueryWrapper.eq(Sample::getStatus, SampleStatus.S10)` 亦依赖该注解解析为 `status = 10`。
+2. **JSON 出网**：`code` 上加 `@JsonValue`，并给枚举加 `@JsonCreator public static SampleStatus fromJson(Integer code)`，
+   使接口 `status` 字段是数字 code（而非 `"S10"`）；中文名另以 `@TableField(exist=false)` 之外的
+   **派生 getter** `getStatusLabel()` 输出（不落库、无需额外字段），前端直接展示，避免前端维护 code→label 字典。
+3. **并发与审计**：乐观条件更新用 `update(patch, new LambdaUpdateWrapper<Sample>().eq(id).eq(status, 旧值))`——
+   传 entity 才能触发 `MetaObjectHandler.updateFill`（updatedBy/updatedAt 自动填充）；只用 `.set()` 不传 entity 则不会触发填充。
+4. **单测注意**：纯 JUnit（无 Spring）下构造 `LambdaQueryWrapper` 前需手动
+   `TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Xxx.class)`，
+   否则 MP 无法解析实体列名。
+
+参考实现：`backend/src/main/java/com/lims/common/enums/SampleStatus.java`、
+`.../SampleStatusTransition.java`、`.../service/impl/SampleServiceImpl.java`（confirmSamples）。

@@ -37,6 +37,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '监抽任务' },
       },
       {
+        path: 'sample',
+        name: 'sample-register',
+        component: () => import('@/views/sample/index.vue'),
+        meta: { title: '样品登记' },
+      },
+      {
         path: '403',
         name: 'forbidden',
         component: () => import('@/views/error/403.vue'),
