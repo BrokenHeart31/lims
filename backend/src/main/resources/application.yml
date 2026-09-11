@@ -1,0 +1,58 @@
+server:
+  port: 8080
+  # 与前端 vite 代理（/api -> localhost:8080，无 rewrite）对齐：
+  # 后端所有接口统一以 /api 前缀对外，契约见 docs/api/api-spec.md
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: lims
+  profiles:
+    # 真实环境差异配置放 application-dev.yml（已 gitignore，禁止提交真实口令）
+    active: dev
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+  servlet:
+    multipart:
+      # 采样单 Excel 导入（T-301）预留
+      max-file-size: 10MB
+      max-request-size: 20MB
+  datasource:
+    # 开发环境默认本地库（AGENTS.md 约定的实训账号，仅限本机开发）；
+    # 任何非本机环境必须通过 application-dev.yml 覆盖，禁止把真实口令提交进本文件
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 注意：characterEncoding 是 Java 字符集名，必须写 utf8（写 utf8mb4 会被 Connector/J 拒绝：
+    # Unsupported character encoding 'utf8mb4'）；库表侧 utf8mb4 由 DDL 与连接协商保证
+    url: jdbc:mysql://localhost:3306/lims?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 11111111
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      # 新表规范（AGENTS.md 6.1）：逻辑删除字段 deleted，0 未删 / 1 已删
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# JWT 配置（骨架；secret 为开发默认值，生产必须经 application-dev.yml 覆盖）
+lims:
+  jwt:
+    # HS256 要求密钥 >= 32 字节；以下为开发占位串，非真实密钥
+    secret: lims-dev-only-secret-key-do-not-use-in-prod-0123456789abcdef
+    # access_token 有效期（秒）：2 小时
+    access-token-ttl: 7200
+    # refresh_token 有效期（秒）：7 天
+    refresh-token-ttl: 604800
+    header: Authorization
+    token-prefix: "Bearer "
+
+logging:
+  level:
+    com.lims: info
