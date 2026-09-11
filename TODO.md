@@ -23,16 +23,16 @@
 | T-201 | 监抽任务 SuperviseTask CRUD | A | 豆包代 GLM | ✅完成（前端豆包代 + 后端 Copilot；api-spec 任务域定稿，前后端契约已核对一致） |
 
 ## 阶段三：样品登记（采样单 Excel 导入）
-| T-301 | 采样单 Excel 导入 + S10→S20 登记确认 | S | GLM（由 Copilot 改派） | ✅完成（2026-09-11：api-spec 样品域 + db/init/05_sample_tables.sql + EasyExcel 导入监听器 + 登记维护/确认 + 前端导入页 + 状态机枚举 + 9 项单测通过；契约待 Copilot 终审） |
+| T-301 | 采样单 Excel 导入 + S10→S20 登记确认 | S | GLM（由 Copilot 改派） | ✅完成（2026-09-11 GLM 全链路 + 单测通过；**api-spec 样品域契约 Copilot 终审通过**，3.1 补 updatedBy） |
 
 ## 阶段四：检验项目分解（自动套库）
-| T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | **GLM** | ⬜待办（product_lib/product_lib_item DDL 已终审定稿含 judge_type；V1 已迁 lib 数据；⚠️ product_name/category 全 NULL，需从旧 product 表补齐） |
+| T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | **GLM** | ⬜待办（product_lib/product_lib_item DDL 已终审定稿含 judge_type；V1 已迁 lib 数据；⚠️ product_name/category 全 NULL，需从旧 product 表补齐；⚠️ 新增：按 T-902 D5 裁决做 judge_type 一次性订正脚本，含 before/after 统计） |
 
 ## 阶段五：检验任务安排
 | T-501 | 自动分配规则（NA/XA/SA + 方法资质）+ S30→S40 | S | **GLM** | ⬜待办（实物数据已探明：user_method 3 行粗粒度 + user_item 6 行项目级；tester_method 表 0 行） |
 
 ## 阶段六：检验数据录入（自动判定）
-| T-601 | 结果录入 + 自动判定引擎 + S50→S60 | S | Copilot | ⬜待办 |
+| T-601 | 结果录入 + 自动判定引擎 + S50→S60 | S | Copilot | ⬜待办（✅ 开工闸门已开：T-902 五条口径 Copilot 裁决定稿，见 docs/knowledge/2026-09-11-judge-engine-whitelist.md；Owner 按角色调整为 GLM） |
 
 ## 阶段七：报告审核签发 + 报告生成
 | T-701 | 审核/签发 S60→S70→S80（含审核退回 → S50） | S | **GLM** | ⬜待办 |

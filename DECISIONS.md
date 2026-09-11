@@ -45,3 +45,16 @@
 | 2026-09-11 | AGENTS.md 2.3 重写：删除「GLM/豆包遇到 S 级问题停止」矛盾表述，改为「S/A = GLM，B = 豆包，Copilot = 契约+裁决+审查」；2.4 冲突基准同步修订；7.3 标题改为「GLM 实现于后端，Copilot 裁决口径」；0.2 判定规则实现者由 Copilot 改 GLM | 同上，四份治理文件口径必须一致 | GLM |
 | 2026-09-11 | `prompts/glm.md` 与 `prompts/copilot.md` **全文重写**（原两份文件角色名交叉错写：glm.md 自称 copilot、分支写 agent/copilot；copilot.md 分支写 agent/glm） | 提示词是 Agent 的开工依据，错写会导致分支误提交与职责越界 | GLM |
 | 2026-09-11 | TODO.md 的 T-401 / T-501 / T-601 / T-701 / T-702 / T-801 Owner 由 Copilot 改为 **GLM**；新增 T-901（治理维护）/ T-902（白名单草案）/ T-903（product_name 补全，豆包） | 与角色调整对齐 | GLM |
+
+## 2026-09-11 Copilot 裁决与终审（T-902 / T-301 契约）
+
+| 日期 | 决策 | 理由 | 决策人 |
+|---|---|---|---|
+| 2026-09-11 | **修复 4070ea6 误删事故**：该提交误删 backend/db/docs/frontend 共 118 个文件并将 4 个垃圾文件（空 .gitkeep 被改成中文碎片文件名）入库，且已推送远程三分支。以修复提交（agent/copilot `e476cf6`）前滚恢复，不重写历史 | 事故树已推送 main/develop/agent/glm，force-push 改写受保护历史风险大于收益；修复提交完整恢复 fbe8062 内容 | Copilot |
+| 2026-09-11 | **T-902 D1 裁决：采纳**——数值结果 < 最低检出限视同「未检出」；jt1 限量比较型直接判合格；lower_limit 为 NULL 时不做视同 | AGENTS 7.3 规则 4 落实；与实测反推口径一致 | Copilot |
+| 2026-09-11 | **T-902 D2 裁决：采纳**——「不得检出/不得使用」型按「数值结果 ≥ 检出限才算检出」：未检出或低于检出限 → 合格，≥ 检出限 → 不合格；lower_limit 为 NULL 且数值结果 → 待判定（禁默判合格） | 20 条旧不合格样例反推 + GB 2763 通行解释；白名单最关键口径 | Copilot |
+| 2026-09-11 | **T-902 D3 裁决：采纳含补充**——参考项（is_reference=1）单项结论照常计算并标注「参考」展示，但不计入整体结论；全部项目均为参考项时整体 = 待判定 | AGENTS 7.3 规则 5「参与计算但标注参考」与规则 6 的歧义裁决：规则 6「任一单项」仅指非参考项 | Copilot |
+| 2026-09-11 | **T-902 D4 裁决：采纳补全矩阵**——stdValue=`--`：未检出（含视同）→ 合格；数值且 ≥ 检出限或检出限 NULL → 待判定 | 与旧 prj_detail 实测口径（`--`+未检出→合格）一致，堵住无依据默认合格的洞 | Copilot |
+| 2026-09-11 | **T-902 D5 裁决：采纳**——T-401 由 GLM 做一次性 judge_type 订正脚本（按 stdValue 文本形态重判 jt2/jt3，含 before/after 统计）；引擎运行时只读 product_lib_item.judge_type，禁止依赖旧 prj_detail | lib 表现存 judge_type 全 1 与旧数据存在 jt2 形态不符；运行时依赖旧表违反 0.1 | Copilot |
+| 2026-09-11 | 说明书第 2 页两处矛盾样例（铅 0.1 对 ≤0.25 判不合格；氯霉素未检出判不合格）确认为旧系统数据瑕疵，不作为规则依据 | 与白名单口径矛盾；裁决全文见 docs/knowledge/2026-09-11-judge-engine-whitelist.md | Copilot |
+| 2026-09-11 | **api-spec 样品域（第 3 章）终审通过**：5 接口路径/方法/权限标识（sample:import/confirm/query）与 Controller、seed、前端 api/sample.ts 逐字段一致；唯一调整为 3.1 审计字段行补 `updatedBy` | T-301 遗留终审关闭；契约以本文档为准 | Copilot |

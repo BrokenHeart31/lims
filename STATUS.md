@@ -3,9 +3,14 @@
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
 ## 当前工作分支
-- **GLM：`agent/glm`（T-901 角色调整落地 + T-902 白名单草案 ✅ 完成并已推送；远程 `agent/glm`=`develop`=`main`=`4070ea6`）**
-- Copilot：`agent/copilot`（角色调整后转为**契约终审 + 规则裁决 + diff 审查**；待命：T-301 样品域契约终审、T-902 判定口径 5 条裁决）
-- 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅；新增 T-903 product_name 补全待领）
+- **GLM：`agent/glm`（T-901 + T-902 草案已推送；本地引用 = f21fb4d）**
+- **Copilot：`agent/copilot`（本轮：①修复 4070ea6 误删事故 `e476cf6`；②T-902 五条口径裁决定稿 ✅；③api-spec 样品域终审通过 ✅——均已在本地提交，待推送）**
+- 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅；T-903 product_name 补全待领）
+
+## 🔴 4070ea6 误删事故与修复（全员必读）
+- **事故**：GLM 的 `4070ea6`（角色调整落地）提交把工作区异常状态一并提交——**误删 backend/db/docs/frontend 共 118 个文件**，并把 4 个垃圾文件（空 .gitkeep 被改成中文碎片文件名，系 shell 误解析产物）提交到仓库根目录；后续 8a8f5eb/f21fb4d 继承残缺树，且**已推送远程 agent/glm=develop=main=f21fb4d**，即 GitHub 上 main 当前也是残缺树。
+- **修复**：Copilot 在 `agent/copilot` 以修复提交 **`e476cf6`** 前滚恢复（从 fbe8062 取回 118 个文件 + 移除 4 个垃圾文件），不重写历史。**待推送：agent/copilot → develop → main 后远程即恢复完整**。
+- **附带损失**：T-902 草案 `docs/knowledge/2026-09-11-judge-engine-whitelist-draft.md` 从未入库且已不可恢复；Copilot 已依据 HANDOFF 16:10 摘要 + AGENTS 7.3 重建为**定稿** `docs/knowledge/2026-09-11-judge-engine-whitelist.md`（含裁决）。
 
 ## ⚠️ 2026-09-11 角色调整（用户决策，全员必读）
 - **S 级 + A 级执行权全部归 GLM**（GLM 与 Copilot 同级）。
@@ -38,8 +43,8 @@
   - 前端 `npm run lint` ✅（0 问题）、`npm run build`（vue-tsc + vite）✅。
   - 运行期实测（本机 MySQL 8 + `db/init/05` + `java -jar`）：nj002 登录 → 导入模板成功（S10）→ 同文件重复导入被拒 → 分页可查 → 批量登记确认 S10→S20 → 重复确认拦截。详见 HANDOFF.md。
 - ✅ 数据库实测：`db/init/01→02→03→04→05` → 导入 lims.sql（customer/dept 改名 legacy）→ `V1` → `seed 01→02`（采样单演示数据由导入模板替代）。
-- ⚠️ **契约待 Copilot 终审**：api-spec 样品域由 GLM 起草（Copilot 改派 T-301 给 GLM），字段/权限标识/返回结构请终审。**注意：角色调整后「起草」归 GLM，「终审」仍归 Copilot**，流程不变。
-- 🔵 **待 Copilot 裁决（T-902，阻塞 T-601 实现）**：判定引擎表达式白名单草案已出（`docs/knowledge/2026-09-11-judge-engine-whitelist-draft.md`），5 条裁决点：**D1** 低于检出限是否判合格 / **D2** `不得检出` 型是否按「≥ 检出限才算检出」/ **D3** 参考性限量（834 条）不合格是否计入整体结论 / **D4** `--` 且检出限为 NULL 时是否判待判定 / **D5** 是否需从旧 `prj_detail` 反向回填 lib 的 jt2/jt3。裁决后 T-601 即为纯编码任务。
+- ✅ **api-spec 样品域契约终审通过**（2026-09-11 Copilot）：5 接口路径/方法/权限标识（sample:import/confirm/query）与 SampleController、seed sys_menu 31/32/33、前端 api/sample.ts 逐字段一致；唯一调整 3.1 审计字段行补 `updatedBy`。
+- ✅ **T-902 五条口径裁决定稿**（2026-09-11 Copilot，T-601 开工闸门已开）：**D1 采纳**（低于检出限视同未检出）/ **D2 采纳**（不得检出型按 ≥ 检出限才算检出，检出限 NULL + 数值 → 待判定）/ **D3 采纳含补充**（参考项计算并标注展示但不计入整体结论；全参考项 → 整体待判定）/ **D4 采纳补全矩阵**（`--`：未检出→合格，数值且无法视同 → 待判定）/ **D5 采纳**（T-401 一次性订正 judge_type，引擎只读 product_lib_item）。全文：docs/knowledge/2026-09-11-judge-engine-whitelist.md。说明书两处矛盾样例确认为旧数据瑕疵。
 - ⚠️ **数据缺口（T-903）**：`product_lib.product_name` / `category` **全为 NULL**，可从旧 `product` 表（`libName` → product_name、`prd_category` → category）补齐；建议在 T-401 前完成，否则项目分解无法按产品名匹配套库。
 - ⚠️ **lib 数据覆盖不全**：`product_lib_item` 的 `basis_code` 唯一值仅 `GB 2763-2021`（农残一本标准），且 `judge_type` 全为 1；真实业务数据存在的 `不得检出` 型未被迁移。见 D5。
 - ⚠️ **权限标识以 `sample:query` 为准**（非交接留言中的 `sample:list`）：seed `sys_menu` 31/32/33 与 AGENTS 8.2 均为 `sample:import/sample:confirm/sample:query`，`/me` 实际下发 `sample:query`，接口 `@PreAuthorize` 必须同值。

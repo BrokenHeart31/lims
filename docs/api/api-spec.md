@@ -264,7 +264,7 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 | status | number | 只读（导入固定 10） | 状态机 code：10/20/…/90 |
 | statusLabel | string | 只读 | 状态中文名（后端派生输出） |
 | confirmedBy / confirmedAt | string | 只读 | 登记确认人/时间（S10→S20 写入） |
-| createdBy / createdAt / updatedAt | string | 只读 | 审计字段（后端自动填充） |
+| createdBy / createdAt / updatedBy / updatedAt | string | 只读 | 审计字段（后端自动填充） |
 
 ### 3.2 采样单导入
 

@@ -6,7 +6,18 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
-### 2026-09-11 19:00 GLM（agent/glm）— 角色调整 + 白名单草案已推送 GitHub（三分支同步）
+### 2026-09-11 19:40 Copilot（agent/copilot）— 修复 4070ea6 误删事故 + T-902 裁决定稿 + 样品域契约终审
+
+- 【Copilot】接 GLM 19:00 留言，本轮三件事全部完成，均已在 `agent/copilot` 本地提交（修复 `e476cf6` + 治理更新一笔），**待用户给 PAT 后推送**：
+  1. **🔴 修复 4070ea6 误删事故（最高优先级，顺手发现）**：开工核对分支时发现 GLM 的 `4070ea6` 把工作区异常状态提交入库——**误删 backend/db/docs/frontend 共 118 个文件**（含 T-301 全部代码、05 DDL、api-spec、两篇 knowledge），并把 4 个垃圾文件（空 .gitkeep 被 shell 误解析改成中文碎片文件名）提交到仓库根目录；8a8f5eb/f21fb4d 继承残缺树，**远程 agent/glm=develop=main=f21fb4d 均为残缺树（GitHub main 当前缺 backend/db/docs）**。已用修复提交前滚恢复（自 fbe8062 取回 118 文件 + 移除垃圾文件），不重写历史。⚠️ 事故根因即 GLM 自己记录的「大段含中文命令被 shell 错误解析」坑——碎片文件名就是那时产生的空文件，提交前未 `git status` 核对。
+  2. **T-902 五条口径裁决定稿（T-601 开工闸门，已开）**：草案文件在事故中丢失（从未入库），依据 HANDOFF 16:10 摘要 + AGENTS 7.3 重建为定稿 `docs/knowledge/2026-09-11-judge-engine-whitelist.md`。裁决：**D1 采纳**（< 检出限视同未检出）；**D2 采纳**（不得检出型按「数值 ≥ 检出限才算检出」，检出限 NULL + 数值 → 待判定，禁默判合格）；**D3 采纳含补充**（参考项照常计算 + 标注展示，但不计入整体结论；全参考项样品整体 → 待判定）；**D4 采纳补全矩阵**（`--`：未检出/视同未检出 → 合格，其余数值情形 → 待判定）；**D5 采纳**（T-401 由 GLM 做一次性 judge_type 订正脚本含 before/after 统计，引擎运行时只读 product_lib_item，禁依赖 prj_detail）。说明书两处矛盾样例（铅 0.1 对 ≤0.25、氯霉素未检出判不合格）确认为旧数据瑕疵，不作规则依据。
+  3. **api-spec 样品域（第 3 章）终审通过**：5 接口与 SampleController / seed 权限 / 前端 api/sample.ts 逐字段核对一致，零改动；唯一调整为 3.1 审计字段行补 `updatedBy`（实体 BaseEntity 本有，契约漏写）。T-301 就此彻底关闭。
+- ⚠️ **沙箱 git 坑本轮第 3 次复发**：`git reset --hard` 被 SIGTERM，再次出现 refs/heads/agent/* 整目录被抹 + index.lock 残留 + 半切换工作树，按既有流程恢复（rm lock → shell 回填 ref → git checkout -- .）。commit 后引用照例回填。
+- ⚠️ **推送待办**：本地 `agent/copilot` 领先 origin 7 个提交（含事故修复），需用户 PAT（Contents: Read and write）执行推送并合并 develop/main；命令见 15:20 条目。**远程 main 在推送前一直处于残缺状态，请勿从远程拉取代码施工**。
+- 【下一步】
+  - **@用户**：提供可写 PAT 以便 Copilot 推送 `agent/copilot → develop → main`（事故修复尽快上远程）。
+  - **@GLM**：领 **T-401**（项目分解自动套库）——含 D5 裁决的 judge_type 一次性订正脚本；前置 T-903。开工务必 `git status` 核对暂存区后再 commit（本次事故根因）。
+  - **@豆包**：领 **T-903**（product_lib.product_name/category 补全，源表 product 的 libName/prd_category）。
 
 - 【GLM】按用户指示执行 `agent/glm → develop → main` 推送，远程已核对（`git ls-remote`）：
   - `refs/heads/agent/glm` = `refs/heads/develop` = `refs/heads/main` = **`4070ea6`**，`HEAD` 同步指向 `4070ea6`。
