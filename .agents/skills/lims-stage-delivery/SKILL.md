@@ -1,0 +1,191 @@
+---
+name: lims-stage-delivery
+description: LIMS 项目「业务阶段全链路交付」标准流程——从数据前提验证、契约起草、建表、后端分层、单测、前端页面到质量门禁与提交推送的完整清单。当需要交付 LIMS 的某个业务阶段任务（如 T-401 项目分解、T-501 任务安排、T-601 判定引擎、T-701 审核签发、T-702 报告生成等 S/A 级任务）时使用。
+agent_created: true
+---
+
+# LIMS 业务阶段全链路交付流程
+
+## 触发场景
+
+- 领取 LIMS 项目的某个「阶段任务」（T-4xx / T-5xx / T-6xx / T-7xx / T-8xx）
+- 需要新增一张业务表 + 后端 CRUD/业务逻辑 + 前端页面 + 契约 + 单测
+- 需要走状态机流转（S10→S90）
+- 需要在多 Agent 治理下提交并推送
+
+## 核心原则（血泪教训，务必遵守）
+
+### 原则 1：动手前先证伪前提 ⭐ 最重要
+
+任务描述 / 裁决文档给的是**规则**，但规则作用的**数据**可能根本不存在。
+**必须先跑 SQL 验证假设的数据分布，再动手写代码或迁移脚本。**
+
+反面案例（真实发生）：T-401 的任务要求「按 D5 裁决做 `judge_type` 一次性订正脚本」，
+隐含前提是 `std_value` 里存在 `不得检出`/`≤数值` 等非纯数值形态。实测发现
+`product_lib_item` 3728 行 **100% 纯数值**，源表同样 100% 纯数值，脚本最终是**零变更（no-op）**。
+若直接照写，会得到一个永远输出 0 变更的**静默失败**——比脚本报错危险得多。
+
+**标准动作**：写脚本前先跑形态诊断 SQL，把「分布 + 计数」写进脚本注释与裁决请求文档。
+
+### 原则 2：标准库字段快照下沉
+
+凡是「报告要固化」或「人工可改」的字段，从标准库**复制**进业务表，不要只存外键。
+理由：① 国标会更新，报告须固化检验当时的判定依据；② 人工调整后的值必须独立于标准库。
+
+### 原则 3：预览不落库，保存覆盖式
+
+涉及「自动生成初稿 + 人工调整」的功能（套库、自动分配等）：
+- 生成初稿的 GET 接口**不写库**；
+- 保存用**覆盖式**（先逻辑删除再全量重建），不提供增量 patch。
+
+理由：初稿与最终结果是两个概念；分解页是整体工作台，前端保证序号连续唯一。
+
+### 原则 4：状态流转双保险
+
+`SampleStatusTransition.assertTransition(旧, 新)` + **乐观条件 UPDATE**（`WHERE id=? AND status=旧值`）。
+`updated == 0` 时抛「状态已变更，请刷新后重试」。防并发重复流转。
+
+### 原则 5：提交前必须 `git status --short` 逐项核对暂存区
+
+史上最严重事故（4070ea6）根因就是「未核对暂存区」，把 shell 误解析产生的中文碎片文件名连同
+118 个被误删文件一起提交入库。**任何 commit 前必须逐行看 `git diff --cached --name-status`。**
+
+## 交付清单（五件套 + 门禁）
+
+### 第 0 步：状态与环境
+1. `git checkout agent/<自己> && git pull`；`git branch -v` 确认引用未丢
+2. 读 `STATUS.md` → `TODO.md` → `HANDOFF.md` → `DECISIONS.md` → `AGENTS.md`
+3. **前置检索**：`.agents/skills/` → `docs/knowledge/` → `docs/journal/` → 上网
+
+### 第 1 步：数据前提验证（SQL 探针）
+```sql
+-- 表行数、字段形态分布、空值率、唯一值集合
+SELECT COUNT(*) FROM t;
+SELECT std_value, COUNT(*) FROM t GROUP BY std_value LIMIT 20;
+SELECT COUNT(*) FROM t WHERE std_value REGEXP '^[0-9]+(\\.[0-9]+)?$';
+```
+
+### 第 2 步：契约（`docs/api/api-spec.md`）
+- 新章节追加，**不覆盖既有章节**（既有章节顺延）
+- 每接口写清：路径 / 方法 / 权限标识 / 请求字段 / 响应字段（camelCase）
+
+### 第 3 步：建表（`db/init/NN_xxx_tables.sql`）
+新表规范（AGENTS 6.1）：
+- `id BIGINT AUTO_INCREMENT` 主键
+- snake_case 字段名
+- 审计四字段 `created_by/created_at/updated_by/updated_at`
+- 逻辑删除 `deleted TINYINT DEFAULT 0`
+- 唯一键带 `deleted`（否则逻辑删除后重插会撞键）
+- 高频/外键字段建索引
+
+### 第 4 步：后端分层
+```
+entity/   → 表映射 + MP 注解（业务状态用枚举，禁魔法数字）
+mapper/   → extends BaseMapper<T>
+dto/      → 请求对象 + JSR-303（@NotEmpty/@NotNull/@Size）
+vo/       → 响应对象，脱敏（禁 password/salt）
+service/  → 接口 + impl（Impl extends ServiceImpl<M,T>）
+controller/ → 参数校验 + @PreAuthorize("hasAuthority('权限标识')")
+```
+- 查询用 `LambdaQueryWrapper/LambdaUpdateWrapper`，禁字符串拼 SQL
+- 分页用 `Page<T>`
+- 避免 N+1：列表统计用 `Collectors.groupingBy` 批量聚合
+
+### 第 5 步：单测（`src/test/java/com/lims/service/impl/XxxServiceImplTest.java`）
+
+**MyBatis-Plus ServiceImpl 单测两个必备技巧**：
+
+```java
+@BeforeAll
+static void initMeta() {
+    // ① 每个实体都要调一次，否则 lambda 列名生成失败
+    TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SampleItem.class);
+    TableInfoHelper.initTableInfo(assistant, Sample.class);
+}
+
+@BeforeEach
+void injectMapper() throws Exception {
+    // ② baseMapper 是 protected，必须反射注入
+    Field f = ServiceImpl.class.getDeclaredField("baseMapper");
+    f.setAccessible(true);
+    f.set(service, sampleItemMapper);
+}
+```
+- `any(Wrapper.class)` 会触发 unchecked 警告（泛型擦除）→ 改 `any()` 并删 `Wrapper` import
+- 覆盖：命中/未命中/多候选/参数为空/实体不存在/状态不合法/并发冲突
+
+### 第 6 步：前端
+- `src/api/xxx.ts`：接口封装 + 常量选项（`TYPE_OPTIONS`）+ 类型定义
+- `src/views/xxx/index.vue`：查询卡片 + 列表 + 抽屉/弹窗
+- 路由 `src/router/index.ts` 新增子路由，`meta: { title, permissions }`
+- `src/layouts/MainLayout.vue` 新增菜单项（import 对应 icon）
+
+**前端 TS 常见坑**：
+- el-table 插槽 `row` 类型是 `DefaultRow`，与业务行类型不兼容 → 模板内 `row as XxxRow` 断言
+- `vue-tsc` strict 下未使用的函数报 **TS6133** → 预留未用的 helper 必须删
+- 手动删除行后要 **resequence()** 重排序号，保证后端唯一键约束满足
+
+### 第 7 步：质量门禁（AGENTS 第 9 章硬要求）
+```bash
+# 后端
+cd backend && <maven 直启 classworlds> test
+# 前端
+cd frontend && npm install        # 若 node_modules 缺失
+npm run build                     # = vue-tsc --noEmit && vite build
+npx eslint --fix <改动文件>        # 先自动修格式
+npm run lint                      # 必须 0 错误 0 警告
+```
+前端格式告警（`vue/max-attributes-per-line`、`singleline-html-element-content-newline`）
+用 `npx eslint --fix` 一键清掉，不要手改。
+
+### 第 8 步：收工三件套（用户强制，AGENTS 2.5）
+1. **工作日记** `docs/journal/YYYY-MM-DD-<agent>-<主题>.md`
+   （目标 / 做法 / 关键设计决策 / 踩坑 / 质量门禁 / 可复用结论）
+2. **进度百分比**（固定权重：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
+   更新 `STATUS.md`
+3. **更新** `TODO.md`（任务状态）、`HANDOFF.md`（@ 下一人）、`DECISIONS.md`（技术决策）
+
+### 第 9 步：提交与推送
+```bash
+git add -A
+git diff --cached --name-status      # ⭐ 逐项核对！确认无 node_modules/dist/target、无删除项
+grep -rniE "github_pat|ghp_|password" <改动文件>   # 确认无密钥
+git commit -F - <<'EOF'
+feat: T-xxx 简要说明
+
+详细说明...
+EOF
+git branch -v                        # ⭐ 确认 agent/* 引用未丢，丢了用 shell 回填
+git update-ref refs/heads/develop <hash>   # 快进（规避 checkout 被 SIGTERM）
+git update-ref refs/heads/main <hash>
+GIT_TERMINAL_PROMPT=0 git -c http.sslVerify=false push origin agent/xxx develop main
+git -c http.sslVerify=false ls-remote origin refs/heads/agent/xxx refs/heads/develop refs/heads/main
+```
+详见 `.agents/skills/sandbox-git-push/SKILL.md`（沙箱 git 全套坑）。
+
+## 沙箱环境备忘
+
+- **Maven 无法用 mvn 脚本**（MAVEN_HOME 解析失败 → ClassNotFoundException Launcher），必须直启 classworlds：
+  ```bash
+  M2='C:/Users/Chen/.m2/wrapper/dists/apache-maven-3.9.12/59fe215c0ad6947fea90184bf7add084544567b927287592651fda3782e0e798'
+  java -classpath "$M2/boot/plexus-classworlds-2.9.0.jar" -Dclassworlds.conf="$M2/bin/m2.conf" \
+       -Dmaven.home="$M2" -Dmaven.multiModuleProjectDirectory="D:/lims/backend" \
+       org.codehaus.plexus.classworlds.launcher.Launcher <goal>
+  ```
+- **大段含中文/反引号/引号的命令不要用 Bash 直接传**（会被 shell 错误解析，产生 `command not found` + SIGTERM + 碎片文件）。
+  改用「Write 写临时 `.py` 文件到 `%TEMP%` → python 执行该文件」。
+- 本机 MySQL 密码 `123456`（非 AGENTS 约定值），在 gitignore 的 `application-dev.yml`。
+- JDBC url `characterEncoding` 必须写 `utf8`（Java 字符集名），写 `utf8mb4` 会被 Connector/J 拒。
+
+## 验收自检清单
+
+- [ ] 数据前提已用 SQL 验证，不是照抄任务描述
+- [ ] 契约章节已追加（未覆盖既有）
+- [ ] 建表符合 AGENTS 6.1（审计四字段 + deleted + 唯一键带 deleted）
+- [ ] 后端 `mvn test` 全过（含新增单测）
+- [ ] 前端 `npm run build` + `npm run lint` 全绿
+- [ ] 路由与菜单已接入
+- [ ] 工作日记已写、进度百分比已更新、TODO/HANDOFF/DECISIONS 已更新
+- [ ] `git diff --cached --name-status` 逐项核对过，无异常文件
+- [ ] 无密钥入库
+- [ ] 推送后 `ls-remote` 核对过远程

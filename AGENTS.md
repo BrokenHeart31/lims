@@ -186,6 +186,8 @@ lims/
 │   ├── journal/              # 📔 工作日记（每次会话必写，见 2.5）
 │   └── database-dictionary.md# 数据字典（豆包维护）
 ├── .agents/skills/           # 可复用技能库（做完项目拷走即复现）
+│   ├── lims-stage-delivery/SKILL.md  # ⭐ 业务阶段全链路交付标准流程（先读这个）
+│   ├── sandbox-git-push/SKILL.md     # 沙箱内 git 提交/合并/推送的坑与规避
 │   ├── rbac-backend/SKILL.md
 │   ├── mybatisplus-crud/SKILL.md
 │   ├── vue3-crud-page/SKILL.md
