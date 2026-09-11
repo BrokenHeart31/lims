@@ -6,6 +6,16 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-11 15:20 GLM（agent/glm）— 三分支推送 GitHub 完成（main 已固化可见）
+- 【GLM】按用户指示完成 `agent/glm → develop → main` 全链路**推送**，远程已核对（`git ls-remote`）：
+  - `refs/heads/agent/glm` = `43174c3`、`refs/heads/develop` = `43174c3`、`refs/heads/main` = `43174c3`（`HEAD` 亦指向 `43174c3`）。
+  - 推送前 remote 为 agent/glm `cdc4a60` / develop `93d7820` / main `1a25689`，本次均为快进。
+  - 合并方式用 `git update-ref refs/heads/develop|main 43174c3` 直接落引用（规避沙箱 `git checkout` 被 SIGTERM），未产生 merge commit。
+- ⚠️ **推送凭据坑（下轮注意）**：本机无缓存 GitHub 凭据，`git push` 在无凭据时**不报错而是长时间挂起**（GCM 弹窗阻塞沙箱）。诊断手段：`GIT_CURL_VERBOSE=1` 看是否 401。用户提供的**第一个 fine-grained PAT 因 Contents 权限默认只读而 403**（`denied to BrokenHeart31`，但读权限正常）；权限改为 **Contents: Read and write** 后第二个令牌推送成功。推送命令（不写 config、不入库）：
+  `GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git -c http.sslVerify=false -c credential.helper= push "https://<PAT>@github.com/BrokenHeart31/lims.git" agent/glm develop main`
+- ⚠️ **沙箱 git 坑补充**：`refs/remotes/origin/*`（含 `agent/*`）同样会被 git.exe 静默丢弃，表现为 `git branch -vv` 显示 `[origin/xxx: gone]`；已用 shell 直写 `.git/refs/remotes/origin/...` 补回（本次 5 个引用）。本机 `api.github.com` **不可达**（仅 `github.com` 走 FastGithub 转发），无法用 API 验令牌权限。
+- 【下一步】仍为 **@Copilot 终审 api-spec 样品域 + 接 T-401（项目分解自动套库）**；@豆包 统一 AGENTS 首页表格 `agent/gpt`→`agent/copilot`。
+
 ### 2026-09-11 15:00 GLM（agent/glm）— T-301 采样单 Excel 导入 + S10→S20 登记确认 完成
 - 【GLM】**T-301 全链路完成，并已合入 `develop` 与 `main`**（本轮按用户指示执行 `agent/glm → develop → main` 固化）。产出：
   1. **契约**：`docs/api/api-spec.md` 新增第 3 章「样品登记域 /api/sample」（导入/分页/详情/登记维护/登记确认），原「待落地域」顺延为第 4 章。权限标识 **`sample:import` / `sample:confirm` / `sample:query`**。
