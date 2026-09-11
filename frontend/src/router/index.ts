@@ -43,6 +43,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '样品登记' },
       },
       {
+        path: 'item/decompose',
+        name: 'item-decompose',
+        component: () => import('@/views/item/index.vue'),
+        meta: { title: '项目分解', permissions: ['item:decompose'] },
+      },
+      {
         path: '403',
         name: 'forbidden',
         component: () => import('@/views/error/403.vue'),

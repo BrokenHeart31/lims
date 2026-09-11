@@ -58,3 +58,19 @@
 | 2026-09-11 | **T-902 D5 裁决：采纳**——T-401 由 GLM 做一次性 judge_type 订正脚本（按 stdValue 文本形态重判 jt2/jt3，含 before/after 统计）；引擎运行时只读 product_lib_item.judge_type，禁止依赖旧 prj_detail | lib 表现存 judge_type 全 1 与旧数据存在 jt2 形态不符；运行时依赖旧表违反 0.1 | Copilot |
 | 2026-09-11 | 说明书第 2 页两处矛盾样例（铅 0.1 对 ≤0.25 判不合格；氯霉素未检出判不合格）确认为旧系统数据瑕疵，不作为规则依据 | 与白名单口径矛盾；裁决全文见 docs/knowledge/2026-09-11-judge-engine-whitelist.md | Copilot |
 | 2026-09-11 | **api-spec 样品域（第 3 章）终审通过**：5 接口路径/方法/权限标识（sample:import/confirm/query）与 Controller、seed、前端 api/sample.ts 逐字段一致；唯一调整为 3.1 审计字段行补 `updatedBy` | T-301 遗留终审关闭；契约以本文档为准 | Copilot |
+
+## 2026-09-11 T-401 项目分解（自动套库）实现决策（GLM）
+
+| 日期 | 决策 | 理由 | 决策人 |
+|---|---|---|---|
+| 2026-09-11 | **套库预览不落库**：`GET /item/match/{sampleId}` 仅返回初稿，不写 `sample_item` | 业务允许分解员在自动套库初稿上人工增删调整；「套库初稿」与「最终确认的分解结果」是两个概念。若套库即落库，人工调整须先删再写，语义混乱且污染审计字段 | GLM（T-401） |
+| 2026-09-11 | **保存为覆盖式**：`PUT /item/save` 先逻辑删除既有明细再全量重建，不提供增量 patch 语义 | 分解页是整体工作台，前端已保证项次连续唯一（1..N）；覆盖式让后端逻辑最简，并消除「前端删了一行但后端未收到」的中间态 | GLM（T-401） |
+| 2026-09-11 | **标准库字段快照下沉**：`unit`/`basis_code`/`methods`/`std_value`/`judge_type`/`is_reference`/`lower_limit`/`method_note` 八个字段从 `product_lib_item` **复制**进 `sample_item`，而非只存 `lib_item_id` 外键 | ① 国标会更新，报告必须固化「检验当时的判定依据」，事后查报告不能被新标准追溯篡改；② 分解员人工调整后的值必须独立于标准库，若只存外键则人工改动无处安放 | GLM（T-401） |
+| 2026-09-11 | **推论（约束 T-601）**：判定引擎**只读 `sample_item`**，**禁止回溯 `product_lib_item`** | 上条的必然推论。已写入契约 4.1、`SampleItem` 实体注释与 `06_item_tables.sql` 表注释 | GLM（T-401） |
+| 2026-09-11 | **项次唯一性用三列唯一键** `uk_sample_item_order (sample_id, item_order, deleted)` | 带 `deleted` 以兼容逻辑删除——否则删掉第 2 项后再新增第 2 项会撞唯一键。前端在删除行后调 `resequence()` 重排为连续 1..N | GLM（T-401） |
+| 2026-09-11 | **确认流转用乐观条件 UPDATE**：`WHERE id=? AND status=旧值`，`updated==0` 时抛「样品状态已变更，请刷新后重试」 | 防止并发下重复确认 / 状态被他人推进后仍强行流转；与 `SampleStatusTransition.assertTransition(S20, S30)` 双保险 | GLM（T-401） |
+| 2026-09-11 | **`pagePending` 用 `Collectors.groupingBy` 一次性统计 itemCount**，不做逐行 count | 避免 N+1 查询；分页列表最多 100 行，批量聚合成本可忽略 | GLM（T-401） |
+| 2026-09-11 | **D5 前提被实测推翻 → 提出裁决请求 #1（T-905）**：`product_lib_item` 3728 行 `std_value` 100% 纯数值；源 `lib` 表同样 100% 纯数值（非迁移漏迁）；`prj_detail` 的 220 条 `不得检出` 仅 5 个兽残项目名且在 `product_lib_item` 中 0 匹配（两表不同源，`lib` 仅覆盖农残 GB 2763-2021）。故 `V3__correct_product_lib_item_judge_type.sql` 实测为**零变更（no-op）**，定位改为「可重跑的口径校验器」。建议 **R1（推荐）** 采纳。全文：`docs/knowledge/2026-09-11-adjudication-request-d5.md` | 执行前先证伪前提：裁决文档给出的是「规则」，但规则作用的「数据」可能根本不存在。若照写脚本，V3 会成为永远输出 0 变更的静默失败，比报错更危险 | GLM 提出，**待 Copilot 裁决**（2 次配额之第 1 次） |
+| 2026-09-11 | **T-903 数据补齐方式**：V2 脚本以 `product.id = product_lib.product_code` 一对一匹配，只填 NULL 值（幂等可重跑） | 92 行一对一完美匹配，无歧义；只填空值保证脚本可反复执行而不覆盖人工修正 | GLM（T-903） |
+| 2026-09-11 | **工作纪律三件套制度化**（用户强制）：①工作日记 `docs/journal/YYYY-MM-DD-<agent>-<主题>.md`（目标/做法/心得/踩坑/进度/可复用结论）②进度百分比（固定权重：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）③动手前先检索（`.agents/skills/` → `docs/knowledge/` → `docs/journal/` → 上网）④经验资产化。写入 AGENTS 2.5 节，2.2 开工五步→六步 | 用户要求「以后的 agent 都要保持这个习惯」，并使项目经验可作为模板复现 | 用户（GLM 落地） |
+| 2026-09-11 | **提交纪律（事故教训）**：GLM 提交前必须 `git status --short` 逐项核对暂存区 | 4070ea6 误删事故根因即「未核对暂存区」；已写入 AGENTS 第 12 章红字 | GLM |

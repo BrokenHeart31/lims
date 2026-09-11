@@ -212,3 +212,30 @@
 - ⚠️ `git fetch/push` 在沙箱内报 schannel CRYPT_E_NO_REVOCATION_CHECK；已在仓库本地 config 设 `http.schannelCheckRevoke=false`，若仍失败请在非沙箱终端补推。
 - ⚠️ DECISIONS.md 中"项目根目录 Desktop\lims"一条与实际不符（实际 `D:\lims`），@豆包 顺手修正。
 - 【下一步】@Copilot：① T-002 后端骨架 + api-spec 认证域契约（字段命名以你为准，我改前端对接）；② review T-003 骨架公共文件；③ 裁定共享检验员账号 njsa000/njsa00。GLM 待命 T-201（阶段二）及动态路由接入。
+
+### 2026-09-11 20:20 GLM（agent/glm）— T-401 项目分解全链路 + T-903/T-904 完成 + T-905 裁决请求提交
+
+- 【GLM】本轮交付（**待推送**，本地 `agent/glm` 领先 origin）：
+  1. **T-401 项目分解（自动套库）全链路完成**：
+     - 契约：`docs/api/api-spec.md` **新增第 4 章**（原第 4 章顺延为第 5 章），5 接口 `GET /item/match/{sampleId}`、`GET /item/list/{sampleId}`、`PUT /item/save`、`POST /item/confirm`、`GET /item/pending`，权限统一 `item:decompose`（list 额外放行 `sample:query`）。
+     - 建表：`db/init/06_item_tables.sql`（`sample_item`，含 8 个标准库快照下沉字段 + `uk_sample_item_order (sample_id, item_order, deleted)` 三列唯一键 + 3 索引）。
+     - 后端：3 实体 + 3 Mapper + 2 DTO + 2 VO + Service/Impl + Controller；`mvn test` **23 项全过**（新增 `ItemServiceImplTest` 14 项）。
+     - 前端：`src/api/item.ts` + `src/views/item/index.vue` + 路由 `/item/decompose` + MainLayout 菜单；`npm run build` ✅、`npm run lint` ✅ **0 错误 0 警告**。
+  2. **T-903 完成**（GLM 代豆包）：`db/migrations/V2__fill_product_lib_name_category.sql`，从旧 `product` 表按 `product.id = product_lib.product_code` 一对一补齐 —— `product_name` 0→92、`category` 0→92，残留空值 0，**幂等可重跑**（只填空值）。
+  3. **T-904 完成**：工作纪律三件套制度化，写入 `AGENTS.md` **新增 2.5 节**（①工作日记 `docs/journal/YYYY-MM-DD-<agent>-<主题>.md` ②进度百分比固定口径 ③动手前先检索 ④经验资产化）；2.2「开工五步」→「**开工六步**」（前置检索插为第 2 步）；第 3 章目录加 `docs/journal/`；第 12 章加红字**「GLM 提交前必须 `git status --short` 逐项核对暂存区」**。新建 `docs/journal/README.md` 索引。
+  4. **T-905 = D5 裁决请求 #1 已提交待裁**（**全项目 2 次裁决配额中的第 1 次**）。
+- 🔴 **本轮最重要发现：D5 的前提不成立（请 Copilot 优先裁）**
+  - `product_lib_item` 共 3728 行，`std_value` **100% 纯数值**（`≤数值`/`不得检出`/`不得使用`/`--` 各 0 行）。
+  - 数据源旧 `lib` 表 `std_value` **同样 100% 纯数值** → **不是迁移漏迁**，是源数据本就如此。
+  - `prj_detail` 中 220 条 `不得检出` 只涉及 5 个项目名（**全为兽残**：硝基呋喃类代谢物/诺氟沙星类/恩诺沙星/孔雀石绿/氯霉素），且这 5 项在 `product_lib_item` 中 **0 匹配** → 两表不同源（`lib` 仅覆盖农残 `GB 2763-2021`，`basis_code` 唯一值仅此一本）。
+  - 因此 `V3__correct_product_lib_item_judge_type.sql` 实测为**零变更（no-op）**，且这是数据事实而非脚本缺陷。V3 照常产出 5 段证据（BEFORE 分布 / 形态诊断 / AFTER 分布 / `prj_detail_jt2_items=5` 与 `matched_in_new_lib=0` 证据 / 白名单外残留=0），定位已从「数据回填」改为「**可重跑的口径校验器**」。
+  - **建议方案**：**R1（推荐，已实现）** D5 目标改为口径校验而非数据回填，V3 作为可重跑归一化器保留；**R2** 作废；**R3** 从 `prj_detail` 反向新建兽残标准库行（建议独立任务，不混入 T-401）。
+  - 另需 Copilot 一并裁定：白名单文档第 4 节「单测回放 `prj_detail` 的 20 条不合格样例」的归属——那些样例多为兽残 `不得检出` 项，不在 `product_lib_item` 中。
+  - 全文：`docs/knowledge/2026-09-11-adjudication-request-d5.md`。
+- ⚠️ **给 T-601 的判据（重要）**：判定引擎**只读 `sample_item`**（快照下沉），**禁止回溯 `product_lib_item`**。理由：①国标会更新，报告须固化检验当时的判定依据；②人工调整后的值必须独立于标准库。
+- ⚠️ **给 T-701 的提醒**：`SampleStatusTransition` 白名单目前**尚无审核退回 → S50 的分支**，实现 T-701 时必须补入（属状态机变更，须同步 AGENTS 7.2 与单测）。
+- ⚠️ 工作纪律（**用户强制，以后每个 Agent 必须保持**）：每轮收工必须有 ①工作日记（`docs/journal/`，含目标/做法/心得/踩坑/进度/可复用结论）②进度百分比（按 2.5 节固定口径）③动手前先检索。
+- 【下一步】
+  - **@Copilot**：裁定 **T-905 / D5**（是否采纳 R1）——这是本轮唯一需要裁决的事项，也是 2 次配额的第 1 次；另请 diff 审查 T-401（合并 develop 前）。
+  - **@GLM（下一轮自己）**：①推送本轮改动到 `agent/glm` 并合并 `develop/main`；②回填 `.agents/skills/`（本轮可沉淀：MP ServiceImpl 单测双技巧、沙箱 Maven 直启、数据前提验证方法）；③接 **T-501**（任务自动分配 NA/XA/SA + 方法资质，S）。
+  - **@豆包**：T-903 已由 GLM 代做完成，可直接领 **T-802**（省平台上报 Excel 导出，B）。

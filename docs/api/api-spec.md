@@ -330,7 +330,153 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ---
 
-## 4. 待落地域（占位，按七阶段顺序补充）
+## 4. 项目分解域 `/api/item`（T-401）
+
+> 实现状态：契约与实现已落地（2026-09-11 GLM）。
+> 实体 `sample_item`（db/init/06_item_tables.sql），承载**样品 × 检测单项**的分解结果。
+> 业务依据：业务说明书「五、检验业务流程之二：样品检验明细项目分解（自动套用项目库）」——
+> 系统按项目标准库**自动加载全部检测单项**，并允许在此基础上**增加、删减调整**，
+> 「确认保存」后进入任务安排流程（S20→S30）。
+> 权限标识：`item:decompose`（与 seed `sys_menu` id=41、AGENTS.md 8.2 严格一致）。
+> 查询复用 `sample:query`（分解页需先查样品）。
+> 状态机：进入本域要求样品为 **S20（登记确认）**；确认保存流转 **S20→S30（已分解）**，
+> 经 `common/enums/SampleStatusTransition` 白名单校验。
+
+### 4.0 套库匹配规则（自动加载）
+
+**匹配键**：`sample_info.sample_name` = `product_lib.product_name`（精确匹配，TRIM 后比较）。
+
+- 命中唯一产品 → 取其全部 `product_lib_item`（按 `item_order` 升序）作为分解初稿。
+- 命中 0 条 → `matched=false`，返回空清单 + 提示「未找到产品标准库，请人工添加检测单项」，
+  **不报错**（允许人工建单）。
+- 命中多条 → 取 `id` 最小的一条并返回 `matchedLibId` 与 `candidates` 列表供前端提示。
+- **仅生成初稿、不落库**：套库结果由前端展示、用户可增删调整后，随「保存分解」一次性落库。
+  （说明书要求分解结果可调整，故初稿与最终结果分离。）
+
+**字段下沉（快照）**：套库时把标准库的 `unit` / `basis_code` / `methods` / `std_value` /
+`judge_type` / `is_reference` / `lower_limit` / `method_note` **复制**进 `sample_item`，
+并记 `lib_item_id` 与 `source_type=1`。
+理由：国标会更新，报告须固化当时的判定依据；且人工调整后的值必须独立于标准库保存。
+→ **T-601 判定引擎只读 `sample_item`，不回溯 `product_lib_item`。**
+
+### 4.1 字段模型（SampleItem，camelCase）
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| id | number | 更新必填 | 主键，新增不填 |
+| sampleId | number | ✅ | 样品ID |
+| sampleNo | string | 只读 | 样品编号（后端冗余写入） |
+| itemOrder | number | ✅ | 项次（样品内排序，从 1 起，唯一） |
+| itemName | string | ✅ | 检验项目名称，≤255 |
+| libItemId | number | | 来源标准库明细ID；人工新增为 null |
+| unit | string | | 单位，≤50 |
+| basisCode | string | | 判定依据标准号，≤100 |
+| methods | string | | 检验方法（多个以 `#` 分隔），≤500 |
+| stdValue | string | | 标准值（限量值文本），≤50 |
+| judgeType | number | ✅ | 判定类型：1=限量比较 2=不得检出/不得使用 3=文本/感官人工 |
+| isReference | number | ✅ | 是否参考性限量：0=否 1=是 |
+| lowerLimit | string | | 最低检出限，≤20 |
+| methodNote | string | | 方法备注，≤100 |
+| sourceType | number | ✅ | 来源：1=标准库自动套用 2=人工新增 |
+| remark | string | | 备注，≤255 |
+| createdBy / createdAt / updatedBy / updatedAt | string | 只读 | 审计字段 |
+
+### 4.2 套库预览（自动加载检测单项，不落库）
+
+`GET /api/item/match/{sampleId}`　权限：`item:decompose`
+
+- 行为：按 `sample_info.sample_name` 匹配 `product_lib.product_name`，返回标准库明细初稿。
+- 响应 data：
+
+```json
+{
+  "sampleId": 1,
+  "sampleName": "花鲢",
+  "matched": true,
+  "matchedLibId": 7,
+  "matchedProductName": "花鲢",
+  "candidates": [],
+  "items": [
+    {
+      "itemOrder": 1,
+      "itemName": "铅（以Pb计）",
+      "libItemId": 120,
+      "unit": "mg/kg",
+      "basisCode": "GB 2762-2017",
+      "methods": "GB 5009.12#GB 5009.268",
+      "stdValue": "0.5",
+      "judgeType": 1,
+      "isReference": 0,
+      "lowerLimit": "0.02",
+      "methodNote": null
+    }
+  ]
+}
+```
+
+- `matched=false` 时 `items` 为空数组，`candidates` 为空；前端提示人工添加。
+- 匹配到多条时 `candidates` 返回 `[{ "libId": 7, "productName": "花鲢" }, ...]`（含全部候选）。
+
+### 4.3 查询样品分解结果
+
+`GET /api/item/list/{sampleId}`　权限：`item:decompose` 或 `sample:query`
+
+- 行为：返回该样品**已保存**的分解明细（`deleted=0`，按 `itemOrder` 升序）。
+- 响应 data：`{ "sampleId": 1, "sampleNo": "JK(2023)-SA-001", "status": 20, "items": [SampleItem...] }`
+- 样品不存在 → `code=400`。
+
+### 4.4 保存分解（覆盖式，S20→S30 由 4.5 触发）
+
+`PUT /api/item/save`　权限：`item:decompose`
+
+- 请求体：
+
+```json
+{
+  "sampleId": 1,
+  "items": [ { "itemOrder": 1, "itemName": "铅（以Pb计）", "libItemId": 120, "unit": "mg/kg",
+               "basisCode": "GB 2762-2017", "methods": "GB 5009.12", "stdValue": "0.5",
+               "judgeType": 1, "isReference": 0, "lowerLimit": "0.02", "methodNote": null,
+               "sourceType": 1, "remark": null } ]
+}
+```
+
+- 行为：**覆盖式保存**——先逻辑删除该样品已有明细，再按 `items` 重建（全量替换，避免增量同步歧义）。
+- 校验：
+  - 样品必须存在且状态为 **S20**；否则 `code=400`。
+  - `items` 不能为空（至少 1 个检测单项）。
+  - `itemOrder` 在样品内唯一；后端不自动重排，重复即 `code=400`。
+  - `itemName` 非空。
+  - `judgeType` 必须 ∈ {1,2,3}；`isReference` ∈ {0,1}；`sourceType` ∈ {1,2}。
+- 响应 data：`{ "sampleId": 1, "itemCount": 12 }`。
+- 事务：`@Transactional(rollbackFor = Exception.class)`。
+
+### 4.5 分解确认（S20→S30）
+
+`POST /api/item/confirm`　权限：`item:decompose`
+
+- 请求体：`{ "sampleId": 1 }`
+- 行为：
+  1. 校验样品存在且状态为 S20；
+  2. 校验该样品**已有分解明细**（`deleted=0` 且 count ≥ 1），否则 `code=400`
+     「请先完成项目分解再确认」；
+  3. 经 `SampleStatusTransition.assertTransition(S20, S30)` 校验；
+  4. 乐观条件 UPDATE（`WHERE id=? AND status=20`）落 S30，防并发双击跳态。
+- 响应 data：`{ "sampleId": 1, "status": 30, "statusLabel": "已分解" }`。
+- 失败：`code=400` 样品不存在 / 状态非 S20 / 无分解明细 / 并发状态已变更。
+
+### 4.6 分页查询待分解样品
+
+`GET /api/item/pending`　权限：`item:decompose`
+
+- 查询参数：`current`（默认 1）、`size`（默认 10）、`sampleNo`（模糊）、`sampleName`（模糊）。
+- 行为：分页返回 **status = S20** 的样品（供分解页列表）。
+- 响应 data：`PageResult`，结构同 3.3（`records` / `total` / `current` / `size`），
+  `records` 为 `Sample` 字段子集（含 `itemCount`：已保存明细数，供前端显示进度）。
+
+---
+
+## 5. 待落地域（占位，按七阶段顺序补充）
 
 | 域 | 前缀 | 对应任务 | 状态 |
 |---|---|---|---|
@@ -339,7 +485,7 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 | 系统管理（用户/角色/菜单/部门） | /api/sys/* | T-101 后续 | ⬜ |
 | 基础数据（lib/basis/tester-method/customer） | /api/base/* | T-103 | ⬜ |
 | 样品登记（Excel 导入） | /api/sample/* | T-301 | ✅（第 3 章） |
-| 项目分解 | /api/item/* | T-401 | ⬜ |
+| 项目分解 | /api/item/* | T-401 | ✅（第 4 章） |
 | 任务安排 | /api/assign/* | T-501 | ⬜ |
 | 结果录入（自动判定） | /api/result/* | T-601 | ⬜ |
 | 报告审核签发/生成 | /api/report/* | T-701/T-702 | ⬜ |

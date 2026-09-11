@@ -26,7 +26,7 @@
 | T-301 | 采样单 Excel 导入 + S10→S20 登记确认 | S | GLM（由 Copilot 改派） | ✅完成（2026-09-11 GLM 全链路 + 单测通过；**api-spec 样品域契约 Copilot 终审通过**，3.1 补 updatedBy） |
 
 ## 阶段四：检验项目分解（自动套库）
-| T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | **GLM** | ⬜待办（product_lib/product_lib_item DDL 已终审定稿含 judge_type；V1 已迁 lib 数据；⚠️ product_name/category 全 NULL，需从旧 product 表补齐；⚠️ 新增：按 T-902 D5 裁决做 judge_type 一次性订正脚本，含 before/after 统计） |
+| T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | **GLM** | ✅完成（2026-09-11 GLM 全链路：套库预览不落库 + 覆盖式保存 + 确认 S20→S30；契约 api-spec 第 4 章；db/init/06_item_tables.sql；14 项单测；前端 api/item.ts + views/item/index.vue + 路由菜单；`mvn test` 23 项全过、`npm run build`/`lint` 全绿） |
 
 ## 阶段五：检验任务安排
 | T-501 | 自动分配规则（NA/XA/SA + 方法资质）+ S30→S40 | S | **GLM** | ⬜待办（实物数据已探明：user_method 3 行粗粒度 + user_item 6 行项目级；tester_method 表 0 行） |
@@ -45,8 +45,10 @@
 ## 治理维护
 | 任务ID | 任务 | 级别 | Owner | 状态 |
 |---|---|---|---|---|
-| T-901 | 角色调整落地：TODO/AGENTS/prompts 分级与所有权统一（S+A→GLM，Copilot 转契约+裁决+审查） | S | **GLM** | 🔵进行中(GLM) 2026-09-11 |
-| T-902 | 判定引擎表达式白名单草案（基于真实数据分布，交 Copilot 裁决） | S | **GLM** | 🔵进行中(GLM) 2026-09-11 |
-| T-903 | 补全 product_lib.product_name / category（源：旧 product 表 prd_category + libName） | B | 豆包 | ⬜待办 |
+| T-901 | 角色调整落地：TODO/AGENTS/prompts 分级与所有权统一（S+A→GLM，Copilot 转契约+裁决+审查） | S | **GLM** | ✅完成（2026-09-11） |
+| T-902 | 判定引擎表达式白名单草案（基于真实数据分布，交 Copilot 裁决） | S | **GLM** | ✅完成（Copilot 五条口径裁决定稿，见 docs/knowledge/2026-09-11-judge-engine-whitelist.md） |
+| T-903 | 补全 product_lib.product_name / category（源：旧 product 表 prd_category + libName） | B | 豆包 | ✅完成（GLM 代做，2026-09-11：`db/migrations/V2__fill_product_lib_name_category.sql`，product_name 0→92、category 0→92，残留 0，幂等可重跑） |
+| T-904 | 工作纪律三件套制度化（工作日记 / 进度百分比 / 前置检索），写入 AGENTS 2.5 节 + 开工六步 | S | **GLM** | ✅完成（2026-09-11；`docs/journal/` 建立，README 索引就位） |
+| T-905 | **D5 裁决请求 #1**：judge_type 订正前提被实测推翻，请求裁定 R1/R2/R3 | S | **GLM→Copilot** | 🔵进行中（2026-09-11 GLM 提交裁决请求 `docs/knowledge/2026-09-11-adjudication-request-d5.md`；**全项目 2 次裁决配额中的第 1 次**） |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。
