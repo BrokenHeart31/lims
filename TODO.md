@@ -50,5 +50,8 @@
 | T-903 | 补全 product_lib.product_name / category（源：旧 product 表 prd_category + libName） | B | 豆包 | ✅完成（GLM 代做，2026-09-11：`db/migrations/V2__fill_product_lib_name_category.sql`，product_name 0→92、category 0→92，残留 0，幂等可重跑） |
 | T-904 | 工作纪律三件套制度化（工作日记 / 进度百分比 / 前置检索），写入 AGENTS 2.5 节 + 开工六步 | S | **GLM** | ✅完成（2026-09-11；`docs/journal/` 建立，README 索引就位） |
 | T-905 | **D5 裁决请求 #1**：judge_type 订正前提被实测推翻，请求裁定 R1/R2/R3 | S | **GLM→Copilot** | ✅完成（2026-09-11 Copilot 裁决：**R1 采纳**（V3=可重跑口径校验器，须 fail-loud）、**R3 否决**（禁反建标准库，登记为数据覆盖缺口）、引擎只读 sample_item 追认、单测用构造数据；见 DECISIONS 与 whitelist 定稿 D5 节） |
+| T-906 | UI 设计基准「Aurora Glass」落地（设计令牌 + 折射玻璃 + EP 暗色适配 + 外壳/登录/工作台重塑） | S | **GLM** | ✅完成（2026-09-11；`frontend/src/styles/*` + `components/GlassFilter.vue`；实测修复 el-tag 过渡卡死导致的两列空白） |
+| T-907 | V3 改造为 fail-loud 口径校验器（执行 T-905 裁决 R1） | S | **GLM** | ✅完成（2026-09-11；双路径实测：零变更通过 / 人为漂移报错退出；派生表统一计算 + NULL 安全比较） |
+| T-908 | 治理二次调整：GLM 自裁机制（2.6）+ 豆包分工清单（2.7）+ UI 基准（5.1）+ 许可合规红线 | S | **GLM** | ✅完成（2026-09-11） |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。

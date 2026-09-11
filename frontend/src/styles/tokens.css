@@ -1,0 +1,211 @@
+/**
+ * LIMS 设计令牌（Design Tokens）——「Aurora Glass」主题
+ * =============================================================================
+ * 调研与适配依据：docs/knowledge/2026-09-11-ui-design-mineradio-research.md
+ *
+ * ⚠️ 许可说明：本文件为**独立实现**。视觉语言参考自 Mineradio（GPL-3.0）的
+ *    设计思路（配色关系/明度层级/圆角比例/动效曲线），但未复制其任何源码。
+ *    后续 Agent 请勿从该仓库逐字拷贝 CSS。
+ *
+ * 使用约定：
+ *   · 页面/组件一律使用 var(--lims-*)，禁止硬编码色值（保证换肤能力）
+ *   · 暗色为默认主题；浅色令牌槽位已预留（html.lims-theme-light）
+ * =============================================================================
+ */
+
+:root {
+  /* ---------------------------------------------------------------------
+   * 1. 底色与表面层级
+   *    暗色系统的关键：靠「内发光发丝线」而非「提亮底色」来区分层级，
+   *    否则整屏会灰糊。底色保持 ≤ #0A0B0D。
+   * ------------------------------------------------------------------- */
+  --lims-bg: #08090b;
+  --lims-bg-deep: #050607;
+  --lims-paper: #0e1014;
+  /** 卡片表面（比底稍亮 + 半透明，配合玻璃模糊） */
+  --lims-surface: rgba(18, 21, 26, 0.66);
+  --lims-surface-solid: #12151a;
+  --lims-surface-hover: rgba(28, 32, 38, 0.72);
+  /** 侧栏/顶栏等结构性表面 */
+  --lims-shell: rgba(9, 11, 14, 0.72);
+
+  /* ---------------------------------------------------------------------
+   * 2. 文本层级
+   * ------------------------------------------------------------------- */
+  --lims-ink: #e8ecef;
+  --lims-ink-2: #d2d7dc;
+  --lims-muted: #8a9099;
+  --lims-faint: #5c636d;
+  --lims-ink-inverse: #0a0c0f;
+
+  /* ---------------------------------------------------------------------
+   * 3. 发丝边框与分割线（暗色下用极低透明度白，而非灰）
+   * ------------------------------------------------------------------- */
+  --lims-hair: rgba(255, 255, 255, 0.07);
+  --lims-hair-2: rgba(255, 255, 255, 0.11);
+  --lims-hair-strong: rgba(255, 255, 255, 0.16);
+
+  /* ---------------------------------------------------------------------
+   * 4. 品牌色（极光三色）
+   *    ⚠️ 分工严格区分，勿混用：
+   *      accent 青 —— 只做光晕/激活条/描边，**不做按钮底色**（浅色+白字对比不足）
+   *      gradient  —— 按钮/关键 CTA 底色（深端保证白字可读）
+   * ------------------------------------------------------------------- */
+  --lims-accent: #00f5d4;
+  --lims-accent-rgb: 0, 245, 212;
+  --lims-accent-deep: #0ea5a0;
+  --lims-blue: #2442ff;
+  --lims-blue-rgb: 36, 66, 255;
+  --lims-gold: #f4d28a;
+  --lims-gold-deep: #9a6f2c;
+
+  /** 品牌渐变：按钮/关键 CTA
+   *  深端刻意压暗（#0b7f7a）以保证白字对比度 ≥ 4.4:1 —— 直接拿浅青 #00F5D4 做底
+   *  会因对比度不足而看不清（这是「华丽但不可用」的典型陷阱）。 */
+  --lims-brand-gradient: linear-gradient(135deg, #0b7f7a 0%, #1b5cf0 55%, #2442ff 100%);
+  --lims-brand-gradient-hover: linear-gradient(135deg, #0e938c 0%, #2b6bff 55%, #3355ff 100%);
+  --lims-brand-gradient-soft: linear-gradient(135deg, rgba(0, 245, 212, 0.16), rgba(36, 66, 255, 0.16));
+  /** 极光背景光斑（用于 body 与 hero） */
+  --lims-aurora:
+    radial-gradient(1100px 620px at 12% -8%, rgba(0, 245, 212, 0.10), transparent 62%),
+    radial-gradient(980px 560px at 92% 4%, rgba(36, 66, 255, 0.12), transparent 60%),
+    radial-gradient(760px 520px at 68% 108%, rgba(244, 210, 138, 0.06), transparent 62%);
+
+  /* ---------------------------------------------------------------------
+   * 5. 语义色
+   *    检验结论三态：合格 / 不合格 / 待判定
+   * ------------------------------------------------------------------- */
+  --lims-success: #22c55e;
+  --lims-success-rgb: 34, 197, 94;
+  --lims-warning: #f5a524;
+  --lims-warning-rgb: 245, 165, 36;
+  --lims-danger: #ff5367;
+  --lims-danger-rgb: 255, 83, 103;
+  --lims-info: #7fd8ff;
+  --lims-info-rgb: 127, 216, 255;
+
+  /* ---------------------------------------------------------------------
+   * 6. 玻璃质感令牌（签名元素）
+   *    纯 blur() 是廉价感根源 → 提供 .lims-glass-refract 走 SVG 折射（渐进增强）
+   * ------------------------------------------------------------------- */
+  --lims-glass-bg: linear-gradient(
+    112deg,
+    rgba(72, 74, 76, 0.62),
+    rgba(24, 27, 30, 0.7) 48%,
+    rgba(8, 12, 14, 0.74)
+  );
+  --lims-glass-bg-focus: linear-gradient(
+    112deg,
+    rgba(88, 91, 92, 0.68),
+    rgba(28, 32, 35, 0.76) 50%,
+    rgba(8, 13, 15, 0.82)
+  );
+  --lims-glass-border: rgba(0, 245, 212, 0.3);
+  --lims-glass-border-soft: rgba(255, 255, 255, 0.095);
+  --lims-glass-blur: blur(20px) saturate(1.34);
+  --lims-glass-blur-strong: blur(34px) saturate(1.4);
+  --lims-glass-shadow:
+    0 22px 64px rgba(0, 0, 0, 0.3), 0 0 34px rgba(0, 245, 212, 0.052),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -24px 58px rgba(0, 0, 0, 0.16);
+  --lims-glass-shadow-focus:
+    0 24px 72px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(0, 245, 212, 0.13),
+    0 0 42px rgba(0, 245, 212, 0.075), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  /** 1px 白色内发光 —— 暗色系统区分层级的核心手段 */
+  --lims-inner-hair: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+
+  /* ---------------------------------------------------------------------
+   * 7. 圆角比例尺
+   *    面板敢用大圆角，但数据区（表格/表单）用 14–18px 以免切角
+   * ------------------------------------------------------------------- */
+  --lims-r-xs: 8px;
+  --lims-r-sm: 10px;
+  --lims-r-md: 14px;
+  --lims-r-lg: 18px;
+  --lims-r-xl: 24px;
+  --lims-r-2xl: 28px;
+  --lims-r-pill: 999px;
+
+  /* ---------------------------------------------------------------------
+   * 8. 字体
+   * ------------------------------------------------------------------- */
+  --lims-font-sans:
+    'Noto Sans SC', 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', '微软雅黑',
+    -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --lims-font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --lims-fs-xs: 12px;
+  --lims-fs-sm: 13px;
+  --lims-fs-base: 14px;
+  --lims-fs-lg: 16px;
+  --lims-fs-xl: 20px;
+  --lims-fs-title: 24px;
+  --lims-fs-hero: clamp(30px, 3.6vw, 46px);
+
+  /* ---------------------------------------------------------------------
+   * 9. 间距比例尺（4 的倍数）
+   * ------------------------------------------------------------------- */
+  --lims-sp-1: 4px;
+  --lims-sp-2: 8px;
+  --lims-sp-3: 12px;
+  --lims-sp-4: 16px;
+  --lims-sp-5: 20px;
+  --lims-sp-6: 24px;
+  --lims-sp-8: 32px;
+
+  /* ---------------------------------------------------------------------
+   * 10. 动效（办公系统预算 ≤ .45s；氛围动画 4–9s 循环）
+   * ------------------------------------------------------------------- */
+  --lims-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --lims-ease-swift: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --lims-ease-long: cubic-bezier(0.22, 1, 0.36, 1);
+  --lims-dur-fast: 0.17s;
+  --lims-dur: 0.28s;
+  --lims-dur-slow: 0.45s;
+
+  /* ---------------------------------------------------------------------
+   * 11. 层级（z-index）
+   * ------------------------------------------------------------------- */
+  --lims-z-bg: 0;
+  --lims-z-shell: 10;
+  --lims-z-sticky: 20;
+  --lims-z-drawer: 2000;
+  --lims-z-overlay: 3000;
+}
+
+/* ===========================================================================
+ * 浅色主题槽位（预留，尚未启用）
+ * 启用方式：document.documentElement.classList.add('lims-theme-light')
+ * 目的：实验室强光环境下可切换；当前默认暗色。
+ * =========================================================================== */
+html.lims-theme-light {
+  --lims-bg: #f5f7f9;
+  --lims-bg-deep: #eceff3;
+  --lims-paper: #ffffff;
+  --lims-surface: rgba(255, 255, 255, 0.78);
+  --lims-surface-solid: #ffffff;
+  --lims-surface-hover: rgba(240, 244, 248, 0.9);
+  --lims-shell: rgba(255, 255, 255, 0.82);
+
+  --lims-ink: #14181d;
+  --lims-ink-2: #303740;
+  --lims-muted: #5c646e;
+  --lims-faint: #8b939d;
+  --lims-ink-inverse: #ffffff;
+
+  --lims-hair: rgba(12, 18, 24, 0.09);
+  --lims-hair-2: rgba(12, 18, 24, 0.14);
+  --lims-hair-strong: rgba(12, 18, 24, 0.2);
+
+  --lims-glass-border: rgba(14, 165, 160, 0.34);
+  --lims-glass-border-soft: rgba(12, 18, 24, 0.1);
+  --lims-glass-bg: linear-gradient(
+    112deg,
+    rgba(255, 255, 255, 0.82),
+    rgba(244, 247, 250, 0.78) 48%,
+    rgba(236, 241, 246, 0.82)
+  );
+  --lims-glass-shadow:
+    0 18px 48px rgba(15, 23, 32, 0.1), 0 0 24px rgba(14, 165, 160, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --lims-inner-hair: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}

@@ -1,0 +1,233 @@
+/**
+ * LIMS 全局基础样式 —— Reset / 极光背景 / 玻璃工具类 / 滚动条 / 无障碍
+ * 依赖：tokens.css（必须先引入）
+ * 调研依据：docs/knowledge/2026-09-11-ui-design-mineradio-research.md
+ */
+
+/* ===========================================================================
+ * 1. Reset
+ * =========================================================================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--lims-font-sans);
+  font-size: var(--lims-fs-base);
+  line-height: 1.55;
+  color: var(--lims-ink);
+  background-color: var(--lims-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizelegibility;
+}
+
+/* ---------------------------------------------------------------------------
+ * 极光背景层：固定定位 + 低透明度光斑，营造纵深而不干扰阅读
+ * 用 body::before 而非 body 自身背景，避免与 Element Plus 的 overlay 冲突
+ * ------------------------------------------------------------------------- */
+body::before {
+  position: fixed;
+  z-index: var(--lims-z-bg);
+  background-image: var(--lims-aurora);
+  content: '';
+  inset: 0;
+  pointer-events: none;
+}
+
+/* 极细网格纹理：让纯色底不「空」，透明度必须极低（≤3%），否则显脏 */
+body::after {
+  position: fixed;
+  z-index: var(--lims-z-bg);
+  opacity: 0.5;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.016) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 64px);
+  content: '';
+  inset: 0;
+  pointer-events: none;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure {
+  margin: 0;
+}
+
+a {
+  color: var(--lims-accent);
+  text-decoration: none;
+}
+
+/* 数字/编号使用等宽字体，列表对齐更整齐（检验记录场景收益明显） */
+.lims-mono {
+  font-family: var(--lims-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===========================================================================
+ * 2. 玻璃工具类
+ * =========================================================================== */
+
+/**
+ * .lims-glass —— 标准玻璃卡片
+ * 暗色系统要点：底色渐变 + 1px 白色内发光 + 冷调外发光（极轻微）
+ */
+.lims-glass {
+  position: relative;
+  border: 1px solid var(--lims-glass-border-soft);
+  border-radius: var(--lims-r-lg);
+  background: var(--lims-glass-bg);
+  box-shadow: var(--lims-glass-shadow);
+  backdrop-filter: var(--lims-glass-blur);
+  -webkit-backdrop-filter: var(--lims-glass-blur);
+  transition:
+    border-color var(--lims-dur) var(--lims-ease-out),
+    box-shadow var(--lims-dur) var(--lims-ease-out),
+    transform var(--lims-dur) var(--lims-ease-out);
+}
+
+.lims-glass:hover {
+  border-color: var(--lims-glass-border);
+  box-shadow: var(--lims-glass-shadow-focus);
+}
+
+/**
+ * .lims-glass-refract —— 折射玻璃（渐进增强）
+ * 仅当 GlassFilter.vue 探测到 backdrop-filter 支持 url() 时，html 上会出现
+ * .lims-glass-svg-ok；此时用 SVG 位移滤镜替换普通 blur，获得水波扭曲 + RGB 色差。
+ * 探测失败则保持 .lims-glass 的 blur 表现 —— 性能与观感都有兜底。
+ */
+html.lims-glass-svg-ok .lims-glass-refract {
+  backdrop-filter: url(#lims-glass-refract-filter) saturate(1);
+  -webkit-backdrop-filter: url(#lims-glass-refract-filter) saturate(1);
+}
+
+/**
+ * .lims-panel —— 数据面板（高对比，弱化模糊）
+ * ⚠️ 表格/表单所在区域必须用这个，而不是 .lims-glass。
+ *    理由：强模糊 + 位移扭曲会降低小字号数字的可读性，长时间录入极易疲劳。
+ */
+.lims-panel {
+  border: 1px solid var(--lims-hair);
+  border-radius: var(--lims-r-md);
+  background: var(--lims-surface);
+  box-shadow: var(--lims-inner-hair);
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+}
+
+/** 强调光晕（激活项、关键数值） */
+.lims-glow {
+  box-shadow: 0 0 0 1px rgba(var(--lims-accent-rgb), 0.22), 0 0 24px rgba(var(--lims-accent-rgb), 0.16);
+}
+
+/** 渐变色文字（用于品牌标题） */
+.lims-text-gradient {
+  background: linear-gradient(96deg, #ffffff 0%, #9ffff0 42%, #8fb4ff 100%);
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ===========================================================================
+ * 3. 滚动条（暗色下默认滚动条非常突兀，必须自定义）
+ * =========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--lims-r-pill);
+  background: rgba(255, 255, 255, 0.16);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ===========================================================================
+ * 4. 选中态与焦点可见性
+ * =========================================================================== */
+::selection {
+  color: var(--lims-ink);
+  background: rgba(var(--lims-accent-rgb), 0.28);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(var(--lims-accent-rgb), 0.55);
+  outline-offset: 2px;
+}
+
+/* ===========================================================================
+ * 5. 路由切换过渡（配合 <router-view v-slot> + <transition name="lims-fade">）
+ * =========================================================================== */
+.lims-fade-enter-active {
+  transition:
+    opacity var(--lims-dur-slow) var(--lims-ease-long),
+    transform var(--lims-dur-slow) var(--lims-ease-long);
+}
+
+.lims-fade-leave-active {
+  transition: opacity var(--lims-dur-fast) ease;
+}
+
+.lims-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.lims-fade-leave-to {
+  opacity: 0;
+}
+
+/* ===========================================================================
+ * 6. 无障碍：尊重系统「减少动态效果」
+ *    氛围动画必须可关，否则前庭敏感用户无法使用
+ * =========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

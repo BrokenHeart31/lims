@@ -3,7 +3,7 @@
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
 ## 当前工作分支
-- **GLM：`agent/glm`（T-401 全链路 + T-903 + T-904 + T-905 请求 ✅ 已推送 d1610e1；下一棒 T-501）**
+- **GLM：`agent/glm`（T-401 ✅ → T-906 UI「Aurora Glass」主题 + T-907 V3 fail-loud + T-908 治理二次调整；T-905 裁决已由 Copilot 落档 `2e9f471`）**
 - **Copilot：`agent/copilot`（19:45 事故修复+裁决终审已推送 ✅；20:30 **T-905 裁决定稿**：R1 采纳 / R3 否决 / 引擎只读 sample_item 追认 / T-601 单测构造数据裁定，见 DECISIONS 与 whitelist D5 节）**
 - 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅；T-903 已由 GLM 代做，可领 T-802）
 
@@ -23,7 +23,15 @@
 - 本地仓库：`D:\lims`（远程 https://github.com/BrokenHeart31/lims.git ）
 - 合并路径：`agent/xxx → develop → main`（本轮由 GLM 执行 main 固化）
 
-## 本轮占用文件（GLM / T-401 + T-903 + T-904 + T-905）
+## 本轮占用文件（GLM / T-906 + T-907 + T-908）
+- 新增（前端主题）：`src/styles/{tokens,base,element-override}.css`、`src/components/GlassFilter.vue`
+- 修改（前端）：`src/main.ts`（+EP 暗色 css-vars + 主题引入 + html.dark）、`src/App.vue`（+GlassFilter + 路由过渡）、`src/layouts/MainLayout.vue`（外壳重塑）、`src/views/login/index.vue`（极光登录页）、`src/views/dashboard/index.vue`（hero + 八阶段网格）、`src/views/sample/index.vue`（硬编码浅色改令牌）
+- 修改（数据）：`db/migrations/V3__correct_product_lib_item_judge_type.sql`（派生表统一计算 + NULL 安全比较 + fail-loud 断言）
+- 新增（知识）：`docs/knowledge/2026-09-11-ui-design-mineradio-research.md`
+- 修改（治理）：`AGENTS.md`（2.3 重写 / 2.4 / **2.6 自裁机制新增** / **2.7 豆包分工新增** / **5.1 UI 基准新增** / 首页角色表 / 契约与审查表述）、`DECISIONS.md`、`TODO.md`、`STATUS.md`、`HANDOFF.md`
+- 本地专属（gitignore，不入库）：`backend/src/main/resources/application-dev.yml`（本机 MySQL 口令覆盖）
+
+## 上一轮占用文件（GLM / T-401 + T-903 + T-904 + T-905）
 - 新增（后端）：`entity/{SampleItem,ProductLib,ProductLibItem}.java`、`mapper/{SampleItemMapper,ProductLibMapper,ProductLibItemMapper}.java`、`dto/{ItemSaveDTO,ItemConfirmDTO}.java`、`vo/{ItemMatchVO,ItemPendingVO}.java`、`service/ItemService.java`、`service/impl/ItemServiceImpl.java`、`controller/ItemController.java`、`src/test/java/com/lims/service/impl/ItemServiceImplTest.java`
 - 新增（前端）：`src/api/item.ts`、`src/views/item/index.vue`
 - 新增（契约/数据）：`docs/api/api-spec.md` 第 4 章（原第 4 章顺延为第 5 章）、`db/init/06_item_tables.sql`、`db/migrations/V2__fill_product_lib_name_category.sql`、`db/migrations/V3__correct_product_lib_item_judge_type.sql`
@@ -64,14 +72,16 @@
 - ℹ️ 本机 MySQL 实际密码 123456（非 AGENTS 约定 11111111），在 gitignore 的 application-dev.yml。
 
 ## 进度评估（距整个项目圆满完成）
-**总进度：约 41%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
-- **业务主干：4/9 阶段落地（55% × 4/9 ≈ 24.4%）**
+**总进度：约 46%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
+- **业务主干：4/9 阶段落地（55% × 4/9 ≈ 24.4%）**；**T-501 本轮进行中（保守未计入，完成后将 +6.1%）**
+  - ✅ 阶段一 / 二 / 三 / **四（T-401 项目分解）**
+  - 🔵 **T-501 检验任务安排**（本轮开工）
   - ✅ 阶段一（T-101/102/103/104）、阶段二（T-201）、阶段三（T-301）、**阶段四（T-401 项目分解自动套库，本轮完成）**。
   - ⬜ 剩余：**T-501**（任务自动分配 NA/XA/SA + 方法资质，S）、**T-601**（结果录入 + 自动判定引擎，S，口径已定稿）、**T-701**（审核/签发 S60→S70→S80，S）、**T-702**（CMA/CMA-CATL 报告生成 S80→S90，S）、**T-801**（在检/历史/项目库查询，A）、**T-802**（省平台上报导出，B）。
-- **前端：约 8/15**——登录/工作台/监抽任务/样品登记/**项目分解** 五页齐备；动态路由未接入。
+- **前端：约 11/15**——五页齐备 + **统一暗色主题体系（Aurora Glass：设计令牌 / SVG 折射玻璃 / Element Plus 暗色适配）已落地**；动态路由未接入。
 - **数据：约 8/10**——01→06 建表齐备，V1/V2 迁移完成、V3 口径校验器已产出（待裁决），seed 齐备。
 - **质量：约 7/10**——后端 23 项单测全过、前端 build+lint 全绿；判定引擎单测待 T-601。
-- **工程化：约 7/10**——治理文件齐备 + **工作纪律三件套制度化**（本轮）；`docs/journal/` 与 `docs/knowledge/` 已成型；`.agents/skills/` 待本轮经验回填。
+- **工程化：约 8/10**——治理齐备 + 三件套制度化 + **自裁机制 / 豆包分工 / UI 基准 / 许可合规红线**均已落档；`lims-stage-delivery` 技能已建。
 - 🔵 治理：T-901/T-902/T-903/T-904 ✅完成；T-905（D5 裁决请求 #1）待 Copilot 裁定。
 - **剩余任务全部由 GLM 承担**（角色调整后 S+A 归 GLM）：T-401/501/601/701/702（S）+ T-801 + 动态路由（A）；B 级 T-802/T-903 归豆包。**Copilot 为把关方，非产能方**——GLM 额度是当前唯一的关键路径风险。
 - **剩余以高难度 S 级为主**：自动判定引擎（AGENTS 7.3 六条规则）、报告模板合成（CMA/CMA-CATL）、任务分配资质匹配，合计约占**剩余工作量 70%**；A/B 级（T-801/802 + 动态路由 + 系统管理页）约占 30%。整体距完成约**还差 60%–65% 工作量**。

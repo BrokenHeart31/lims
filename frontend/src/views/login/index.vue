@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { Lock, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -51,15 +51,38 @@ async function handleLogin(): Promise<void> {
 
 <template>
   <div class="login-page">
-    <div class="login-card">
-      <div class="login-header">
-        <h1 class="login-title">
-          LIMS
-        </h1>
+    <!-- 装饰性极光光带：纯 CSS，无图片资源 -->
+    <div
+      class="aurora-band"
+      aria-hidden="true"
+    />
+    <div
+      class="aurora-band aurora-band--alt"
+      aria-hidden="true"
+    />
+
+    <div class="login-card lims-glass lims-glass-refract">
+      <!-- 顶部信号线：呼应「实验室仪器读数」的视觉隐喻 -->
+      <span
+        class="signal-line"
+        aria-hidden="true"
+      />
+
+      <header class="login-header">
+        <div class="brand-row">
+          <span
+            class="brand-mark"
+            aria-hidden="true"
+          />
+          <h1 class="login-title lims-text-gradient">
+            LIMS
+          </h1>
+        </div>
         <p class="login-subtitle">
           食品质量检验测试中心 · 实验室信息管理系统
         </p>
-      </div>
+      </header>
+
       <el-form
         ref="formRef"
         :model="loginForm"
@@ -85,7 +108,7 @@ async function handleLogin(): Promise<void> {
             autocomplete="current-password"
           />
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="submit-item">
           <el-button
             type="primary"
             class="login-button"
@@ -96,46 +119,159 @@ async function handleLogin(): Promise<void> {
           </el-button>
         </el-form-item>
       </el-form>
+
+      <footer class="login-foot">
+        <span
+          class="foot-dot"
+          aria-hidden="true"
+        />
+        <span>CMA / CMA-CATL 资质实验室 · 检验数据全程留痕</span>
+      </footer>
     </div>
   </div>
 </template>
 
 <style scoped>
 .login-page {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: linear-gradient(135deg, #1f3b73 0%, #2f5cad 60%, #3d7bd6 100%);
+  overflow: hidden;
 }
 
+/* ---------------------------------------------------------------------------
+ * 极光光带：两条大尺寸模糊渐变，缓慢呼吸。
+ * 用 filter: blur() 而非图片，零资源且可随主题变化。
+ * ------------------------------------------------------------------------- */
+.aurora-band {
+  position: absolute;
+  width: 62vw;
+  height: 62vw;
+  border-radius: 50%;
+  opacity: 0.5;
+  background: radial-gradient(circle, rgba(var(--lims-accent-rgb), 0.32), transparent 62%);
+  filter: blur(70px);
+  animation: aurora-drift 14s var(--lims-ease-out) infinite alternate;
+  pointer-events: none;
+}
+
+.aurora-band--alt {
+  top: auto;
+  bottom: -18vw;
+  left: auto;
+  right: -12vw;
+  background: radial-gradient(circle, rgba(var(--lims-blue-rgb), 0.34), transparent 62%);
+  animation-duration: 18s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes aurora-drift {
+  from {
+    transform: translate3d(-6%, -4%, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(8%, 6%, 0) scale(1.12);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 登录卡：全站唯一使用「最高规格」玻璃的界面（第一印象）
+ * ------------------------------------------------------------------------- */
 .login-card {
-  width: 400px;
-  padding: 40px 36px 24px;
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+  position: relative;
+  z-index: 1;
+  width: 404px;
+  padding: 40px 36px 22px;
+  border-radius: var(--lims-r-2xl);
+  box-shadow: var(--lims-glass-shadow-focus);
+}
+
+/* 顶部信号线：青→白→金的渐变细线 */
+.signal-line {
+  position: absolute;
+  top: 0;
+  left: 14%;
+  width: 72%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--lims-accent-rgb), 0.7),
+    rgba(255, 255, 255, 0.85),
+    rgba(244, 210, 138, 0.6),
+    transparent
+  );
+  opacity: 0.9;
 }
 
 .login-header {
-  margin-bottom: 28px;
+  margin-bottom: 26px;
   text-align: center;
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--lims-brand-gradient);
+  box-shadow: 0 0 22px rgba(var(--lims-accent-rgb), 0.42);
+}
+
 .login-title {
-  margin: 0;
-  font-size: 32px;
-  letter-spacing: 4px;
-  color: #1f3b73;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 5px;
 }
 
 .login-subtitle {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: #909399;
+  margin-top: 10px;
+  color: var(--lims-muted);
+  font-size: var(--lims-fs-xs);
+  letter-spacing: 0.3px;
+}
+
+.submit-item {
+  margin-bottom: 8px;
 }
 
 .login-button {
   width: 100%;
+  height: 42px;
+  font-size: var(--lims-fs-lg);
+  font-weight: 600;
+  letter-spacing: 3px;
+  border-radius: var(--lims-r-sm);
+}
+
+/* ---------------------------------------------------------------------------
+ * 底部说明
+ * ------------------------------------------------------------------------- */
+.login-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--lims-hair);
+  color: var(--lims-faint);
+  font-size: 11px;
+}
+
+.foot-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lims-success);
+  box-shadow: 0 0 8px rgba(var(--lims-success-rgb), 0.8);
 }
 </style>

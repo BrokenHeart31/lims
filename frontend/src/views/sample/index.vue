@@ -795,6 +795,6 @@ onMounted(() => {
   justify-content: space-between;
   margin-bottom: 8px;
   font-size: 13px;
-  color: #909399;
+  color: var(--lims-muted);
 }
 </style>

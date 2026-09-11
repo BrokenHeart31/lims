@@ -248,3 +248,37 @@
   - **@Copilot**：裁定 **T-905 / D5**（是否采纳 R1）——这是本轮唯一需要裁决的事项，也是 2 次配额的第 1 次；另请 diff 审查 T-401（合并 develop 前）。
   - **@GLM（下一轮自己）**：①推送本轮改动到 `agent/glm` 并合并 `develop/main`；②回填 `.agents/skills/`（本轮可沉淀：MP ServiceImpl 单测双技巧、沙箱 Maven 直启、数据前提验证方法）；③接 **T-501**（任务自动分配 NA/XA/SA + 方法资质，S）。
   - **@豆包**：T-903 已由 GLM 代做完成，可直接领 **T-802**（省平台上报 Excel 导出，B）。
+
+### 2026-09-11 21:10 GLM（agent/glm）— T-906 UI「Aurora Glass」主题 + T-907 V3 fail-loud + T-908 治理二次调整
+
+- 【GLM】本轮四件事：
+  1. **T-907 V3 落地 T-905 裁决（fail-loud）**：`db/migrations/V3__correct_product_lib_item_judge_type.sql` 已改造完成并**双路径实测通过**：
+     - 归一化改为**派生表统一计算 + NULL 安全比较 `<=>`**（原写法 SET 与 WHERE 各写一遍 CASE，存在漂移风险；且 `judge_type IS NULL` 的行会因 `NULL <> x` 为 UNKNOWN 而**漏更新**，留下永久漂移）；
+     - 末尾新增 `SIGNAL SQLSTATE '45000'` 断言（独立重新推导应然值做交叉校验），drift>0 或白名单外值>0 → 输出失败明细 + **报错中止（退出码 1）**；
+     - 实测：① 正常数据 3728 行零变更 → 断言通过 exit 0；② 人为制造 drift=1/outside=1 → 明细 + `ERROR 1644` + exit 1；③ 再跑 V3 → 归一化收敛并恢复 exit 0。
+     - ⚠️ 注意：`SIGNAL` 的 `MESSAGE_TEXT` 上限 **128 字符**（非字节），超长会报 `Data too long for condition item`；故诊断信息放在结果集里，消息保持简短。
+     - ⚠️ 注意：脚本含 `DELIMITER`（客户端指令），**必须用 mysql 客户端执行**，JDBC/Flyway 不识别。
+  2. **T-906 UI 设计基准「Aurora Glass」落地**（用户要求「UI 美观参考 mine radio」）：
+     - 调研对象 **Mineradio**（GitHub `XxHuberrr/Mineradio`，8.7k★，Electron 沉浸式播放器）；**它是 GPL-3.0**，故本项目**只借鉴设计思路与参数关系，代码全部独立实现**（红线已写入 AGENTS 5.1）。
+     - 新增 `frontend/src/styles/{tokens,base,element-override}.css` + `frontend/src/components/GlassFilter.vue`（SVG 位移折射 + RGB 色差，渐进增强探测 `html.lims-glass-svg-ok`）；
+     - 重塑外壳（`MainLayout`：极光玻璃侧栏 + 可折叠导航 + 发光激活条）、登录页（极光光带 + 折射玻璃卡 + 渐变标题）、工作台（hero + 八阶段状态网格，与 STATUS 进度口径对齐）；
+     - 三类表面约定：`.lims-glass`（卡片）/ `.lims-glass-refract`（仅第一眼表面）/ `.lims-panel`（**数据密集区，弱化模糊保证可读性**）。
+  3. **🔴 实测修复一个真实缺陷（视觉验证才发现）**：项目分解页「分解进度」「状态」两列**完全空白**。
+     - 根因：表格内 `el-tag` 卡在 `el-zoom-in-center-enter-from`（`opacity:0`）。标签在**异步数据到达后**才挂载，Vue 的双 rAF `nextFrame` 回调若被打断则不执行，过渡类永不摘除 → 元素永久不可见。用同源 iframe 探针页读 `getComputedStyle` 得到 `opacity=0` 实锤。
+     - 修法：`element-override.css` 中统一 `transition: none !important`（Vue 会据此判定「无过渡」并立即摘除类名），并对 `enter-from/active` 强制 `opacity:1` 兜底。修复后 DOM 中过渡类消失、标签正常显示（已复截图确认）。
+     - **教训：纯 CSS 主题改造必须做视觉回归**，DOM 有元素 ≠ 用户看得见。
+  4. **T-908 治理二次调整（用户决策）**：
+     - **AGENTS 新增 2.6 自行裁决机制**：GLM 自裁为默认，**不再挂起等待 Copilot**；自裁证据标准不得低于原裁决定稿；Copilot 降为**可选复核**，配额剩余 1 次，**不得作为推进阻塞**；附「判定真实两难」三问。
+     - **AGENTS 新增 2.7 豆包协作分工**：明确可委派（文档/seed/模板/校对/执行记录）与**禁止委派**（backend 代码、状态机、判定引擎、db 脚本内容设计、契约、裁决）。
+     - **AGENTS 新增 5.1 UI 设计基准**：主题名、权威文件、令牌位置、三类表面用途、四条硬性红线。
+     - AGENTS 2.3/2.4 与首页角色表、契约/审查表述同步改为「GLM 自裁 + Copilot 可选复核」。
+- 【环境补充（供后续会话）】
+  - 本地 `backend/src/main/resources/application-dev.yml` **原本不存在**（已在 gitignore），本轮新建并覆盖本机 MySQL 口令（123456）→ 后端已可正常启动（`spring-boot:run`，8080 / context-path `/api`，登录 `nj001/nj001` 正常返回带 `item:decompose` 等权限的 token）。
+  - `sample_item` 表（`db/init/06_item_tables.sql`）本轮才在本地库创建；之前该库**缺此表**。
+  - 截图/联调可用的轻量方案：Edge headless `--headless=new --virtual-time-budget=9000 --screenshot=...`（本机无 Chrome、无 agent-browser；`C://Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）。
+    ⚠️ 注意 `--virtual-time-budget` 会压缩时间，**过渡类可能停在 enter-from**，判读截图时需留意（本轮即由此发现上述 el-tag 缺陷）。
+- 【质量门禁】前端 `npm run build`（vue-tsc + vite）✅、`npm run lint` ✅ 0 错误 0 警告；后端 `mvn test` 23/23 ✅（本轮未改后端代码，仅复跑确认）。
+- 【下一步】
+  - **@GLM（下一轮自己）**：**领 T-501**（检验任务安排：自动分配 NA/XA/SA + 方法资质 + S30→S40）。⚠️ 数据前置需先验证（`user_method` 3 行粗粒度 + `user_item` 6 行项目级；`tester_method` 表 0 行）；T-701 实现时须补「审核退回 → S50」状态机分支。
+  - **@豆包**：可按 AGENTS 2.7 领杂事（建议先做 `docs/database-dictionary.md` 数据字典 + T-802 省平台上报模板）。
+  - **@Copilot**：无阻塞项；如收到 GLM 的复核请求再介入（配额剩余 1 次）。
