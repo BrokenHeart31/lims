@@ -6,6 +6,27 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-11 16:10 GLM（agent/glm）— 角色调整落地（T-901）+ 判定引擎白名单草案（T-902）
+
+- 【用户决策】**S 级 + A 级执行权全部归 GLM（与 Copilot 同级）**；Copilot 只保留三类不可替代工作：① api-spec 契约（起草协助 + 终审）② 规则裁决（判定口径/跨模块语义歧义最终解释）③ diff 审查（合并前代码审查）。边界：**GLM 实现，Copilot 把关**。用户同时确认 **T-702 报告版式样本已在业务说明书 docx 内取得**，无需再等外部样本。
+- 【T-901 已落地】四份治理文件口径统一，消除此前真实存在的分级矛盾：
+  - `AGENTS.md`：首页角色表（Copilot 分支笔误 `agent/gpt` → `agent/copilot`；定位改为契约+裁决+审查）；0.2 判定规则实现者 Copilot → **GLM**；2.1 所有权表（`backend/` 核心、`frontend/`、公共文件 → **GLM 独有**；api-spec → GLM 起草 + Copilot 终审）；2.3 全文重写（原「S 级仅 glm」与「GLM/豆包遇到 S 级问题停止」同句自相矛盾，已删除）；2.4 冲突基准（公共文件 → GLM 版本；契约 → Copilot 终审版本）；7.3 标题「仅 Copilot 实现于后端」→「GLM 实现于后端，Copilot 裁决口径」；第 9/12 章同步。
+  - `TODO.md`：第 3 行分级说明重写；T-401/501/601/701/702/801 Owner 由 Copilot → **GLM**；新增 T-901/T-902（GLM）/ T-903（豆包）。
+  - `prompts/glm.md`、`prompts/copilot.md`：**两份原为角色名交叉错写**（glm.md 自称 copilot 且分支写 `agent/copilot`；copilot.md 分支写 `agent/glm`），已全文重写。
+  - `DECISIONS.md`：新增「2026-09-11 角色调整」6 条决策，并作废此前的「Copilot=前端主力」追认条目。
+- 【T-902 产出】`docs/knowledge/2026-09-11-judge-engine-whitelist-draft.md`（判定引擎表达式白名单草案 v1）。核心内容：
+  - **实测数据形态**：`product_lib_item` 3728 条 —— `judge_type` **全为 1**（无 jt2/jt3）、`std_value` **100% 纯数值**、`is_reference=1` 834 条、`lower_limit` 有值 1032 条、`basis_code` **唯一值 GB 2763-2021**；旧 `prj_detail` 463 条 —— `stdValue ∈ {数值, 不得检出, --}`、`jyResult ∈ {数值, 未检出}`、`item_evaluate` 合格 441 / 不合格 20 / NULL 2。
+  - **口径反推**（据 20 条不合格样例）：`不得检出` + 数值结果 → 不合格；`10` + `10.01` → 不合格；`--` + `未检出` → 合格。即**「检出」= 数值结果 ≥ 最低检出限**，非字符串比对。
+  - **白名单闭集**：stdValue 5 形态（纯数值/≤数值/不得检出/不得使用/文本）、testValue 2 形态（数值/未检出）、输出 3 形态（合格/不合格/待判定）；白名单外一律 default → 待判定 + 日志，**禁止静默判合格**。
+  - **5 条待裁决**：**D1** 低于检出限是否直接判合格（建议是）/ **D2** `不得检出` 型是否按「≥ 检出限才算检出」（建议是，**最关键**）/ **D3** 参考性限量 834 条单项不合格是否计入整体结论（建议不计入但必须展示）/ **D4** `--` 且检出限 NULL 时是否判待判定（建议是）/ **D5** 是否从旧 `prj_detail` 反向回填 lib 的 jt2/jt3（建议在 T-401 做）。
+  - 结论：六条规则中 2 条可直接实现，4 条待裁决；**裁决完成后 T-601 即为纯编码任务，无设计风险**。
+- ⚠️ **新发现数据缺口**：`product_lib.product_name` / `category` **全为 NULL**（TODO 中「待 T-401 补全」），可从旧 `product` 表（`libName` → product_name、`prd_category` → category）补齐 → 已开 **T-903** 给豆包。
+- ⚠️ 说明书 docx 第 2 页演示样例存在**两处自相矛盾**（铅 0.1 对 `≤0.25` 判不合格；氯霉素「未检出」判不合格），判断为旧系统数据瑕疵/笔误，**不作为规则依据**，已在草案中标注请 Copilot 一并确认。
+- 【下一步】
+  - **@Copilot**：① 终审 api-spec 样品域（T-301 遗留）；② **裁决 T-902 的 5 条口径**（这是 T-601 的开工前置，优先级最高）；③ 后续对 GLM 的 diff 做合并前审查。
+  - **@GLM（下一轮自己）**：领 **T-401**（项目分解自动套库）——前置依赖 T-903 的 product_name 补齐，可先做后端自动套库骨架，待数据补齐后联调。
+  - **@豆包**：领 **T-903**（product_name/category 补全，源表 `product`）；T-802 待排。
+
 ### 2026-09-11 15:20 GLM（agent/glm）— 三分支推送 GitHub 完成（main 已固化可见）
 - 【GLM】按用户指示完成 `agent/glm → develop → main` 全链路**推送**，远程已核对（`git ls-remote`）：
   - `refs/heads/agent/glm` = `43174c3`、`refs/heads/develop` = `43174c3`、`refs/heads/main` = `43174c3`（`HEAD` 亦指向 `43174c3`）。

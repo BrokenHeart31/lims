@@ -26,20 +26,27 @@
 | T-301 | 采样单 Excel 导入 + S10→S20 登记确认 | S | GLM（由 Copilot 改派） | ✅完成（2026-09-11：api-spec 样品域 + db/init/05_sample_tables.sql + EasyExcel 导入监听器 + 登记维护/确认 + 前端导入页 + 状态机枚举 + 9 项单测通过；契约待 Copilot 终审） |
 
 ## 阶段四：检验项目分解（自动套库）
-| T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | Copilot | ⬜待办（product_lib/product_lib_item DDL 已终审定稿含 judge_type；V1 已迁 lib 数据） |
+| T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | **GLM** | ⬜待办（product_lib/product_lib_item DDL 已终审定稿含 judge_type；V1 已迁 lib 数据；⚠️ product_name/category 全 NULL，需从旧 product 表补齐） |
 
 ## 阶段五：检验任务安排
-| T-501 | 自动分配规则（NA/XA/SA + 方法资质）+ S30→S40 | S | Copilot | ⬜待办 |
+| T-501 | 自动分配规则（NA/XA/SA + 方法资质）+ S30→S40 | S | **GLM** | ⬜待办（实物数据已探明：user_method 3 行粗粒度 + user_item 6 行项目级；tester_method 表 0 行） |
 
 ## 阶段六：检验数据录入（自动判定）
 | T-601 | 结果录入 + 自动判定引擎 + S50→S60 | S | Copilot | ⬜待办 |
 
 ## 阶段七：报告审核签发 + 报告生成
-| T-701 | 审核/签发 S60→S70→S80 | S | Copilot | ⬜待办 |
-| T-702 | CMA / CMA-CATL 报告模板合成 + S80→S90 | S | Copilot | ⬜待办 |
+| T-701 | 审核/签发 S60→S70→S80（含审核退回 → S50） | S | **GLM** | ⬜待办 |
+| T-702 | CMA / CMA-CATL 报告模板合成 + S80→S90 | S | **GLM** | ⬜待办（✅ 版式样本已从业务说明书 docx 取得：首页编号/资质号/注意事项 + 第1页表头与检验结论句式 + 第2页七列明细表；无需挂起等待外部样本） |
 
 ## 查询与省平台上报
-| T-801 | 在检/历史/项目库查询 | A | GLM | ⬜待办 |
+| T-801 | 在检/历史/项目库查询 | A | **GLM** | ⬜待办 |
 | T-802 | 省平台上报 Excel 导出 | B | 豆包 | ⬜待办 |
 
-> 注：以上为初始骨架，S 级任务的接口与表结构以 Copilot 在 api-spec.md 的定义为准；豆包不自行设计业务表。
+## 治理维护
+| 任务ID | 任务 | 级别 | Owner | 状态 |
+|---|---|---|---|---|
+| T-901 | 角色调整落地：TODO/AGENTS/prompts 分级与所有权统一（S+A→GLM，Copilot 转契约+裁决+审查） | S | **GLM** | 🔵进行中(GLM) 2026-09-11 |
+| T-902 | 判定引擎表达式白名单草案（基于真实数据分布，交 Copilot 裁决） | S | **GLM** | 🔵进行中(GLM) 2026-09-11 |
+| T-903 | 补全 product_lib.product_name / category（源：旧 product 表 prd_category + libName） | B | 豆包 | ⬜待办 |
+
+> 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。

@@ -34,3 +34,14 @@
 | 2026-09-11 | 样品域权限标识用 **`sample:import` / `sample:confirm` / `sample:query`**；此前交接留言中的 `sample:list` 表述作废（api-spec 已更正） | 以 seed `sys_menu`（menu 31/32/33）与 AGENTS 8.2 实际值为准；`/me` 返回的即 `sample:query`，接口 `@PreAuthorize` 必须同值方可鉴权通过 | GLM（T-301） |
 | 2026-09-11 | 采样单导入**部分失败不回滚**（合法行入库 S10，错误行逐条报「行号+原因」）；以 `sample_import_batch` 表登记 Excel A1 文件标记，同标记重复导入整文件拒绝 | 业务允许修正后重导（说明书采样单流程）；A1 标记防重复导入系说明书明确要求（「A1列自定义Excel文件标记，防止重复导入」） | GLM（T-301） |
 | 2026-09-11 | 样品表名用 **`sample_info`**（非 `sample`） | 实测发现 `SAMPLE` 是 SQL 关键字（TABLESAMPLE），与 MyBatis-Plus 分页插件所用 JSqlParser 冲突：`SELECT ... FROM sample` 解析失败，导致分页 count SQL 无法优化（WARN + 大表走子查询 count）。与本项目 `user`→`sys_user` 同一处理原则；接口路径 `/api/sample/*` 与权限标识 `sample:*` 不受影响 | GLM（T-301） |
+
+## 2026-09-11 角色调整（用户决策，GLM 执行落地）
+
+| 日期 | 决策 | 理由 | 决策人 |
+|---|---|---|---|
+| 2026-09-11 | **S 级 + A 级执行权全部归 GLM**（GLM 与 Copilot 同级）；Copilot 只保留三类不可替代工作：① api-spec 契约起草协助/终审；② 规则裁决（判定口径与跨模块语义歧义的最终解释）；③ diff 审查（合并进 develop 前的代码审查） | 用户决策：GLM 能力覆盖 S/A，Copilot 额度应集中在判断类工作；「GLM 实现，Copilot 把关」边界最清晰，避免所有权悬空 | 用户（GLM 落地） |
+| 2026-09-11 | 覆盖 2026-09-11「追认 AGENTS.md 角色表修订」（Copilot=前端主力/常规 CRUD）——该条作废 | 上条已被本次角色调整取代；前端主要所有者回归 GLM | 用户（GLM 落地） |
+| 2026-09-11 | AGENTS.md 2.1 文件所有权：`backend/` 核心与 `frontend/`、公共文件 → **GLM 独有**；`docs/api/api-spec.md` → GLM 起草 + **Copilot 终审**；冲突基准：公共文件以 GLM 版本为基准，契约以 Copilot 终审版本为基准 | 消除原表「backend 核心 Copilot 独有」与 2.3「S 级仅 glm」的自相矛盾 | GLM |
+| 2026-09-11 | AGENTS.md 2.3 重写：删除「GLM/豆包遇到 S 级问题停止」矛盾表述，改为「S/A = GLM，B = 豆包，Copilot = 契约+裁决+审查」；2.4 冲突基准同步修订；7.3 标题改为「GLM 实现于后端，Copilot 裁决口径」；0.2 判定规则实现者由 Copilot 改 GLM | 同上，四份治理文件口径必须一致 | GLM |
+| 2026-09-11 | `prompts/glm.md` 与 `prompts/copilot.md` **全文重写**（原两份文件角色名交叉错写：glm.md 自称 copilot、分支写 agent/copilot；copilot.md 分支写 agent/glm） | 提示词是 Agent 的开工依据，错写会导致分支误提交与职责越界 | GLM |
+| 2026-09-11 | TODO.md 的 T-401 / T-501 / T-601 / T-701 / T-702 / T-801 Owner 由 Copilot 改为 **GLM**；新增 T-901（治理维护）/ T-902（白名单草案）/ T-903（product_name 补全，豆包） | 与角色调整对齐 | GLM |

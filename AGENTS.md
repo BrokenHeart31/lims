@@ -12,9 +12,9 @@
 
 | Agent | 工作分支 | 定位 | 模型 |
 |---|---|---|---|
-| WorkBuddy | `agent/glm` | 首席架构师 + 后端核心 + 终审 + Skill 提炼 |  GLM5.3（额度不足降级 HY4 preview）| 额度不足时交接给workbuddy |
-| Copilot CLI | `agent/gpt` | 前端主力 + 常规 CRUD |  auto模型  |
-| 豆包 | `agent/doubao` | 文档 / 数据 / 状态维护 / 杂务 | 豆包 2.1 Turbo |
+| WorkBuddy（GLM） | `agent/glm` | **S 级 + A 级**：架构 + 后端核心（含判定引擎/报告引擎）+ 前端主要负责人 + Skill 提炼 | GLM5.3（额度不足降级 HY4 preview，S/A 任务排队不降能力） |
+| Copilot CLI | `agent/copilot` | **契约终审 + 规则裁决 + diff 审查**（不承接 S/A 实现任务） | auto 模型 |
+| 豆包 | `agent/doubao` | B 级：文档 / 数据 / 状态维护 / 杂务 | 豆包 2.1 Turbo |
 
 三个 Agent 必须同时遵守本文件与 `STATUS.md`、`TODO.md`、`HANDOFF.md`、`DECISIONS.md` 的约束。**开工前必读这四个状态文件，收工后必更新 HANDOFF.md。**
 
@@ -33,7 +33,7 @@
 
 - 系统业务主线固定为**七阶段**（见第 7 章），任务拆分、接口命名、权限标识、合并顺序全部按业务阶段对齐，**禁止跨阶段跳做**（例：未完成 T-4xx 分解相关任务，不得开始 T-5xx 安排相关任务）。
 - 样品状态机 **S10 → S90**（见 7.2）是全系统唯一状态流转标准：后端以枚举 + 流转白名单实现，前端按状态渲染操作按钮，任何 Agent 不得私增状态或跳态流转。
-- 结果自动判定规则（见 7.3）只能由 Copilot 实现于后端，检验员不可手改单项结论，前端不可自算结论。
+- 结果自动判定规则（见 7.3）只能由 GLM 实现于后端，检验员不可手改单项结论，前端不可自算结论；判定口径的歧义解释权归 Copilot（见 2.3）。
 
 ### 0.3 分支策略升级【协作决策】
 
@@ -50,7 +50,7 @@
 
 - **不偏离技术栈**：前端只用 Vue3 生态，后端只用 Spring Boot 3 生态。引入新依赖必须写入 DECISIONS.md 说明用途并获确认。
 - **安全第一**：权限校验、数据校验、业务安全逻辑必须在后端实现；前端仅做体验层展示控制。密码 BCrypt 加密，VO 禁止出现 password/salt。
-- **契约先行**：任何需要前后端联调的功能，Copilot 必须先把接口定义写入 `docs/api/api-spec.md`（路径/方法/请求/响应/权限标识），全员以契约为唯一依据，禁止自创接口格式。
+- **契约先行**：任何需要前后端联调的功能，GLM 必须先把接口定义写入 `docs/api/api-spec.md`（路径/方法/请求/响应/权限标识），**Copilot 终审**；全员以终审后的契约为唯一依据，禁止自创接口格式。
 - **改表必同步**：SQL 迁移脚本 → Entity → Mapper → DTO/VO → 前端接口与页面，五件套缺一不可。
 - **可构建原则**：交付必须保证 `mvn clean compile` 与 `npm run build && npx vue-tsc --noEmit` 通过，禁止无法编译的示意代码。
 - **小步提交**：一个可编译、可验证的小功能 = 一次提交，禁止攒大招。
@@ -61,16 +61,16 @@
 
 ### 2.1 文件所有权（越界即冲突，严禁违反）
 
-| 目录 / 文件 | Copilot | WorkBuddy/GLM | 豆包 |
+| 目录 / 文件 | WorkBuddy/GLM | Copilot | 豆包 |
 |---|---|---|---|
-| `backend/` 核心（config/security/RBAC/业务主流程/判定引擎/报告引擎） | ✅ 独有 | ❌ | ❌ |
-| `backend/` 简单 CRUD（customer/dept/basis/菜单页对应模块） | ✅ review | ✅ 可写（新建文件为主） | ❌ |
-| `frontend/` | 仅架构与疑难页面 | ✅ 主要所有者 | 仅纯静态页/文案 |
-| `docs/api/api-spec.md` | ✅ 独有（写契约） | 只读 | 只读 |
-| `db/migrations/`、`db/seed/` | 审核 | 只读 | ✅ 主要维护 |
-| `docs/`（除 api-spec）、`*.md` 治理文件 | 决策类 | 技术类 | ✅ 主要维护 |
-| `.agents/skills/` | ✅ 创建/审核 | 只读使用 | 只读使用 |
-| 公共文件（pom.xml、package.json、路由配置、vite.config） | ✅ 独有 | 提 TODO 申请 | ❌ |
+| `backend/` 核心（config/security/RBAC/业务主流程/判定引擎/报告引擎） | ✅ **独有** | ❌（仅 review/裁决） | ❌ |
+| `backend/` 简单 CRUD（customer/dept/basis/菜单页对应模块） | ✅ 可写（新建文件为主） | ✅ review | ❌ |
+| `frontend/` | ✅ **主要所有者（含架构与疑难页面）** | 仅 review | 仅纯静态页/文案 |
+| `docs/api/api-spec.md` | ✅ 起草/写入 | ✅ **终审（契约权威）** | 只读 |
+| `db/migrations/`、`db/seed/` | 只读/设计评审 | 审核 | ✅ 主要维护 |
+| `docs/`（除 api-spec）、`*.md` 治理文件 | ✅ 主要维护（技术+结构） | 决策类/裁决记录 | 部分维护 |
+| `.agents/skills/` | ✅ 创建/审核 | ✅ 审核 | 只读使用 |
+| 公共文件（pom.xml、package.json、路由配置、vite.config） | ✅ **独有** | 提 TODO 申请 | ❌ |
 
 规则：需要改公共文件或他人领地 → 在 TODO.md 提任务给对应 Owner，Owner 统一修改。
 
@@ -82,17 +82,22 @@
 4. 从 TODO.md 领取**自己级别**的任务并标记 🔵进行中(名字)
 5. 开发 → 自查 → 提交 → 更新 HANDOFF.md 并 @ 下一人
 
-### 2.3 任务分级与降级
+### 2.3 任务分级与角色定位（2026-09-11 角色调整后）
 
-- **S 级**（架构/状态机/判定引擎/报告引擎/终审）：仅 glm。GLM/豆包遇到 S 级问题停止并提 TODO。
-- **A 级**（页面/常规 CRUD/接口对接）：copilot。
+- **S 级**（架构/状态机/判定引擎/报告引擎/业务主流程后端）：**GLM**（仍保留代码终审权）。
+- **A 级**（页面/常规 CRUD/接口对接/前端整体）：**GLM**（与 Copilot 同级）。
 - **B 级**（文档/数据/模板/状态维护）：豆包。
+- **Copilot 的不可替代工作（三类，其余不再承接）**：
+  1. **api-spec 契约**：对 GLM 起草的接口定义做终审（字段命名/路径风格/响应结构/权限标识一致性），契约冲突时以 Copilot 结论为准；
+  2. **规则裁决**：判定口径（7.3 六条规则）的边界情形解释、数据形态歧义裁定（如「不得检出」型与检出限的关系）、跨模块语义冲突裁决；
+  3. **diff 审查**：合并进 develop 前的代码审查（是否遵循 AGENTS.md、是否安全隐患、是否破坏契约）。
+- 分工边界：**GLM 实现，Copilot 把关**。Copilot 不承接 S/A 级实现类任务；GLM 不单方面改动已终审的契约。
 - 降级：GLM5.3 额度不足 → 任务拆小，体力部分转豆包；切 HY4 preview 后只做纯 CRUD，S/A+ 任务排队；**严禁为省额度让低能力模型做 S 级任务**（返工成本 > 省下额度）。
 
 ### 2.4 冲突处理
 
-- 冲突必须由涉及双方代码的 Owner（通常是 Copilot + 当事 Agent）共同核对，禁止强推覆盖；
-- 公共文件冲突一律以 Copilot 版本为基准，他人重放自己的增量。
+- 冲突必须由涉及双方代码的 Owner 共同核对，禁止强推覆盖；
+- 公共文件冲突一律以 GLM 版本为基准，他人重放自己的增量；契约（api-spec.md）冲突以 Copilot 终审版本为基准。
 
 ## 3. 目录结构约定
 
@@ -203,7 +208,7 @@ lims/
 | 已出报告 | S90 | 报告生成完成 | 上报导出/归档 |
 | （退回） | — | 审核退回 | S50 并通知检验员 |
 
-### 7.3 结果自动判定规则（仅 Copilot 实现于后端）
+### 7.3 结果自动判定规则（GLM 实现于后端，Copilot 裁决口径）
 1. 标准值 `≤X` 型：检验值 ≤ X → 合格，> X → 不合格；
 2. `不得检出/不得使用` 型：未检出 → 合格，检出 → 不合格；
 3. 文本描述型（感官项目）：检验员选合格/不合格；
@@ -234,7 +239,7 @@ R100 综合管理（审核签发/权限管理/全部查询）；R1 样品登记�
 
 **前端**：`cd frontend && npm install && npm run build && npx vue-tsc --noEmit && npm run lint`
 **后端**：`cd backend && mvn clean compile -q && mvn clean package -DskipTests`
-任何 Agent 交付前必须通过本人端门禁；合入 develop 前必须通过 Copilot 终审。
+任何 Agent 交付前必须通过本人端门禁；合入 develop 前必须通过 Copilot diff 审查（审查范围见 2.3）。
 
 ## 10. Git 工作流（对应优化决策 0.3）
 
@@ -261,8 +266,8 @@ R100 综合管理（审核签发/权限管理/全部查询）；R1 样品登记�
 
 ## 12. 行为约束清单
 
-**GLM**：契约先行；核心业务只写完整可编译文件；每完成一个核心模块提炼 `.agents/skills/<模块>/SKILL.md`（含触发场景/前置/步骤/完整代码模板/踩坑）；定期执行 TODO 中"侦察"任务，把 GitHub 优秀实践（RuoYi-Vue-Plus、vue-element-plus-admin 等）沉淀进 `docs/knowledge/` 并转化为 skill；终审他人代码不通过须在 TODO 退回并写明原因。
+**GLM（S 级 + A 级，与 Copilot 同级）**：起草 api-spec 契约（Copilot 终审）；核心业务只写完整可编译文件；每完成一个核心模块提炼 `.agents/skills/<模块>/SKILL.md`（含触发场景/前置/步骤/完整代码模板/踩坑）；定期执行 TODO 中"侦察"任务，把 GitHub 优秀实践（RuoYi-Vue-Plus、vue-element-plus-admin 等）沉淀进 `docs/knowledge/` 并转化为 skill；作为代码 Owner 维护 frontend/ 与 backend/ 主流程；对他人的 diff 可提审查意见。
 
-**Copilot**：严格按 api-spec.md 对接，契约缺失即停工提问；开工先查 `.agents/skills/` 套用模板；交付前跑通质量门禁；额度不足按 2.3 降级，不硬扛 S 级。
+**Copilot（契约 + 裁决 + 审查，不接实现任务）**：对 `docs/api/api-spec.md` 做终审（字段命名/路径/响应结构/权限标识一致性）；对判定口径与跨模块语义歧义做最终裁决并写入 DECISIONS.md；合并进 develop 前对 diff 做审查（是否遵循 AGENTS.md、是否有安全隐患、是否破坏契约），不通过须在 TODO 退回并写明原因；可协助 GLM 起草契约，但不自行发起接口设计。
 
-**豆包**：维护 STATUS/HANDOFF/TODO 状态（最高优先，每 2 小时或收工一次）；以代码为准修正文档不一致；数据脚本独立小提交（`data:` 前缀）；遇到设计/决策问题不自行解决，提 TODO 给 Copilot。
+**豆包**：维护 STATUS/HANDOFF/TODO 状态（最高优先，每 2 小时或收工一次）；以代码为准修正文档不一致；数据脚本独立小提交（`data:` 前缀）；遇到设计/决策问题不自行解决，提 TODO 给 GLM。
