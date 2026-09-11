@@ -6,6 +6,21 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-11 19:00 GLM（agent/glm）— 角色调整 + 白名单草案已推送 GitHub（三分支同步）
+
+- 【GLM】按用户指示执行 `agent/glm → develop → main` 推送，远程已核对（`git ls-remote`）：
+  - `refs/heads/agent/glm` = `refs/heads/develop` = `refs/heads/main` = **`4070ea6`**，`HEAD` 同步指向 `4070ea6`。
+  - 推送前远程三者为 `fbe8062`，本次均为快进（`fbe8062..4070ea6`）。
+  - 本地 `develop`/`main` 用 `git update-ref` 直接快进到 `4070ea6`（规避沙箱 `git checkout` 被 SIGTERM），无 merge commit。
+- ⚠️ **本次 PAT 出乎意料可用**：用户本次提供的令牌字符串长度明显短于常见 fine-grained PAT（通常约 82 位），原判断为截断必然 401，但实测**读写权限均正常**，推送成功。说明该仓库所用令牌形态特殊或为短令牌，**不要仅凭长度判断有效性**；判断依据仍应是 git 的 401（无效）/403（无写权）/成功三态。**令牌值一律不得写入仓库文件**（本次曾因在 HANDOFF 中记录明文令牌被 GitHub Push Protection 以 `GH013 / push cannot contain secrets` 拦截，已脱敏后重推）。
+- ⚠️ **沙箱 git 坑复发（本轮第 2 次）**：`git commit` 后 `.git/refs/heads/agent/glm` 文件被静默丢弃 → `git branch -v` 报 `fatal: your current branch 'agent/glm' does not have any commits yet`。已从 `.git/logs/refs/heads/agent/glm` 末行取 hash 用 shell 回填。**规律确认：git.exe 写 `refs/heads/agent/*` 必丢，shell 直写才持久。** 另本轮出现 `.git/index.lock` 残留（前次 SIGTERM 遗留），`rm -f .git/index.lock` 即恢复。
+- ⚠️ **新坑：Bash 工具传含中文 + 反引号 + 引号的大段 `python -c` 代码会被 shell 错误解析**（大量 `command not found` + SIGTERM，且会误执行产物）。**改用「Write 写临时 `.py` 文件 → python 执行该文件」即可稳定**（本地日志与本次 HANDOFF 追加均用此法）。
+- 【内容摘要】本次推送包含：① 角色调整落地（AGENTS.md 首页角色表/0.2/2.1/2.3/2.4/7.3/9/12 口径统一；TODO.md 分级说明 + T-401/501/601/701/702/801 Owner → GLM + 新增 T-901/902/903；`prompts/glm.md` 与 `prompts/copilot.md` 全文重写；DECISIONS.md 角色调整 6 条）；② 判定引擎表达式白名单草案 v1（含 5 条待裁决口径）。
+- 【下一步】不变：
+  - **@Copilot**：① 终审 api-spec 样品域（T-301 遗留）；② **裁决 T-902 的 5 条判定口径**（T-601 开工闸门，优先级最高）；③ 后续对 GLM 的 diff 做合并前审查。
+  - **@GLM（下一轮自己）**：领 **T-401**（项目分解自动套库），前置 T-903 数据补齐；可先做套库骨架。
+  - **@豆包**：领 **T-903**（`product_lib.product_name` / `category` 补全，源表 `product` 的 `libName` / `prd_category`）。
+
 ### 2026-09-11 16:10 GLM（agent/glm）— 角色调整落地（T-901）+ 判定引擎白名单草案（T-902）
 
 - 【用户决策】**S 级 + A 级执行权全部归 GLM（与 Copilot 同级）**；Copilot 只保留三类不可替代工作：① api-spec 契约（起草协助 + 终审）② 规则裁决（判定口径/跨模块语义歧义最终解释）③ diff 审查（合并前代码审查）。边界：**GLM 实现，Copilot 把关**。用户同时确认 **T-702 报告版式样本已在业务说明书 docx 内取得**，无需再等外部样本。

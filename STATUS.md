@@ -3,7 +3,7 @@
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
 ## 当前工作分支
-- **GLM：`agent/glm`（本轮 T-901 治理落地 + T-902 白名单草案 🔵 进行中）**
+- **GLM：`agent/glm`（T-901 角色调整落地 + T-902 白名单草案 ✅ 完成并已推送；远程 `agent/glm`=`develop`=`main`=`4070ea6`）**
 - Copilot：`agent/copilot`（角色调整后转为**契约终审 + 规则裁决 + diff 审查**；待命：T-301 样品域契约终审、T-902 判定口径 5 条裁决）
 - 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅；新增 T-903 product_name 补全待领）
 
@@ -18,7 +18,7 @@
 - 本地仓库：`D:\lims`（远程 https://github.com/BrokenHeart31/lims.git ）
 - 合并路径：`agent/xxx → develop → main`（本轮由 GLM 执行 main 固化）
 
-## 本轮占用文件（GLM / T-901+T-902，进行中）
+## 本轮占用文件（GLM / T-901+T-902，已提交并推送 4070ea6）
 - 新增：`docs/knowledge/2026-09-11-judge-engine-whitelist-draft.md`（判定引擎表达式白名单草案 v1）
 - 修改：`AGENTS.md`、`TODO.md`、`STATUS.md`、`DECISIONS.md`、`HANDOFF.md`、`prompts/glm.md`、`prompts/copilot.md`
 
