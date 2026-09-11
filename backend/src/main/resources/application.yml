@@ -23,7 +23,9 @@ spring:
     # 开发环境默认本地库（AGENTS.md 约定的实训账号，仅限本机开发）；
     # 任何非本机环境必须通过 application-dev.yml 覆盖，禁止把真实口令提交进本文件
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/lims?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # 注意：characterEncoding 是 Java 字符集名，必须写 utf8（写 utf8mb4 会被 Connector/J 拒绝：
+    # Unsupported character encoding 'utf8mb4'）；库表侧 utf8mb4 由 DDL 与连接协商保证
+    url: jdbc:mysql://localhost:3306/lims?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: 11111111
 
