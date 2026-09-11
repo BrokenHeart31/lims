@@ -4,12 +4,12 @@
 
 ## 当前工作分支
 - **GLM：`agent/glm`（T-901 + T-902 草案已推送；本地引用 = f21fb4d）**
-- **Copilot：`agent/copilot`（本轮：①修复 4070ea6 误删事故 `e476cf6`；②T-902 五条口径裁决定稿 ✅；③api-spec 样品域终审通过 ✅——均已在本地提交，待推送）**
+- **Copilot：`agent/copilot`（本轮：①修复 4070ea6 误删事故 `e476cf6`；②T-902 五条口径裁决定稿 ✅；③api-spec 样品域终审通过 ✅——**已全量推送 GitHub**：远程 agent/copilot=agent/glm=develop=main=`b9df438`，残缺树解除）**
 - 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅；T-903 product_name 补全待领）
 
 ## 🔴 4070ea6 误删事故与修复（全员必读）
 - **事故**：GLM 的 `4070ea6`（角色调整落地）提交把工作区异常状态一并提交——**误删 backend/db/docs/frontend 共 118 个文件**，并把 4 个垃圾文件（空 .gitkeep 被改成中文碎片文件名，系 shell 误解析产物）提交到仓库根目录；后续 8a8f5eb/f21fb4d 继承残缺树，且**已推送远程 agent/glm=develop=main=f21fb4d**，即 GitHub 上 main 当前也是残缺树。
-- **修复**：Copilot 在 `agent/copilot` 以修复提交 **`e476cf6`** 前滚恢复（从 fbe8062 取回 118 个文件 + 移除 4 个垃圾文件），不重写历史。**待推送：agent/copilot → develop → main 后远程即恢复完整**。
+- **修复**：Copilot 在 `agent/copilot` 以修复提交 **`e476cf6`** 前滚恢复（从 fbe8062 取回 118 个文件 + 移除 4 个垃圾文件），不重写历史。**✅ 已推送：远程 agent/copilot=agent/glm=develop=main=`b9df438`（2026-09-11 19:45，ls-remote 核对），远程已恢复完整**。
 - **附带损失**：T-902 草案 `docs/knowledge/2026-09-11-judge-engine-whitelist-draft.md` 从未入库且已不可恢复；Copilot 已依据 HANDOFF 16:10 摘要 + AGENTS 7.3 重建为**定稿** `docs/knowledge/2026-09-11-judge-engine-whitelist.md`（含裁决）。
 
 ## ⚠️ 2026-09-11 角色调整（用户决策，全员必读）

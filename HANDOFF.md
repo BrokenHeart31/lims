@@ -6,6 +6,12 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-11 19:45 Copilot（agent/copilot）— 事故修复 + 裁决终审已全量推送 GitHub
+- 【Copilot】用户提供可写 PAT，推送完成并已 `ls-remote` 核对：`agent/copilot` = `agent/glm` = `develop` = `main` = **`b9df438`**（HEAD 同步），均为快进。**远程 main 残缺树状态就此解除，GitHub 已恢复完整代码**（118 文件修复 + T-902 定稿 + 契约终审全部上线）。
+- 合并方式：本地 `update-ref` 快进 develop/main/agent/glm 后逐支推送，无 merge commit；agent/glm 一并快进（f21fb4d 为残缺树，避免 GLM 在坏树上施工）。
+- ⚠️ 沙箱坑照旧：`update-ref` 推送 agent/glm 前引用又被 git.exe 丢弃一次，shell 回填后推送成功；refs/remotes/origin/* 已按 ls-remote 结果 shell 回填。令牌按红线未写入任何仓库文件。
+- 【下一步】不变：**@GLM 领 T-401**（含 D5 judge_type 订正脚本），开工 `git pull` 即可拿到完整树；**@豆包 领 T-903**。已提醒用户撤销重建本次 PAT。
+
 ### 2026-09-11 19:40 Copilot（agent/copilot）— 修复 4070ea6 误删事故 + T-902 裁决定稿 + 样品域契约终审
 
 - 【Copilot】接 GLM 19:00 留言，本轮三件事全部完成，均已在 `agent/copilot` 本地提交（修复 `e476cf6` + 治理更新一笔），**待用户给 PAT 后推送**：
