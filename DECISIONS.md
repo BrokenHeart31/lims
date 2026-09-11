@@ -95,3 +95,15 @@
 | 2026-09-11 | **强调色与按钮底色分离**：`--lims-accent`（青 `#00F5D4`）只做光晕/描边/激活条；按钮/CTA 用 `--lims-brand-gradient`（深端 `#0b7f7a` → 蓝 `#2442ff`，白字对比度 ≥ 4.4:1） | 直接用浅青做按钮底会导致白字看不清（对比度约 2.7:1），是「华丽但不可用」的典型陷阱 | GLM |
 | 2026-09-11 | **V3 落地为 fail-loud 口径校验器**（执行 T-905 裁决 R1）：`db/migrations/V3__correct_product_lib_item_judge_type.sql` 归一化改为**派生表统一计算 + NULL 安全比较 `<=>`**（避免 SET/WHERE 双写漂移、避免 `judge_type IS NULL` 行因 `UNKNOWN` 漏更新）；末尾加 `SIGNAL SQLSTATE '45000'` 断言，drift>0 或越界>0 即报错中止（退出码 1） | 裁决硬性要求「禁止静默通过」；实测验证双路径：正常 3728 行零变更 → 通过(exit 0)；人为制造 drift=1/outside=1 → 报错明细 + exit 1；再跑 V3 → 归一化并恢复 exit 0 | GLM（执行 T-905 裁决） |
 | 2026-09-11 | **el-tag 全局禁用入场过渡**（实测缺陷修复）：表格内 `el-tag` 会卡在 `el-zoom-in-center-enter-from`（opacity:0），导致「分解进度」「状态」两列**完全空白**；修法为 CSS 统一 `transition: none !important` + `enter-from/active` 强制 opacity:1 | 标签在**异步数据到达后**才挂载，Vue 的双 rAF `nextFrame` 回调被打断时不执行，过渡类永不摘除 → 元素永久 opacity:0。`transition:none` 会让 Vue 判定「无过渡」并立即摘除类名（已用探针页验证类名消失、opacity=1） | GLM |
+
+
+### T-501 关键设计（2026-09-11 GLM）
+
+| 日期 | 决策 | 理由 | 决策人 |
+|---|---|---|---|
+| 2026-09-11 | **三级分配规则顺序固定为 分类→资质→兜底**，assignType 数字语义固定为 0=未指派 / 1=分类 / 2=资质 / 3=人工改派；人工改派（assignType=3）永不覆盖 | 规则顺序固定利于后续审计与单测；assignType=3 不覆盖避免「主管手改又被自动分配覆盖」的痛点 | GLM（自裁） |
+| 2026-09-11 | **detail.candidates 仅含资质者**，不出现「无资质者作为候选」；reassign 必须从 candidates 中选或传具资质工号，否则 400 | 与 AGENTS 7.4 「仅允许指派有资质者」一致；前端下拉不出错选项 | GLM（自裁） |
+| 2026-09-11 | **tester_method 0 行视为数据缺口而非实现缺陷**，auto 自然落到 pending 兜底；不写「自动创建资质」的兜底逻辑 | 反建资质会破坏数据真实性；业务方补录即可恢复，文档化在契约 5.0 | GLM（自裁） |
+| 2026-09-11 | **状态机推进必经白名单 + 乐观条件 UPDATE**：S30→S40 走 SampleStatusTransition.assertTransition + baseMapper.update(entity, WHERE id=? AND status=30)，updated==0 抛「样品状态已变更，请刷新」 | 与 T-301 / T-401 一致；防止高并发场景下「以为流转了实际没流转」 | GLM（沿用既有约定） |
+| 2026-09-11 | **pagePending 用内联 IN 一次统计 assignDone**，避免 N+1（每样品一次 COUNT sample_item WHERE sample_id=? AND assign_status=1 AND deleted=0） | 列表页性能护栏；样品量大时不能 N+1 | GLM（自裁） |
+| 2026-09-11 | **沙箱坑扩展（commit hash 末位错位 + bash heredoc 中文括号 syntax error）**：commit 后必跑 `git rev-parse HEAD` + `git fsck --lost-found` 双验证；ref 错位时用真实 hash 覆盖；commit message 走临时文件 `git commit -F <file>` | 已踩两次；预防第三次 | GLM（沉淀） |

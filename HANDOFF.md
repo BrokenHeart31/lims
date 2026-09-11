@@ -282,3 +282,38 @@
   - **@GLM（下一轮自己）**：**领 T-501**（检验任务安排：自动分配 NA/XA/SA + 方法资质 + S30→S40）。⚠️ 数据前置需先验证（`user_method` 3 行粗粒度 + `user_item` 6 行项目级；`tester_method` 表 0 行）；T-701 实现时须补「审核退回 → S50」状态机分支。
   - **@豆包**：可按 AGENTS 2.7 领杂事（建议先做 `docs/database-dictionary.md` 数据字典 + T-802 省平台上报模板）。
   - **@Copilot**：无阻塞项；如收到 GLM 的复核请求再介入（配额剩余 1 次）。
+
+### 2026-09-11 21:30 GLM（agent/glm）— T-501 检验任务安排域全链路完成 ✅（代码已推 7fea331）
+
+【GLM】本轮完成事项：
+- **T-501 全链路**（契约 + 建表 + 实体 + Mapper + 3 DTO + 3 VO + Service + Impl + Controller + 14 单测 + 前端页 + 路由菜单）
+- **关键设计**：三级分配规则（分类 NA/XA/SA 优先 → 方法资质次之 → 兜底待人工指派），assignType 区分来源（人工改派永不覆盖），候选列表只含资质者，S30→S40 走 SampleStatusTransition 白名单
+- **质量门禁**：mvn test 37/37（新增 14），npm run build ✅，lint ✅ 0 错误 0 警告
+- **远程**：agent/glm = develop = main = 7fea3314e24ed03e0f15281157f53dbea296bf01（已推送）
+
+【数据前提实测（落档契约 5.0）】
+- user_method 3 行（njna001/njxa000/njsa000）+ sys_user 3 个共享检验员：分类规则可用
+- tester_method **0 行**：方法资质规则当前无数据，会自然落到 pending 兜底（非缺陷）
+- 旧 user_item 引用 nj009/nj010 不在 sys_user 中：未来补录资质时需修正
+
+【沙箱坑本轮新增两条】
+1. **bash heredoc 中文 + 括号 + 嵌套引号**触发 `syntax error near unexpected token '('`——commit message 改写到 `C:/Users/Chen/AppData/Local/Temp/*.msg` 再用 `git commit -F <file>` 喂入
+2. **commit hash 末位被沙箱错写**（ref 写 7fea3311 但对象实际是 7fea3314）——提交后必 `git fsck --lost-found` 找 `dangling commit`，用真实 hash 覆盖 `.git/refs/heads/agent/glm` 与 HEAD
+
+【⚠️ 未完成 / 明日首要任务】
+1. **杀旧 spring-boot 进程 PID 11640** → 重启后端 → 联调 `/api/assign/*` 五个接口（旧进程持有 sample_item 加 6 字段前的字节码，新字段未生效）
+2. **前端 assign 页面视觉验证**截图（Edge headless 模式）
+3. 选做：assign 页加 candidates 空状态文案
+
+【明日续做（按优先级）】
+- **T-602 结果录入 + 判定引擎**（S，已有裁决定稿，构造 sample_item 数据覆盖 jt2/jt3 全分支）
+- **T-701 审核 / 签发**（S，需补 SampleStatusTransition「审核退回 → S50」分支）
+- T-801/T-802 查询与上报（A/B）
+
+【@豆包 可领】
+- `docs/database-dictionary.md` 数据字典补全
+- T-802 省平台上报导出模板
+- tester_method 资质补录数据（需业务方提供）
+
+【@Copilot】
+- 无阻塞项；如 GLM 发起复核请求再介入（配额剩余 1 次）

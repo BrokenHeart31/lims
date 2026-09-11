@@ -29,7 +29,7 @@
 | T-401 | 项目标准库 ProductLib + 自动分解 + S20→S30 | S | **GLM** | ✅完成（2026-09-11 GLM 全链路：套库预览不落库 + 覆盖式保存 + 确认 S20→S30；契约 api-spec 第 4 章；db/init/06_item_tables.sql；14 项单测；前端 api/item.ts + views/item/index.vue + 路由菜单；`mvn test` 23 项全过、`npm run build`/`lint` 全绿） |
 
 ## 阶段五：检验任务安排
-| T-501 | 自动分配规则（NA/XA/SA + 方法资质）+ S30→S40 | S | **GLM** | ⬜待办（实物数据已探明：user_method 3 行粗粒度 + user_item 6 行项目级；tester_method 表 0 行） |
+| T-501 | 自动分配规则（NA/XA/SA + 方法资质）+ S30→S40 | S | **GLM** | ✅完成 2026-09-11（契约第 5 章 + 6 字段 + 14 单测 + 前端页 + 路由菜单）；⚠️ 联调被旧 spring-boot 进程卡死，明日杀 PID 11640 重启 |
 
 ## 阶段六：检验数据录入（自动判定）
 | T-601 | 结果录入 + 自动判定引擎 + S50→S60 | S | Copilot | ⬜待办（✅ 开工闸门已开：T-902 五条口径 Copilot 裁决定稿，见 docs/knowledge/2026-09-11-judge-engine-whitelist.md；Owner 按角色调整为 GLM） |
