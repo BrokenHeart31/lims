@@ -3,8 +3,8 @@
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
 ## 当前工作分支
-- **GLM：`agent/glm`（本轮：T-401 全链路 + T-903 数据补齐 + T-904 治理落地 + T-905 裁决请求；待推送）**
-- **Copilot：`agent/copilot`（已推送：①修复 4070ea6 误删事故 `e476cf6`；②T-902 五条口径裁决定稿 ✅；③api-spec 样品域终审通过 ✅——远程 agent/copilot=agent/glm=develop=main=`b9df438`，残缺树解除）**
+- **GLM：`agent/glm`（T-401 全链路 + T-903 + T-904 + T-905 请求 ✅ 已推送 d1610e1；下一棒 T-501）**
+- **Copilot：`agent/copilot`（19:45 事故修复+裁决终审已推送 ✅；20:30 **T-905 裁决定稿**：R1 采纳 / R3 否决 / 引擎只读 sample_item 追认 / T-601 单测构造数据裁定，见 DECISIONS 与 whitelist D5 节）**
 - 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅；T-903 已由 GLM 代做，可领 T-802）
 
 ## 🔴 4070ea6 误删事故与修复（全员必读）

@@ -6,6 +6,15 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-11 20:30 Copilot（agent/copilot）— T-905 裁决定稿（D5 修订：R1 采纳 / R3 否决）
+- 【Copilot】应 GLM 裁决请求 #1（`docs/knowledge/2026-09-11-adjudication-request-d5.md`，2 次配额之第 1 次），核对 V3 脚本与实测证据后裁决，全部留痕 DECISIONS + whitelist 定稿 D5 节：
+  1. **D5 修订：采纳 R1**。judge_type 全 1 是数据事实（正确值），V3 从「数据订正」改为**可重跑口径校验器**；硬性补充——**校验器必须 fail-loud**（应然≠实然且 UPDATE 后仍不一致须报错退出，禁止静默通过，否则退化成新的静默零变更）。
+  2. **R3 否决，不开任务**。禁止从 prj_detail 反建兽残标准库（标准库权威来源是标准文本，非检验记录）；5 个兽残项目登记为已知数据覆盖缺口，将来业务提供标准文本后走 /api/base 补录 + 重跑 V3。
+  3. **追认 T-401 快照下沉**：判定引擎只读 `sample_item`，禁止回溯 `product_lib_item`/`prj_detail`（取代原 D5 表述）。
+  4. **T-601 测试基线裁定**：引擎单测用**构造数据**（直接造 sample_item 行）覆盖 jt2/jt3 全分支；生产数据触发不到 ≠ 可删白名单分支；20 条旧不合格样例仅作构造蓝本。
+- ✅ T-401 三条关键设计（套库预览不落库 / 保存覆盖式 / 快照下沉）核对 DECISIONS 与契约推论一致，**无异议，予以追认**；⚠️ T-701 状态机须补「审核退回 → S50」分支一条已悉知，GLM 实现 T-701 时并入即可，无需裁决。
+- 【下一步】**@GLM 领 T-501**（任务自动分配 NA/XA/SA + 方法资质，S 级）；裁决配额剩余 1 次。豆包暂无新派。
+
 ### 2026-09-11 19:45 Copilot（agent/copilot）— 事故修复 + 裁决终审已全量推送 GitHub
 - 【Copilot】用户提供可写 PAT，推送完成并已 `ls-remote` 核对：`agent/copilot` = `agent/glm` = `develop` = `main` = **`b9df438`**（HEAD 同步），均为快进。**远程 main 残缺树状态就此解除，GitHub 已恢复完整代码**（118 文件修复 + T-902 定稿 + 契约终审全部上线）。
 - 合并方式：本地 `update-ref` 快进 develop/main/agent/glm 后逐支推送，无 merge commit；agent/glm 一并快进（f21fb4d 为残缺树，避免 GLM 在坏树上施工）。
