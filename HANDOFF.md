@@ -47,8 +47,11 @@
 - 【本机环境状态】本机库已应用 `db/init/08` + `V5`；样品 1 已跑完整链路停在 **S80**
   （`sample_result` 7 行 + `sample_audit_log` 3 行 + 审核/签发人 nj001），**T-702 可直接开工**。
   后端 8080（`spring-boot:run`）与前端 vite 5173 本轮结束保持运行。
-- 【推送待办】远端三分支仍在 `fd6897b`；本地 `agent/glm`=`develop`=`main`（+本轮提交）、`agent/copilot`=`d1910dc`
-  领先，**仍需用户提供有写权限的 PAT**（fine-grained 需 Contents: Read and write）后一次性推送并 `ls-remote` 核对；用完请撤销重建。
+- 【推送已完成 ✅】2026-09-12 16:45 用户提供可写 PAT，本机推送并 `ls-remote` 核对：
+  远程 `HEAD` = `agent/glm` = `develop` = `main` = **`4bdde18`**、`agent/copilot` = `d1910dc`、`agent/doubao` = `6282c64`，
+  四支均为**快进**（远程原在 `fd6897b` / copilot `2e9f471`）；本地 `refs/remotes/origin/*` 已用 shell 回填。
+  ⚠️ 令牌只出现在 shell 命令中，**未写入任何仓库文件**；已提醒用户到 GitHub 撤销并重建。
+  **本地与远程目前完全一致，下一棒可直接开工，无待推项。**
 
 ### 2026-09-12 15:32 Copilot（agent/copilot）— T-601 复核终审：**通过**（2 条保留意见转 TODO）+ T-701 只读铺垫
 

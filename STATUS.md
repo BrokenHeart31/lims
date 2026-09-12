@@ -6,7 +6,8 @@
 - **GLM：`agent/glm`（T-401 ✅ / T-906~908 ✅ / T-501 ✅ / T-601 ✅ / **T-701 + T-911 + T-912 ✅**；本轮提交待推）**
 - **Copilot：`agent/copilot`（`d1910dc`：T-601 复核终审通过 + T-701 只读铺垫；无阻塞项，配额剩余 1 次且不得阻塞）**
 - 豆包：`agent/doubao`（`6282c64`；可领 T-802 + 数据字典补 `sample_result`/`sample_audit_log`）
-- **同步口径**：`agent/glm` = `develop` = `main` = `d1910dc`（GLM 本轮开工时已把 Copilot 复核提交并入三支），T-701 提交在其之上。
+- **同步口径**：`agent/glm` = `develop` = `main` = **`4bdde18`**，`agent/copilot` = `d1910dc`，`agent/doubao` = `6282c64`——
+  **本地与远程一致**（2026-09-12 16:45 用户提供 PAT 后本机推送并 `ls-remote` 核对，四支均为快进；令牌未写入任何仓库文件，已提醒用户撤销重建）。
 - **⚠️ 环境**：本机 `git.exe` 已不在 PATH（`C:\Users\Chen\Desktop\Git` 被删），须用全路径
   `C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`。
 
