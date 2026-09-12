@@ -565,7 +565,144 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ---
 
-## 6. 待落地域（占位，按七阶段顺序补充）
+## 6. 检验结果录入域 `/api/result`（T-601）
+
+> 阶段六：检验员按已安排的**检测单项**录入检验结果，系统按判定规则**自动判定单项结论**；
+> 全部录齐后样品流转 **S50→S60（检验完成）**。
+> 权限标识：`result:entry`（与 seed `sys_menu` id=61、AGENTS.md 8.2 严格一致）。
+> 结论口径：**唯一依据** `docs/knowledge/2026-09-11-judge-engine-whitelist.md`（Copilot 裁决定稿）；
+> 实现形态与数据留痕依据 `docs/knowledge/2026-09-12-judge-engine-research.md`。
+> 状态机：进入本域要求样品为 **S40（已安排）**；首次保存流转 **S40→S50（检验中）**；
+> 提交流转 **S50→S60**，均经 `common/enums/SampleStatusTransition` 白名单校验 + 乐观条件 UPDATE。
+
+### 6.0 判定规则（引擎闭集，禁止前端自算）
+
+**判定形态为「代码里的有限状态矩阵」**——`std_value` 只被**解析**、从**不被执行**
+（不引入 Drools/Easy Rules/Aviator 等规则或表达式引擎，选型依据见上引 knowledge 文档第 1 节）。
+
+- **入口分派**：先按 `judge_type` 分派（1 限量比较 / 2 不得检出·不得使用 / 3 文本·感官人工），
+  表达式内再按标准值/检验值的**白名单闭集**匹配。
+- **标准值 5 形态**：①纯数值 ②`≤数值`（含 `<=`/`<` 前缀）③`不得检出` ④`不得使用` ⑤`--`（无判定依据）。
+- **检验值 2 形态**：①数值 ②`未检出`（含「未检出（<0.01）」与 `ND`）。
+- **输出 3 形态**：`合格`(1) / `不合格`(2) / `待判定`(3)——**闭集外或依据不足一律 `待判定` + WARN 日志，禁止静默判合格**。
+- **数值比较一律 `BigDecimal.compareTo`**，禁止 `==` 与 `BigDecimal.equals`（后者比较 scale）。
+
+| 判定类型 | 检验值 | 结论 |
+|---|---|---|
+| jt1 限量比较（标准值 数值/≤X） | 未检出 | 合格 |
+| jt1 | 数值 < 最低检出限 | 合格（数值低于检出限视同未检出，D1） |
+| jt1 | 数值 ≤ X / > X | 合格 / 不合格 |
+| jt2 不得检出·不得使用 | 未检出 | 合格 |
+| jt2 | 数值 ≥ 检出限 / < 检出限 | 不合格 / 合格（D2：≥ 检出限才算检出） |
+| jt2 | 数值 且 检出限为空 | **待判定**（禁默判合格） |
+| 标准值 `--`（无依据） | 未检出，或数值 < 检出限 | 合格 |
+| 标准值 `--` | 数值（≥ 检出限 或 未维护检出限） | **待判定**（D4） |
+| jt3 文本/感官 | — | 检验员人工选择 合格/不合格（规则 3，`conclusion_source=2`） |
+| 其余任意组合 | — | **待判定** + WARN 日志 |
+
+**整体结论（AGENTS 7.3 规则 6 + 白名单 D3）**：由「该样品全部**非参考项**单项结论」聚合——
+存在非参考项不合格 → 不合格；存在非参考项待判定或存在未录入项 → 待判定；
+全部非参考项合格且数量 ≥ 1 → 合格；**无非参考项（全为参考项）→ 待判定**。
+参考项（`is_reference=1`）单项结论照常计算并展示，但**不计入整体结论**。
+
+**引擎只读 `sample_item`**（T-401 快照下沉字段），**禁止回溯 `product_lib_item` / `prj_detail`**（白名单定稿 D5 追认）。
+
+### 6.1 字段模型（`sample_result`，camelCase）
+
+一个检测单项恒对应一行结果（唯一键 `(sample_item_id, deleted)`）；重复保存为**覆盖式 upsert**，
+修订由审计字段留痕，不产生第二行。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `testValue` | string | 检验结果**原始值**（数值 或 未检出），≤100 |
+| `conclusion` | number | 单项结论：1=合格 2=不合格 3=待判定 |
+| `conclusionSource` | number | 结论来源：1=引擎自动判定 2=检验员人工判定（jt3） |
+| `judgeBasis` | string | **判定依据说明**（人可读，审计追溯用） |
+| `enteredBy` / `enteredAt` | string | 当前值的录入人与时间 |
+| `remark` | string | 备注，≤255 |
+| `createdBy/createdAt/updatedBy/updatedAt` | string | 审计字段（修订留痕） |
+
+> 判定依据参数（`stdValue`/`judgeType`/`lowerLimit`/`isReference`）**不冗余存放**，一律取自
+> `sample_item`（检验时点快照）——避免两处真相不一致。
+> 样品层增量：`conclusion`（整体结论，TINYINT，见上方聚合规则）。
+
+### 6.2 分页查询待录入样品 / 查询录入明细
+
+- `GET /api/result/pending`
+- 权限：`result:entry`
+- 参数：`current`（默认 1）、`size`（默认 10，≤500）、`sampleNo`（模糊）、`sampleName`（模糊）
+- 仅返回 **status ∈ {S40 已安排, S50 检验中}** 且有检测单项的样品。
+- 响应 `data`：`{ records, total, current, size }`，`records[]` 字段：
+  `id / sampleNo / sampleName / clientName / taskNo / taskBatchNo / inspectType / samplingDate /
+  status / statusLabel / itemTotal / enteredCount / conclusion / conclusionLabel`
+
+`GET /api/result/detail/{sampleId}`　权限：`result:entry`
+
+- 响应 `data`：
+  - `sampleId / sampleNo / sampleName / clientName / status / statusLabel /
+    itemTotal / enteredCount / conclusion / conclusionLabel / allowEdit`
+    （`allowEdit` = 状态 ∈ {S40, S50}，前端据此禁用录入控件）
+  - `items[]`：`{ id, itemOrder, itemName, unit, basisCode, methods, stdValue, judgeType, judgeTypeLabel,
+    isReference, lowerLimit, testerNo, testerName, testValue, conclusion, conclusionLabel,
+    conclusionSource, conclusionSourceLabel, judgeBasis, enteredBy, enteredAt, remark, entered }`
+    （`entered` 为后端派生：是否已录入结果）
+- 样品不存在 → `code=400`。
+
+### 6.3 实时判定预览（不落库）
+
+`POST /api/result/judge`　权限：`result:entry`
+
+- 请求体：`{ "itemId": 12, "testValue": "0.10", "manualConclusion": null }`
+  （`manualConclusion` 仅 `judgeType=3` 时使用：1=合格 2=不合格）
+- 行为：按 6.0 矩阵纯计算，**不写库**，供录入页即时展示结论与依据。
+- 响应 `data`：`{ itemId, itemName, unit, stdValue, lowerLimit, judgeType, testValue,
+  conclusion, conclusionLabel, conclusionSource, conclusionSourceLabel, judgeBasis }`
+- 单项不存在 → `code=400`。
+
+### 6.4 保存录入（可分次；首次保存 S40→S50）
+
+`PUT /api/result/save`　权限：`result:entry`
+
+- 请求体：
+
+```json
+{
+  "sampleId": 1,
+  "items": [ { "itemId": 12, "testValue": "0.10", "manualConclusion": null, "remark": null } ]
+}
+```
+
+- 行为：逐项调引擎判定后 **upsert** 结果行；**允许只录部分项**（检验员按批次录，未提交的项保持原状）。
+- 校验：
+  - 样品必须存在且状态 ∈ **{S40, S50}**；否则 `code=400`。
+  - `items` 不能为空（至少 1 项）；每个 `itemId` 必须**属于该样品**，否则 `code=400`。
+- 状态流转：若样品为 S40 → 首次保存流转 **S40→S50**（乐观 `WHERE id=? AND status=40`，
+  并发下若已被他人推进为 S50 则视为成功）。
+- 整体结论：保存后按 6.0 聚合规则重算并回写 `sample_info.conclusion`（未录齐恒为 3 待判定）。
+- 响应 `data`：`{ sampleId, sampleNo, status, statusLabel, itemTotal, enteredCount,
+  conclusion, conclusionLabel, items[] }`，
+  `items[]` = `{ itemId, itemOrder, itemName, testValue, conclusion, conclusionLabel,
+  conclusionSource, conclusionSourceLabel, judgeBasis }`
+- 事务：`@Transactional(rollbackFor = Exception.class)`。
+
+### 6.5 提交（全部录齐 → S50→S60）
+
+`POST /api/result/submit`　权限：`result:entry`
+
+- 请求体：`{ "sampleId": 1 }`
+- 行为：
+  1. 校验样品存在且状态 ∈ {S40, S50}；
+  2. 校验该样品**全部检测单项均已录入结果**，否则 `code=400`「仍有 N 个检测单项未录入结果」；
+  3. 由 S40 直接提交时先补 **S40→S50**，再 **S50→S60**（两步均经白名单校验）；
+  4. 乐观条件 UPDATE（`WHERE id=? AND status=50`）落 S60，防并发双击跳态；
+  5. 回写整体结论。
+- 响应 `data`：同 6.4，`status=60`、`statusLabel="检验完成"`。
+- 说明：若存在 **待判定** 项，**不阻断提交**（整体结论如实为 3 待判定），
+  由 T-701 审核/签发环节把关放行——「用流程阻断掩盖数据缺口」会令样品永久卡在 S50。
+
+---
+
+## 7. 待落地域（占位，按七阶段顺序补充）
 
 | 域 | 前缀 | 对应任务 | 状态 |
 |---|---|---|---|
@@ -576,6 +713,6 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 | 样品登记（Excel 导入） | /api/sample/* | T-301 | ✅（第 3 章） |
 | 项目分解 | /api/item/* | T-401 | ✅（第 4 章） |
 | 任务安排 | /api/assign/* | T-501 | ✅（第 5 章） |
-| 结果录入（自动判定） | /api/result/* | T-601 | ⬜ |
+| 结果录入（自动判定） | /api/result/* | T-601 | ✅（第 6 章） |
 | 报告审核签发/生成 | /api/report/* | T-701/T-702 | ⬜ |
 | 查询与省平台上报 | /api/query/* /api/export/* | T-801/T-802 | ⬜ |

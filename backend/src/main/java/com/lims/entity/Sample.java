@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.lims.common.enums.ResultConclusion;
 import com.lims.common.enums.SampleStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -98,6 +99,15 @@ public class Sample extends BaseEntity {
     /** 样品状态机（落库 TINYINT code；导入落库即 S10） */
     private SampleStatus status;
 
+    /**
+     * 整体结论（T-601）：1=合格 2=不合格 3=待判定。
+     *
+     * <p>AGENTS 7.3 规则 6 的派生值——由「该样品全部**非参考项**单项结论」聚合而来
+     * （参考项不计入整体，白名单 D3 裁决）。在结果保存/提交/查询时重算回写，
+     * 供报告生成（T-702）与查询（T-801）直接取用。未进入录入阶段时为 {@code null}。</p>
+     */
+    private ResultConclusion conclusion;
+
     /** 登记确认人（S10→S20 时写入） */
     private String confirmedBy;
 
@@ -107,5 +117,10 @@ public class Sample extends BaseEntity {
     /** 状态中文名（非持久化，出网供前端展示，避免前端维护 code→label 字典） */
     public String getStatusLabel() {
         return status == null ? null : status.getLabel();
+    }
+
+    /** 整体结论中文名（非持久化，出网供前端展示） */
+    public String getConclusionLabel() {
+        return conclusion == null ? null : conclusion.getLabel();
     }
 }

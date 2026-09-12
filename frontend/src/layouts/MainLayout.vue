@@ -5,6 +5,7 @@ import { ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
   Document,
+  EditPen,
   Expand,
   Fold,
   List,
@@ -30,6 +31,7 @@ const menus = [
   { path: '/sample', title: '样品登记', icon: markRaw(Document) },
   { path: '/item/decompose', title: '项目分解', icon: markRaw(Operation) },
   { path: '/assign/index', title: '任务安排', icon: markRaw(UserFilled) },
+  { path: '/result/entry', title: '结果录入', icon: markRaw(EditPen) },
 ]
 
 /** 侧栏折叠（专注录入时可收起，给数据区让出宽度） */

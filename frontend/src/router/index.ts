@@ -55,6 +55,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '任务安排', permissions: ['assign:confirm'] },
       },
       {
+        path: 'result/entry',
+        name: 'result-entry',
+        component: () => import('@/views/result/index.vue'),
+        meta: { title: '结果录入', permissions: ['result:entry'] },
+      },
+      {
         path: '403',
         name: 'forbidden',
         component: () => import('@/views/error/403.vue'),

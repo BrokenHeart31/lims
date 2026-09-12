@@ -53,6 +53,7 @@ CREATE TABLE `sample_info` (
   `task_no`               VARCHAR(50)  DEFAULT NULL COMMENT '关联监抽任务编号（supervise_task.task_no）',
   `task_batch_no`         VARCHAR(50)  DEFAULT NULL COMMENT '任务批号',
   `status`                TINYINT      NOT NULL DEFAULT 10 COMMENT '样品状态机 code（S10=10…S90=90，见 common/enums/SampleStatus）',
+  `conclusion`            TINYINT      DEFAULT NULL COMMENT '整体结论 1=合格 2=不合格 3=待判定（见 common/enums/ResultConclusion，T-601 回写）',
   `confirmed_by`          VARCHAR(64)  DEFAULT NULL COMMENT '登记确认人（S10→S20 时写入）',
   `confirmed_at`          DATETIME     DEFAULT NULL COMMENT '登记确认时间',
   `created_by`            VARCHAR(64)  DEFAULT NULL COMMENT '创建人',

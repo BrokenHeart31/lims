@@ -148,20 +148,51 @@ npm run lint                      # 必须 0 错误 0 警告
 ### 第 9 步：提交与推送
 ```bash
 git add -A
-git diff --cached --name-status      # ⭐ 逐项核对！确认无 node_modules/dist/target、无删除项
+git diff --cached --name-status      # ⭐ 逐项核对！确认无 node_modules/dist/target，且不含删除项
 grep -rniE "github_pat|ghp_|password" <改动文件>   # 确认无密钥
-git commit -F - <<'EOF'
-feat: T-xxx 简要说明
-
-详细说明...
-EOF
+# ⚠️ 不要用 heredoc 写 commit message（中文+括号会触发 syntax error 整段被吞）
+#    先 Write 到 C:\Users\Chen\AppData\Local\Temp\commit.msg，再：
+git commit -F /c/Users/Chen/AppData/Local/Temp/commit.msg
+git rev-parse HEAD                   # ⭐ 与 fsck 双验证（沙箱会写错 ref 末位 hash）
+git fsck --lost-found 2>&1 | head
 git branch -v                        # ⭐ 确认 agent/* 引用未丢，丢了用 shell 回填
 git update-ref refs/heads/develop <hash>   # 快进（规避 checkout 被 SIGTERM）
 git update-ref refs/heads/main <hash>
-GIT_TERMINAL_PROMPT=0 git -c http.sslVerify=false push origin agent/xxx develop main
-git -c http.sslVerify=false ls-remote origin refs/heads/agent/xxx refs/heads/develop refs/heads/main
+GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
+  git -c http.sslVerify=false -c credential.helper= push "https://<PAT>@github.com/<owner>/<repo>.git" agent/xxx develop main
+git -c http.sslVerify=false ls-remote "https://<PAT>@github.com/<owner>/<repo>.git"
 ```
-详见 `.agents/skills/sandbox-git-push/SKILL.md`（沙箱 git 全套坑）。
+详见 `.agents/skills/sandbox-git-push/SKILL.md`（沙箱 git 全套坑，含规则 6 hash 双验证 / 规则 7 临时文件）。
+
+### 第 7.5 步：端到端联调 + 视觉回归（单测之外的第二道闸）
+
+单测全绿 ≠ 功能可用（`@PreAuthorize`、MP 枚举集合参数、JPA 映射等只在真实链路暴露）。**必须跑端到端**：
+
+```bash
+# ① 补表/迁移（本机库）；init 脚本 DROP+CREATE，存量库用 migrations/V*.sql 增量
+mysql -uroot -p123456 lims < db/init/07_xxx.sql
+mysql -uroot -p123456 lims < db/migrations/V4__xxx.sql
+
+# ② 起后端（spring-boot:run 必须走 run_in_background 托管；用 `(cmd &)` 会在父 shell 退出时被杀）
+# ③ 等 "Started LimsApplication" + netstat 确认 8080 LISTENING
+```
+
+**端到端脚本模式**（已实测 45 条断言）：写 Python 脚本到 Temp（**不要用 `python -c` 传大段中文**），
+用 `urllib.request.build_opener(urllib.request.ProxyHandler({}))` **显式禁代理**
+（本机默认走 MITM 代理，访问 localhost 会被拒），逐条 `check(name, cond, detail)` 打印 PASS/FAIL，
+覆盖：登录 → 列表 → 明细 → 各分支预览 → 保存 → 提交 → **负向用例（越权/越态/非法入参）**。
+
+**视觉回归**（T-906 教训：DOM 有元素 ≠ 用户看得见）：
+```bash
+EDGE="/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+"$EDGE" --headless=new --disable-gpu --no-first-run \
+  --user-data-dir="C:/Users/Chen/AppData/Local/Temp/edge-lims-profile" \
+  --window-size=1600,1000 --virtual-time-budget=20000 \
+  --screenshot="C:/Users/Chen/AppData/Local/Temp/shot.png" "<url>"
+```
+需要登录态时，**临时**在 `frontend/public/__devlogin.html` 放一个同源跳转页
+（读 `?t=<token>` 写入 `localStorage['lims_access_token']` 后 `location.replace(?go=...)`），
+截图后**立即删除该文件并 `git status` 复核**。token 从 `POST /api/auth/login` 取。
 
 ## 沙箱环境备忘
 
@@ -176,6 +207,23 @@ git -c http.sslVerify=false ls-remote origin refs/heads/agent/xxx refs/heads/dev
   改用「Write 写临时 `.py` 文件到 `%TEMP%` → python 执行该文件」。
 - 本机 MySQL 密码 `123456`（非 AGENTS 约定值），在 gitignore 的 `application-dev.yml`。
 - JDBC url `characterEncoding` 必须写 `utf8`（Java 字符集名），写 `utf8mb4` 会被 Connector/J 拒。
+- **vite dev server 只监听 IPv6 `[::1]:5173`**：浏览器/脚本一律用 `http://localhost:5173`，
+  用 `127.0.0.1:5173` 会「拒绝连接」（`netstat` 可见 `[::1]:5173`）。
+- **`--virtual-time-budget` 会压缩时间**：路由过渡可能停在半透明 enter 态，截图看起来「整体发灰」——
+  判读时必须区分「过渡未完成」与「真的坏了」；必要时加大 budget 或对同一页重截。
+- **视觉验证要挑对账号**：R3 检验员没有 `assign:confirm` / `item:decompose`，对应页面必为空列表
+  （这是权限正确，不是 bug）。需要看数据时用 `nj001`（R100 全权限）。
+- **vue-tsc：`el-table` 作用域插槽的 `row` 是 Element Plus 的 `DefaultRow`**，不是 `any`。
+  把 `row` 直接传给强类型函数会报 `TS2345: Argument of type 'DefaultRow' is not assignable to ...`。
+  解法：加一个收窄函数 `function rowItem(row: unknown): XxxRow { return row as XxxRow }`，模板里统一 `rowItem(row)`。
+  另：`computed` 里用 `.map().filter((x): x is T => ...)` 易触发「类型谓词不可赋值」，
+  改成**显式 for 循环 + 类型化数组**最省事。
+- **同一文件的多次 Edit 必须串行**：一条消息里并行发多条 Edit 到同一文件，
+  会「基于旧内容写回」互相覆盖（Edit 报成功但改动消失），典型症状是编译报「找不到符号」。
+- **单测断言日志**：需要验证「必须记 WARN」这类行为时，用 logback `ListAppender`
+  挂到目标类的 logger 上（`(Logger) LoggerFactory.getLogger(X.class)`），
+  `@BeforeEach` 挂载 / `@AfterEach` 卸载，断言 `event.getFormattedMessage()` 内容。
+  组件侧同时暴露一个布尔标记（如 `requiresAttention`）便于编排层断言。
 
 ## 验收自检清单
 

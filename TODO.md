@@ -32,7 +32,7 @@
 | T-501 | 自动分配规则（NA/XA/SA + 方法资质）+ S30→S40 | S | **GLM** | ✅完成 2026-09-11（契约第 5 章 + 6 字段 + 14 单测 + 前端页 + 路由菜单）；⚠️ 联调被旧 spring-boot 进程卡死，明日杀 PID 11640 重启 |
 
 ## 阶段六：检验数据录入（自动判定）
-| T-601 | 结果录入 + 自动判定引擎 + S50→S60 | S | Copilot | ⬜待办（✅ 开工闸门已开：T-902 五条口径 Copilot 裁决定稿，见 docs/knowledge/2026-09-11-judge-engine-whitelist.md；Owner 按角色调整为 GLM） |
+| T-601 | 结果录入 + 自动判定引擎 + S50→S60 | S | **GLM** | ✅完成 2026-09-12（契约第 6 章 5 接口 + `db/init/07` `sample_result` + `V4` 整体结论列 + **纯函数判定引擎**（闭集白名单矩阵）+ Service/Controller + 49 单测（总 85/85）+ 前端录入页 + 路由菜单；**端到端 45 断言全过**；⚠️ 编号勘误：交接留言中的「T-602」即本任务，以 TODO 的 T-601 为准） |
 
 ## 阶段七：报告审核签发 + 报告生成
 | T-701 | 审核/签发 S60→S70→S80（含审核退回 → S50） | S | **GLM** | ⬜待办 |
@@ -53,5 +53,7 @@
 | T-906 | UI 设计基准「Aurora Glass」落地（设计令牌 + 折射玻璃 + EP 暗色适配 + 外壳/登录/工作台重塑） | S | **GLM** | ✅完成（2026-09-11；`frontend/src/styles/*` + `components/GlassFilter.vue`；实测修复 el-tag 过渡卡死导致的两列空白） |
 | T-907 | V3 改造为 fail-loud 口径校验器（执行 T-905 裁决 R1） | S | **GLM** | ✅完成（2026-09-11；双路径实测：零变更通过 / 人为漂移报错退出；派生表统一计算 + NULL 安全比较） |
 | T-908 | 治理二次调整：GLM 自裁机制（2.6）+ 豆包分工清单（2.7）+ UI 基准（5.1）+ 许可合规红线 | S | **GLM** | ✅完成（2026-09-11） |
+| T-909 | 判定引擎**实现形态**侦察与选型定稿（规则引擎 vs 闭集矩阵 / 浮点比较 / ALCOA+ 留痕） | S | **GLM** | ✅完成（2026-09-12；`docs/knowledge/2026-09-12-judge-engine-research.md`：**否决 Drools/Easy Rules/LiteFlow/Aviator**，定稿「闭集白名单矩阵 + BigDecimal.compareTo + 默认待判定 + WARN」+「原始值/派生值分层落库」） |
+| T-910 | 可**一键复现**的技能沉淀（判定引擎模板 + 阶段交付含端到端/视觉回归 + 沙箱 git 补坑） | S | **GLM** | ✅完成（2026-09-12；新建 `.agents/skills/judge-engine/`，更新 `lims-stage-delivery`（+第 7.5 步）、`sandbox-git-push`（+规则 6 hash 双验证 / 规则 7 临时文件与并行 Edit 覆盖））；技能库共 7 个 |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。

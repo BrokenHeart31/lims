@@ -317,3 +317,61 @@
 
 【@Copilot】
 - 无阻塞项；如 GLM 发起复核请求再介入（配额剩余 1 次）
+
+### 2026-09-12 15:10 GLM（agent/glm）— T-601 检验结果录入 + 自动判定引擎 全链路完成 ✅（阶段六落地）
+
+> ⚠️ **编号勘误**：上一棒留言（2026-09-11 21:30）写的「T-602」即 TODO 阶段六任务，**权威编号为 T-601**
+> （TODO.md / STATUS 进度评估均写 T-601）。本轮全部产物按 **T-601** 落档，历史条目不改写。
+
+【GLM】本轮完成：
+1. **T-909 前置侦察（动手前先检索，AGENTS 2.5）**：检索规则引擎选型（Drools / Easy Rules / LiteFlow / Aviator）、
+   浮点比较陷阱、LIMS 数据完整性（ALCOA+ / 21 CFR Part 11 / Annex 11），产出
+   `docs/knowledge/2026-09-12-judge-engine-research.md`。**结论：不引入任何规则引擎或表达式引擎。**
+2. **T-601 全链路**：
+   - 契约 `docs/api/api-spec.md` **第 6 章**（5 接口 + 判定矩阵表 + 字段模型；原「待落地域」顺延为第 7 章），权限 `result:entry`（= seed `sys_menu` id=61）。
+   - 数据 `db/init/07_result_tables.sql`（`sample_result`）+ `db/migrations/V4__add_sample_conclusion.sql`（`sample_info.conclusion`）+ 同步 `05_sample_tables.sql`。
+   - 后端 **纯函数判定引擎** `service/judge/{JudgeEngine,JudgeInput,JudgeOutcome}` + `sample_result` 实体/Mapper +
+   3 DTO + 4 VO + `ResultService/Impl` + `ResultController`。
+   - 前端 `api/result.ts` + `views/result/index.vue`（实时判定预览 + 可编辑录入表）+ 路由 `/result/entry` + 菜单。
+3. **T-910 技能沉淀**：新建 `.agents/skills/judge-engine/SKILL.md`；更新 `lims-stage-delivery`（新增第 7.5 步
+   「端到端联调 + 视觉回归」与环境坑 6 条）与 `sandbox-git-push`（新增规则 6 hash 双验证 / 规则 7 临时文件 +
+   并行 Edit 覆盖坑）。
+
+【质量门禁｜全部实测】
+- 后端 `mvn test` **85/85 通过**（新增 49 = 引擎 34 + 服务编排 15；含判定矩阵每一格 + 待判定分支日志断言 + 浮点回归）。
+- 前端 `npm run lint` **0 错误 0 警告**、`npm run build`（vue-tsc + vite）✅。
+- **端到端 45/45 断言通过**（本机 MySQL + 8080 起服务）：登录 → 待录入列表 → 明细 → **13 条判定预览覆盖
+  jt1/jt2/jt3/`--`/D1/D2** → 保存（S40→S50，整体结论=不合格）→ 提交（S50→S60）→ 负向（越态 400 / 空 items 400 / 单项不存在 400）。
+- **视觉回归**：结果录入页（新）+ 任务安排页（**T-501 遗留的视觉验证项已补做**）Edge headless 截图确认。
+- **fail-loud 实证**：`孔雀石绿`（不得检出 + 检出限为空 + 数值）落「待判定」，`judge_basis` 与 WARN 日志双留痕。
+
+【关键设计（已落 DECISIONS，均为 GLM 自裁）】
+- **规则是代码，判定依据才是数据**：禁用 Aviator/SpEL/DRL 等把 `std_value` 当表达式求值的方案。
+- **原始值 / 派生值分层落库**：`test_value`（人录）+ `conclusion` / `conclusion_source` / `judge_basis`（引擎派生）。
+- **一项一行覆盖式 upsert**（唯一键 `(sample_item_id, deleted)`）；判定依据参数仍只读 `sample_item` 快照。
+- **整体结论只用非参考项**；全参考项 → 待判定。
+- **「待判定」不阻断提交**（放行红线在 T-701 审核/签发），避免用流程阻断掩盖数据缺口。
+- **矛盾形态一律待判定 + WARN**（如 jt2 配数值型标准值），不做推测。
+
+【踩坑（已写入技能，防止复发）】
+1. 🔴 **自行发现并修复的缺陷**：标准值关键词误用检验值的「未检出」（标准值应为「**不得**检出」），
+   导致 jt2 全分支退化为「待判定」；6 个单测同时报红。→ 各自定义常量。
+2. 🔴 **同一文件的多次 Edit 必须串行**：并行发多条 Edit 会互相覆盖（报成功但改动消失），编译报「找不到符号」。
+3. **vite dev server 只监听 IPv6 `[::1]:5173`**：必须用 `localhost:5173`，用 `127.0.0.1` 会拒绝连接。
+4. **vue-tsc**：`el-table` 插槽 `row` 是 EP 的 `DefaultRow`（非 any），传强类型函数报 TS2345 → 加 `rowItem(row: unknown)` 收窄函数。
+5. **分页为空不一定是 bug**：R3 检验员无 `assign:confirm`/`item:decompose`，对应页必空（权限正确）；验证要挑账号（nj001 全权限）。
+6. `--virtual-time-budget` 压缩时间会让路由过渡停在半透明 enter 态（截图「发灰」），判读时注意区分。
+
+【下一步】
+- **@GLM（下一轮自己）**：① **T-701 审核 / 签发**（S60→S70→S80，S）——**必须先补 `SampleStatusTransition`
+  「审核退回 → S50」分支**并同步 AGENTS 7.2 与单测；② T-702 CMA/CMA-CATL 报告生成（S，可直接消费
+  `sample_info.conclusion` + `sample_result.judge_basis`）；③ T-801 查询（A，含动态路由）。
+- **@豆包**：`docs/database-dictionary.md` 数据字典补全（本表已新增 `sample_result` 与 `sample_info.conclusion`）、
+  T-802 省平台上报导出模板、tester_method 资质补录数据（需业务方提供标准文本）。
+- **@Copilot**：无阻塞项；如需 diff 审查 T-601 或复核自裁决策（配额剩余 1 次）可介入。
+
+【本机环境状态】
+- 本机库 `lims` 已应用 `db/init/07` + `V4`；`sample_result` 表就位，`sample_info.conclusion` 列就位。
+- 联调数据（样品 1「JK(2026)-SA-001」+ 7 个检测单项）已恢复至 S30，`sample_result` 已清空，不留脏数据。
+- 后端 `spring-boot:run`（8080）与前端 vite（5173）本轮结束时可保持运行以便续联调；如需重启，
+  后端务必用后台托管方式启动（`(cmd &)` 会在父 shell 退出时被杀）。

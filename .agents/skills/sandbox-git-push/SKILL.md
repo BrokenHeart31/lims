@@ -106,6 +106,33 @@ git commit -q --amend --no-edit
 
 **记录推送结果时只写结论**（「令牌用于推送成功」「401 无效」「403 无写权」），**永不写令牌值**到 HANDOFF.md / DECISIONS.md / STATUS.md / 脚本。
 
+### 规则 6：提交后必须双验证 hash（沙箱会写错 ref 末位）
+
+沙箱实测过 **ref 文件里的 hash 末位与真实对象不一致**（ref 写 `7fea3311`，对象实际 `7fea3314`）。
+这种错位不会立刻报错，只会在后续操作时炸出 `invalid sha1 pointer`，或让分支指向不存在的提交。
+
+```bash
+git rev-parse HEAD                 # ① 真实 HEAD
+git fsck --lost-found 2>&1 | head  # ② 若有 dangling commit，其 hash 即真实提交
+git branch -v                      # ③ 每支实际指向
+# 不一致时用「真实 hash」覆盖 ref 文件（shell 直写才持久）
+printf '%s\n' "<真实hash>" > .git/refs/heads/agent/glm
+```
+
+### 规则 7：commit message 走临时文件（`-F`），不要把长中文塞进 `-m`
+
+`bash heredoc` 里出现**中文 + 括号 + 嵌套引号**会触发 `syntax error near unexpected token '('`，
+整段被 shell 吞掉。commit message / 长 SQL / 多行代码一律先 Write 到临时文件：
+
+```bash
+# Write 到 C:\Users\Chen\AppData\Local\Temp\commit.msg，然后：
+git commit -q -F /c/Users/Chen/AppData/Local/Temp/commit.msg
+```
+
+> 同理：**同一文件的多次 Edit 必须串行**。在一条消息里对同一文件并行发多条 Edit，
+> 会因「基于旧内容写回」互相覆盖，出现「Edit 报成功但改动消失」——本轮实测踩到，
+> 表现为编译报 `找不到符号 XXX`（常量声明被另一条 Edit 抹掉）。
+
 ## 标准执行清单
 
 ```bash
@@ -154,6 +181,8 @@ git -c http.sslVerify=false ls-remote "https://<PAT>@github.com/<owner>/<repo>.g
 | `403 Permission denied` | fine-grained PAT Contents 只读 | 改为 Contents: Read and write |
 | `GH013 push cannot contain secrets` | 仓库文件含明文令牌 | 脱敏 + `commit --amend` 改写历史后重推 |
 | `Everything up-to-date`（但远程确实落后） | 本地 develop/main 引用未跟上 | 先 `update-ref` 再推 |
+| `invalid sha1 pointer` / 分支指向不存在的提交 | 沙箱把 ref 里的 hash 末位写错 | 规则 6：`rev-parse HEAD` + `fsck --lost-found` 双验证后 shell 覆写 ref |
+| `syntax error near unexpected token '('`（整段命令被吞） | heredoc 中中文+括号+嵌套引号 | 规则 7：长文本先 Write 到临时文件，`git commit -F <file>` |
 
 ## 附：Bash 工具传大段 Python 代码的坑
 
