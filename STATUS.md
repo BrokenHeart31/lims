@@ -4,7 +4,7 @@
 
 ## 当前工作分支
 - **GLM：`agent/glm`（T-401 ✅ / T-906/907/908 ✅ / T-501 ✅ / **T-601 ✅ + T-909/T-910 ✅**；本轮提交待推）**
-- **Copilot：`agent/copilot`（19:45 事故修复+裁决终审已推送 ✅；20:30 **T-905 裁决定稿**；21:30 无阻塞项，配额剩余 1 次且不得阻塞）**
+- **Copilot：`agent/copilot`（19:45 事故修复+裁决终审已推送 ✅；20:30 **T-905 裁决定稿**；2026-09-12 15:32 **T-601 复核终审通过**（2 条保留意见转 T-911/T-912），本轮提交待推）**
 - 豆包：`agent/doubao`（文件整理 + T-103 补 04 + 初步测试 ✅；可领 T-802）
 
 ## 🔴 4070ea6 误删事故与修复（全员必读）
@@ -23,7 +23,14 @@
 - 本地仓库：`D:\lims`（远程 https://github.com/BrokenHeart31/lims.git ）
 - 合并路径：`agent/xxx → develop → main`（本轮由 GLM 执行 main 固化）
 
-## 本轮占用文件（GLM / T-601 + T-909 + T-910）
+## 本轮占用文件（Copilot / T-601 复核终审 + T-701 铺垫，2026-09-12 15:32）
+- 新增（日记）：`docs/journal/2026-09-12-copilot-t601-review.md`
+- 修改（治理）：`STATUS.md`、`TODO.md`（T-601 追加终审结论 + 新增 T-911/T-912）、`HANDOFF.md`、`DECISIONS.md`
+- 只读复核（未改动）：`service/judge/*`、`ResultServiceImpl`、`ResultController`、3 DTO、VO、
+  `07_result_tables.sql`、`V4`、api-spec 第 6 章、`frontend/src/api/result.ts`、`views/result/index.vue`
+- 环境修复（不入库）：回填 `refs/heads/agent/{copilot,doubao}`；本机 git 改用 PortableGit 全路径
+
+## 上一轮占用文件（GLM / T-601 + T-909 + T-910）
 - 新增（判定引擎，纯函数）：`backend/.../service/judge/{JudgeEngine,JudgeInput,JudgeOutcome}.java`
 - 新增（枚举）：`backend/.../common/enums/{ResultConclusion,ConclusionSource}.java`
 - 新增（实体/Mapper）：`backend/.../entity/SampleResult.java`、`backend/.../mapper/SampleResultMapper.java`
@@ -90,6 +97,16 @@
 - （无）
 
 ## 当前状态/阻塞
+- ✅ **T-601 复核终审通过（2026-09-12 15:32 Copilot，独立实测）**：mvn test 85/85 复跑 BUILD SUCCESS；
+  判定矩阵与 T-902 D1–D5 逐格一致、D3 聚合正确；判定域对标准库零回溯（grep 零命中）；
+  37 文件清单与申报一致；「不得检出/未检出」常量修复固化。**保留意见 2 条已开 TODO**：
+  T-911（分页参数双轨 vs 0.3 约定）、T-912（空值结果行可提交至 S60，「已录入」口径待裁）。
+- ⚠️ **T-701 铺垫（只读，未实现）**：状态机正向白名单 S60→S70→S80→S90 已就位；
+  **「审核退回→S50」缺失实锤**（S60 出边仅 S70）。设计建议已落 HANDOFF：退回走独立 RETURN 表
+  + `assertReturn` 专用方法（勿塞 VALID 正向白名单），同步 AGENTS 7.2 + 单测；
+  审核页放行红线：通过前展示「待判定/空值项」清单并显式确认。
+- ⚠️ **环境**：本机 git.exe 不在 PATH（注册表指向目录已删），用
+  `C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe` 全路径。
 - ✅ **T-601 结果录入 + 自动判定引擎 全链路完成（2026-09-12 GLM）** — 阶段六落地：
   - 契约 `docs/api/api-spec.md` **第 6 章** 5 接口（pending/detail/judge/save/submit），权限 `result:entry`（与 seed `sys_menu` id=61 一致）。
   - 数据：`db/init/07_result_tables.sql`（`sample_result`：原始值 + 结论 + 来源 + 判定依据说明，唯一键 `(sample_item_id, deleted)` 一项一行）+ `db/migrations/V4`（`sample_info.conclusion` 整体结论）。

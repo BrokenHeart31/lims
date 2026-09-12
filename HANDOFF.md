@@ -6,6 +6,47 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-12 15:32 Copilot（agent/copilot）— T-601 复核终审：**通过**（2 条保留意见转 TODO）+ T-701 只读铺垫
+
+- 【Copilot】接 GLM T-601 交接留言，完成三类把关工作（**复核轮，零实现代码**）：
+  1. **T-601 终审通过**。证据全部独立实测（非转述自述）：逐文件读引擎/编排/契约/SQL/前端源码；
+     本机复跑 `mvn test` **85/85 BUILD SUCCESS**；`git show --stat 887067e` 37 文件与申报一致、无删除项；
+     grep 证实判定域对 `product_lib_item`/`prj_detail` **零回溯**（D5 落实）。
+     予以追认：判定矩阵与 T-902 D1/D2/D4/D5 逐格一致、D3 聚合正确、「不得检出/未检出」各自常量
+     （GLM 自查缺陷修复已固化）、BigDecimal.compareTo 全覆盖、原始值/派生值分层、
+     双保险流转、「待判定不阻断提交」有决策留档、契约第 6 章与前后端逐字段一致。
+  2. **保留意见 2 条（P2，均开 TODO 转 GLM 裁决，不阻塞）**：
+     - **T-911 分页参数双轨**：api-spec 0.3 约定统一 `pageNum/pageSize`，但 item/assign/result
+       三域实为 `current/size`（spec 章节内自洽、前后端一致、运行无碍，属 T-401 起的一致性债务）。
+       建议 (a) 修订 0.3 承认现状（成本 0，倾向此案）或 (b) 统一回 pageNum（动 6 文件）。
+     - **T-912 「已录入」定义允许空值行**：`testValue` 可空落一行 conclusion=3，
+       `submit` 录齐校验只看结果行存在 → **可带空结果行提交至 S60**。非安全洞（不静默判合格），
+       但属流程卫生缺口；建议改「已录入」判定口径或由 T-701 审核页强制展示待判定/空值清单，
+       请 GLM 对照业务说明书自裁。
+  3. **T-701 只读铺垫（不实现）**：状态机正向白名单 S60→S70→S80→S90 已就位；
+     **「审核退回→S50」缺失实锤**（S60 出边仅 S70）。设计建议：**不要**把退回塞进 `VALID` 正向白名单
+     （否则 assertTransition(S60,S50) 全局合法易误用），建议独立 RETURN 表 + 专用方法
+     `assertReturn`，同步 AGENTS 7.2 与 SampleStatusTransitionTest；审核页放行红线建议：
+     通过前必须展示「待判定/空值项」清单并显式确认（对接 T-912）。
+- ⚠️ **勘误**：T-501 历史申报「AssignServiceImplTest 14 项」实为 **13 项**（本轮实测）；
+  `git diff fd6897b..887067e` 该文件 0 行，T-601 未触碰，系当时申报笔误。
+- ⚠️ **环境突变（下一轮必读）**：本机 git.exe 已不在 PATH——注册表指向的 `C:\Users\Chen\Desktop\Git`
+  目录已被删除。可用替代：`C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`
+  （全路径调用）。开工先探测 git，勿假设。
+- ⚠️ **沙箱坑复发**：`agent/copilot` / `agent/doubao` 引用又被静默丢弃，已从 reflog 尾行 shell 回填
+  （copilot=1237277 → 已快进至本轮提交；doubao=6282c64 未动）。收工时 `git branch -v` 自查。
+- ⚠️ **推送待办（与 GLM 条目合并处理）**：远端 agent/glm=develop=main 仍在 `fd6897b`，
+  本地三分支 + agent/copilot 领先 2 个提交（T-601 + 本轮复核）。仍需用户提供 PAT
+  （fine-grained 需 Contents: Read and write）后一次性推送四支并 `ls-remote` 核对；用完请撤销重建。
+- 【下一步】
+  - **@GLM（下一轮，强模型）**：① 领 **T-701**（开工清单见上，含 T-912 口径自裁输入）；
+    ② 裁决 **T-911** 分页统一方向并落 DECISIONS；③ 推送四分支（等 PAT）。
+  - **@豆包**：`docs/database-dictionary.md` 补 `sample_result` 与 `sample_info.conclusion`
+    （T-601 已入库）；T-802 模板可继续。
+  - **@Copilot**：无阻塞项；T-701 契约/退回口径如需复核再介入（配额剩余 1 次不动）。
+- 本轮产物：`docs/journal/2026-09-12-copilot-t601-review.md`（含复核三证据法与全部证据）、
+  STATUS/TODO/DECISIONS 同步更新（新增 T-911/T-912）。backend/mvn-test.log 为本轮临时产物，已删除不入库。
+
 ### 2026-09-11 20:30 Copilot（agent/copilot）— T-905 裁决定稿（D5 修订：R1 采纳 / R3 否决）
 - 【Copilot】应 GLM 裁决请求 #1（`docs/knowledge/2026-09-11-adjudication-request-d5.md`，2 次配额之第 1 次），核对 V3 脚本与实测证据后裁决，全部留痕 DECISIONS + whitelist 定稿 D5 节：
   1. **D5 修订：采纳 R1**。judge_type 全 1 是数据事实（正确值），V3 从「数据订正」改为**可重跑口径校验器**；硬性补充——**校验器必须 fail-loud**（应然≠实然且 UPDATE 后仍不一致须报错退出，禁止静默通过，否则退化成新的静默零变更）。
