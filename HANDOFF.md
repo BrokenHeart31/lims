@@ -1,12 +1,12 @@
 # LIMS HANDOFF（共享交接本）
 
-## 2026-09-12 18:30 GLM → 用户 / Copilot（兜底）/ 豆包
+## 2026-09-12 18:50 GLM → 用户 / Copilot（兜底）/ 豆包
 
 ### 本轮交付
 
 **T-913：前端 UI 全面重整（保留 mine radio 氛围，结构空间 + 一致性升级）**
 
-✅ 已完成 / 已落地（本地 commit `f751e8f` on agent/glm）：
+✅ 已完成 / 已落地 + **远端推送成功**（`c190441` on `agent/glm = develop = main`）：
 
 | 模块 | 产出 |
 |---|---|
@@ -19,45 +19,29 @@
 | 业务页 | `views/sample/item/assign/result/report-audit/task` 7 页统一迁移（PageHeader + AppCard + StatusBadge + AppEmpty + askConfirm 五步） |
 | 验证 | `npm run lint` 0/0；`npm run build` vue-tsc + vite 10.23s 通过；dist +6KB（gzip） |
 | 资产 | `journal 2026-09-12-glm-ui-overhaul` / `knowledge 2026-09-12-ui-component-library` / `skill lims-ui-overhaul` |
+| **远端** | `git ls-remote --heads` 核对：`origin/{agent/glm, develop, main} = c190441`；`origin/agent/copilot = d1910dc`（未动）；`origin/agent/doubao = 6282c64`（未动） |
 
-### Git 状态
+### Git 状态（✅ 已同步）
 
-- 本地 `agent/glm = f751e8f`（本轮 T-913 commit，1 个 ahead of `e416550` 即 T-701）
-- `develop = e416550`，`main = e416550`（还停在 T-701，**需等远程同步后由 GLM 本机执行 fast-forward**）
-- 本地与远程当前**未同步**——推送过程 PAT 失效
+- 本地 `agent/glm = develop = main = c190441`（含本轮 T-913 commit + HANDOFF 补 commit，共 2 commits ahead of `e416550`）
+- 远端 `origin/{agent/glm, develop, main} = c190441`（**已 fast-forward 推送**）
+- `agent/copilot` / `agent/doubao` 分支保持各自历史未动
 
-### ⚠️ 推送失败：PAT 需更新（用户行动项）
+### 推送小结
 
-**根因**：上轮推送使用的 PAT（`ghp_rCYbf...`）本轮试用时 Git Credential Manager 仍弹窗要我输入密码（沙箱禁止交互），且命令行内联 PAT 总被全局 `credential.helper = manager` 替换无法生效。
-
-**用户需做**：
-1. 在 GitHub 撤销旧 PAT（`ghp_rCYbf...` 那串），生成**新 fine-grained PAT**（仓库 = BrokenHeart31/lims，权限 = **Contents: Read and write**，NoExpiration 或长有效期）
-2. 通过对话把新 PAT 发给我；**勿写入任何仓库文件**（HANDOFF / 脚本 / commit message 都不行）
-
-**或者**：用户在自己机器本地执行以下命令推送（无需把 PAT 给我）：
-
-```bash
-git push https://<你的新PAT>@github.com/BrokenHeart31/lims.git agent/glm:agent/glm f751e8f:develop f751e8f:main
-# 三分支一次性推送；本机已就绪，sandbox 只需要远端 hash
-```
-
-推完后用 `git fetch` + `git branch -r` 重新核对远端 hash：
-```
-origin/main       = f751e8f
-origin/develop    = f751e8f
-origin/agent/glm  = f751e8f
-origin/agent/copilot = d1910dc  (未动)
-origin/agent/doubao  = 6282c64  (未动)
-```
+- 上轮 PAT `ghp_rCYbf...` 已失效；本轮用户提供新 PAT 后通过 `git -c credential.helper= -c credential.helperselector.helper= push https://oauth2:<PAT>@github.com/BrokenHeart31/lims.git <branches>` 一次推三个分支（fast-forward）。
+- 沙箱 PAT 显示层会被脱敏，但字节流正确（xxd 验证）；PAT **未写入**任何仓库文件、HANDOFF 或 commit message。
 
 ### 下一个 Agent 注意
 
-- **本地 ref 坑**：本轮 `agent/glm` ref 同样被沙箱 git.exe 静默丢弃过，已用 `mkdir -p .git/refs/heads/agent && printf '%s\n' f751e8f... > .git/refs/heads/agent/glm` 手工修复。
+- **本地 ref 坑**：本轮 `agent/glm` ref 同样被沙箱 git.exe 静默丢弃过，已用 `mkdir -p .git/refs/heads/agent && printf '%s\n' c190441 > .git/refs/heads/agent/glm` 手工修复。
 - 沙箱 git 任何含斜杠分支 ref 操作后**必须** `git branch -v` 自查；ref 缺失就用上法回填。
-- **本轮只动 frontend/ 与 docs/ 与 .agents/skills/**，未涉及后端；下次开 `mvn test` 仍可通过。
+- **本轮只动 frontend/ 与 docs/ 与 .agents/skills/**，未涉及后端；上次 `mvn test` 107 项全过，本轮无后端变更无需重跑。
 - **UI 重整 next steps**（下轮可攻）：
   1. 系统管理 7 页（customer/dept/basis/method/user/role/menu）按 `lims-ui-overhaul` skill 批改
   2. 路由 meta.breadcrumb 自动注入（消除各页面手写面包屑冗余）
+  3. 暗色/亮色双主题切换落地（tokens.css 已预留 `lims-theme-light` 槽位）
+- **业务主线 next steps**：T-702 CMA/CMA-CATL 报告生成（S80→S90，S）→ T-801 查询（A）→ T-802 上报（B，豆包）；本机样品 1 已停在 S80 + 3 条审核流水，T-702 数据已就绪可直接开工。
   3. 响应式（侧栏折叠持久化）+ 主题切换（light）接通
 - **下一阶段任务（业务主干剩余）**：T-702（S）/ T-801 + 动态路由（A）/ T-802（B 委派豆包）
 

@@ -26,7 +26,9 @@
 - 本地仓库：`D:\lims`（远程 https://github.com/BrokenHeart31/lims.git ）
 - 合并路径：`agent/xxx → develop → main`（本轮由 GLM 执行 main 固化）
 
-## 本轮占用文件（GLM / T-913 UI 重整，2026-09-12 18:20）
+## 本轮占用文件（GLM / T-913 UI 重整，2026-09-12 18:20 → 18:50 已推送）
+
+**✅ 远端已同步**：`origin/{agent/glm, develop, main} = c190441`（含 T-913 主体 + HANDOFF 补 commit，2 ahead of e416550）。`agent/copilot = d1910dc`、`agent/doubao = 6282c64` 保持未动。
 - 扩展（设计令牌）：`frontend/src/styles/tokens.css`（+spacing scale + tone 双色 + header 字号）
 - 扩展（EP 覆盖）：`frontend/src/styles/element-override.css`（统一行高 44 / 表单 gap 18 / 圆角 8 / hover 青调）
 - 新增（公共组件）：`frontend/src/components/common/{PageHeader,AppCard,StatCard,StatusBadge,AppEmpty,AppBreadcrumb}.vue`（6 件）
