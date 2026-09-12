@@ -15,7 +15,7 @@
  * 「待判定」以醒目样式提示，需人工关注（数据缺口 / 闭集外输入）。</p>
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Check, Promotion, Refresh, Search } from '@element-plus/icons-vue'
 import { JUDGE_TYPE_OPTIONS } from '@/api/item'
 import {
@@ -30,6 +30,20 @@ import {
   type ResultPendingRow,
   type ResultSaveItemPayload,
 } from '@/api/result'
+import PageHeader from '@/components/common/PageHeader.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import { askConfirm } from '@/utils/confirm'
+
+function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
+  if (!label) return 'neutral'
+  if (label.includes('已完成') || label.includes('检验完成') || label.includes('S60')) return 'success'
+  if (label.includes('录入中') || label.includes('S40') || label.includes('S50')) return 'pending'
+  if (label.includes('待判定')) return 'warning'
+  if (label.includes('签发')) return 'purple'
+  return 'info'
+}
 
 /** 单项录入草稿 */
 interface DraftItem {
@@ -215,11 +229,12 @@ function conclusionLabel(code: number | null): string {
   return '未录入'
 }
 
-function conclusionTagType(code: number | null): 'success' | 'danger' | 'warning' | 'info' {
+function conclusionTone(code: number | null): 'success' | 'danger' | 'warning' | 'pending' | 'neutral' {
+  // 1=合格 2=不合格 3=待判定 其他=未录入
   if (code === 1) return 'success'
   if (code === 2) return 'danger'
-  if (code === 3) return 'warning'
-  return 'info'
+  if (code === 3) return 'pending'
+  return 'neutral'
 }
 
 function judgeTypeLabel(item: ResultDetailItem): string {
@@ -281,15 +296,7 @@ async function handleSave(): Promise<void> {
 async function handleSubmit(): Promise<void> {
   if (!detail.value) return
   const sampleId = detail.value.sampleId
-  try {
-    await ElMessageBox.confirm(
-      '提交后样品将流转为「检验完成」，结果不能再修改。确定提交吗？',
-      '提交检验结果',
-      { confirmButtonText: '确定提交', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm('提交后样品将流转为「检验完成」，结果不能再修改。确定提交吗？', '提交检验结果', { type: 'warning' }))) return
   submitting.value = true
   try {
     const res = await submitResultApi(sampleId)
@@ -310,21 +317,32 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <header class="page-head">
-      <div>
-        <h2 class="page-title">
-          结果录入
-        </h2>
-        <p class="page-desc">
-          按检测单项录入检验结果，单项结论由判定引擎自动生成（感官项目由检验员判定）
-        </p>
-      </div>
-    </header>
+    <PageHeader
+      title="结果录入"
+      subtitle="按检测单项录入检验结果，单项结论由判定引擎自动生成（感官项目由检验员判定）"
+      icon="Promotion"
+    >
+      <template #breadcrumb>
+        <el-breadcrumb separator="/">
+          <el-breadcrumb-item :to="{ path: '/dashboard' }">
+            工作台
+          </el-breadcrumb-item>
+          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
+          <el-breadcrumb-item>结果录入</el-breadcrumb-item>
+        </el-breadcrumb>
+      </template>
+      <el-button
+        :icon="Refresh"
+        @click="loadPending"
+      >
+        刷新
+      </el-button>
+    </PageHeader>
 
     <!-- 查询条件 -->
-    <el-card
-      class="glass-card filter-card"
-      shadow="never"
+    <AppCard
+      variant="panel"
+      :padding="20"
     >
       <el-form inline>
         <el-form-item label="样品编号">
@@ -361,12 +379,12 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppCard>
 
     <!-- 待录入样品列表 -->
-    <el-card
-      class="glass-card table-card"
-      shadow="never"
+    <AppCard
+      variant="panel"
+      :padding="16"
     >
       <el-table
         v-loading="loading"
@@ -420,12 +438,12 @@ onMounted(() => {
           align="center"
         >
           <template #default="{ row }">
-            <el-tag
-              :type="conclusionTagType(row.conclusion ?? null)"
-              effect="plain"
+            <StatusBadge
+              :tone="conclusionTone(row.conclusion ?? null)"
+              size="sm"
             >
               {{ row.conclusionLabel ?? '—' }}
-            </el-tag>
+            </StatusBadge>
           </template>
         </el-table-column>
         <el-table-column
@@ -459,7 +477,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <span class="empty-tip">暂无待录入样品（需先在「任务安排」完成安排确认）</span>
+          <AppEmpty description="暂无待录入样品（需先在「任务安排」完成安排确认）" />
         </template>
       </el-table>
 
@@ -473,7 +491,7 @@ onMounted(() => {
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
       />
-    </el-card>
+    </AppCard>
 
     <!-- 录入抽屉 -->
     <el-drawer
@@ -489,16 +507,16 @@ onMounted(() => {
       >
         <template v-if="detail">
           <!-- 头部：样品摘要 + 进度 + 操作 -->
-          <section class="glass-card entry-head">
-            <div class="head-grid">
+          <AppCard variant="glass">
+            <div class="assign-head">
               <div class="head-cell">
                 <span class="cell-label">样品状态</span>
-                <el-tag
-                  type="primary"
-                  effect="plain"
+                <StatusBadge
+                  :tone="statusTone(detail.statusLabel)"
+                  size="md"
                 >
                   {{ detail.statusLabel }}
-                </el-tag>
+                </StatusBadge>
               </div>
               <div class="head-cell">
                 <span class="cell-label">录入进度</span>
@@ -514,12 +532,12 @@ onMounted(() => {
               <div class="head-cell">
                 <span class="cell-label">整体结论</span>
                 <div class="cell-conclusion">
-                  <el-tag
-                    :type="conclusionTagType(detail.conclusion ?? null)"
-                    effect="dark"
+                  <StatusBadge
+                    :tone="conclusionTone(detail.conclusion ?? null)"
+                    size="md"
                   >
                     {{ detail.conclusionLabel ?? '—' }}
-                  </el-tag>
+                  </StatusBadge>
                   <span class="conclusion-hint">参考项不计入整体结论</span>
                 </div>
               </div>
@@ -551,10 +569,13 @@ onMounted(() => {
                 >全部单项录入后方可提交</span>
               </div>
             </div>
-          </section>
+          </AppCard>
 
           <!-- 检测单项录入表 -->
-          <section class="glass-card">
+          <AppCard
+            variant="panel"
+            :padding="16"
+          >
             <h3 class="section-title">
               检测单项（{{ detail.items.length }}）
               <span class="section-hint">jt1/jt2 由引擎自动判定；jt3 感官项请选择结论</span>
@@ -562,7 +583,6 @@ onMounted(() => {
             <el-table
               :data="detail.items"
               stripe
-              border
             >
               <el-table-column
                 prop="itemOrder"
@@ -578,15 +598,14 @@ onMounted(() => {
               >
                 <template #default="{ row }">
                   <span>{{ row.itemName }}</span>
-                  <el-tag
+                  <StatusBadge
                     v-if="row.isReference === 1"
-                    size="small"
-                    type="info"
-                    effect="plain"
+                    tone="warning"
+                    size="sm"
                     class="ref-tag"
                   >
                     参考
-                  </el-tag>
+                  </StatusBadge>
                 </template>
               </el-table-column>
               <el-table-column
@@ -668,20 +687,19 @@ onMounted(() => {
               >
                 <template #default="{ row }">
                   <div class="conclusion-cell">
-                    <el-tag
-                      :type="conclusionTagType(conclusionOf(rowItem(row)))"
-                      effect="plain"
+                    <StatusBadge
+                      :tone="conclusionTone(conclusionOf(rowItem(row)))"
+                      size="sm"
                     >
                       {{ conclusionLabel(conclusionOf(rowItem(row))) }}
-                    </el-tag>
-                    <el-tag
+                    </StatusBadge>
+                    <StatusBadge
                       v-if="conclusionOf(rowItem(row)) != null && sourceLabelOf(rowItem(row))"
-                      size="small"
-                      type="info"
-                      effect="plain"
+                      tone="info"
+                      size="sm"
                     >
                       {{ sourceLabelOf(rowItem(row)) }}
-                    </el-tag>
+                    </StatusBadge>
                     <span
                       v-if="judging[row.id]"
                       class="muted"
@@ -722,7 +740,7 @@ onMounted(() => {
                 </template>
               </el-table-column>
             </el-table>
-          </section>
+          </AppCard>
         </template>
       </div>
     </el-drawer>
@@ -735,38 +753,10 @@ onMounted(() => {
   flex-direction: column;
   gap: var(--lims-r-md);
 }
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--lims-r-xs);
-}
-.page-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.page-desc {
-  margin: 4px 0 0;
-  color: var(--lims-text-secondary);
-  font-size: 13px;
-}
-.glass-card {
-  border-radius: var(--lims-r-md);
-}
-.filter-card :deep(.el-form-item) {
-  margin-bottom: 0;
-}
 .pager {
   display: flex;
   justify-content: flex-end;
   margin-top: var(--lims-r-sm);
-}
-.empty-tip {
-  color: var(--lims-text-secondary);
-  font-size: 13px;
-  padding: var(--lims-r-sm) 0;
 }
 .progress-text {
   margin-left: 6px;
@@ -780,7 +770,7 @@ onMounted(() => {
   gap: var(--lims-r-md);
   padding: 0 var(--lims-r-xs);
 }
-.entry-head .head-grid {
+.assign-head {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) 2fr minmax(140px, 1fr) minmax(300px, 2fr);
   gap: var(--lims-r-md);

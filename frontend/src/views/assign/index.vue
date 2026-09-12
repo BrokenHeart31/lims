@@ -20,7 +20,7 @@
  * </p>
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { MagicStick, Refresh, Search, User } from '@element-plus/icons-vue'
 import {
   ASSIGN_TYPE_OPTIONS,
@@ -34,6 +34,21 @@ import {
   type AssignItemRow,
   type AssignPendingRow,
 } from '@/api/assign'
+import PageHeader from '@/components/common/PageHeader.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import { askConfirm } from '@/utils/confirm'
+
+// status → tone（统一徽章）
+function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
+  if (!label) return 'neutral'
+  if (label.includes('已安排') || label.includes('S40')) return 'info'
+  if (label.includes('已分解') || label.includes('S30')) return 'purple'
+  if (label.includes('完成') || label.includes('签发') || label.includes('S90')) return 'success'
+  if (label.includes('待') || label.includes('进行')) return 'pending'
+  return 'neutral'
+}
 
 // ---------------- 待安排列表 ----------------
 const query = reactive({ sampleNo: '', sampleName: '' })
@@ -116,10 +131,16 @@ async function loadDetail(sampleId: number): Promise<void> {
   }
 }
 
-/** 指派类型枚举 → tag 类型 */
-function assignTypeTag(t: number): 'primary' | 'success' | 'warning' | 'info' {
+/** 指派类型枚举 → tone（与 StatusBadge 一致；不含 primary，因为 primary 等同 info） */
+function assignTypeTone(t: number): 'success' | 'warning' | 'danger' | 'info' | 'pending' | 'neutral' | 'purple' {
   const found = ASSIGN_TYPE_OPTIONS.find((o) => o.value === t)
-  return (found?.type ?? 'info') as 'primary' | 'success' | 'warning' | 'info'
+  const raw = (found?.type ?? 'info') as string
+  // ASSIGN_TYPE_OPTIONS 中 type 为 ElementPlus TagType 字符串；映射到 StatusBadge tone
+  if (raw === 'primary') return 'info'
+  if (raw === 'success') return 'success'
+  if (raw === 'warning') return 'warning'
+  if (raw === 'danger') return 'danger'
+  return 'pending'
 }
 
 function assignTypeLabel(t: number): string {
@@ -133,45 +154,33 @@ function sourceLabel(src: string): string {
 /** 自动分配（5.4） */
 async function handleAutoAssign(): Promise<void> {
   if (!currentSample.value) return
-  await ElMessageBox.confirm(
-    '将对该样品所有未人工改派的项按「分类规则」与「方法资质」自动指派，可重跑。',
-    '执行自动分配',
-    { confirmButtonText: '执行', cancelButtonText: '取消', type: 'info' },
-  ).catch(() => null).then(async (ok) => {
-    if (ok !== 'confirm') return
-    autoAssigning.value = true
-    try {
-      const res = await autoAssignApi({ sampleId: currentSample.value!.id })
-      const pending = res.details.filter((d) => d.assignStatus === 0)
-      const ok2 = res.details.length - pending.length
-      ElMessage.success(`自动分配完成：${ok2} 项已指派${pending.length ? `，${pending.length} 项仍待人工指派` : ''}`)
-      await loadDetail(currentSample.value!.id)
-      await loadPending()
-    } finally {
-      autoAssigning.value = false
-    }
-  })
+  if (!(await askConfirm('将对该样品所有未人工改派的项按「分类规则」与「方法资质」自动指派，可重跑。', '执行自动分配'))) return
+  autoAssigning.value = true
+  try {
+    const res = await autoAssignApi({ sampleId: currentSample.value!.id })
+    const pending = res.details.filter((d) => d.assignStatus === 0)
+    const ok2 = res.details.length - pending.length
+    ElMessage.success(`自动分配完成：${ok2} 项已指派${pending.length ? `，${pending.length} 项仍待人工指派` : ''}`)
+    await loadDetail(currentSample.value!.id)
+    await loadPending()
+  } finally {
+    autoAssigning.value = false
+  }
 }
 
 /** 人工改派（5.5） */
 async function handleReassign(item: AssignItemRow, testerNo: string): Promise<void> {
   if (!testerNo) return
   if (item.testerNo === testerNo) return
-  await ElMessageBox.confirm(
-    `将「${item.itemName}」指派给 ${testerNo}（标记为人工改派，后续自动分配不再覆盖）。`,
-    '人工改派',
-    { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' },
-  ).catch(() => null).then(async (ok) => {
-    if (ok !== 'confirm') return
-    try {
-      await reassignApi({ itemId: item.id, testerNo })
-      ElMessage.success('改派成功')
-      await loadDetail(currentSample.value!.id)
-      await loadPending()
-    } catch {
-      // 请求层已统一提示（含「无资质」拒绝）
-    }
-  })
+  if (!(await askConfirm(`将「${item.itemName}」指派给 ${testerNo}（标记为人工改派，后续自动分配不再覆盖）。`, '人工改派', { type: 'warning' }))) return
+  try {
+    await reassignApi({ itemId: item.id, testerNo })
+    ElMessage.success('改派成功')
+    await loadDetail(currentSample.value!.id)
+    await loadPending()
+  } catch {
+    // 请求层已统一提示（含「无资质」拒绝）
+  }
 }
 
 /** 安排确认（5.6） */
@@ -181,24 +190,18 @@ async function handleConfirm(): Promise<void> {
     ElMessage.warning('仍有未指派项，请先指派或自动分配')
     return
   }
-  await ElMessageBox.confirm(
-    `确认安排 ${detail.value.items.length} 项检测任务，流转样品状态 S30 → S40？`,
-    '安排确认',
-    { confirmButtonText: '确认安排', cancelButtonText: '取消', type: 'success' },
-  ).catch(() => null).then(async (ok) => {
-    if (ok !== 'confirm') return
-    confirming.value = true
-    try {
-      const res = await confirmAssignApi({ sampleId: currentSample.value!.id })
-      ElMessage.success(`已确认安排，样品状态：${res.statusLabel}`)
-      drawerVisible.value = false
-      await loadPending()
-    } catch {
-      // 请求层已统一提示（含乐观条件冲突）
-    } finally {
-      confirming.value = false
-    }
-  })
+  if (!(await askConfirm(`确认安排 ${detail.value.items.length} 项检测任务，流转样品状态 S30 → S40？`, '安排确认', { type: 'success' }))) return
+  confirming.value = true
+  try {
+    const res = await confirmAssignApi({ sampleId: currentSample.value!.id })
+    ElMessage.success(`已确认安排，样品状态：${res.statusLabel}`)
+    drawerVisible.value = false
+    await loadPending()
+  } catch {
+    // 请求层已统一提示（含乐观条件冲突）
+  } finally {
+    confirming.value = false
+  }
 }
 
 onMounted(() => {
@@ -208,21 +211,32 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <header class="page-head">
-      <div>
-        <h2 class="page-title">
-          任务安排
-        </h2>
-        <p class="page-desc">
-          阶段五：将已分解（S30）的样品检测单项指派给有资格检验员，确认后流转 S40。
-        </p>
-      </div>
-    </header>
+    <PageHeader
+      title="任务安排"
+      subtitle="阶段五：将已分解（S30）的样品检测单项指派给有资格检验员，确认后流转 S40。"
+      :icon="'Histogram'"
+    >
+      <template #breadcrumb>
+        <el-breadcrumb separator="/">
+          <el-breadcrumb-item :to="{ path: '/dashboard' }">
+            工作台
+          </el-breadcrumb-item>
+          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
+          <el-breadcrumb-item>任务安排</el-breadcrumb-item>
+        </el-breadcrumb>
+      </template>
+      <el-button
+        :icon="Refresh"
+        @click="loadPending"
+      >
+        刷新
+      </el-button>
+    </PageHeader>
 
     <!-- 查询卡片 -->
-    <el-card
-      class="glass-card filter-card"
-      shadow="never"
+    <AppCard
+      variant="panel"
+      :padding="20"
     >
       <el-form
         :inline="true"
@@ -260,18 +274,17 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppCard>
 
     <!-- 待安排样品表格 -->
-    <el-card
-      class="glass-card table-card"
-      shadow="never"
+    <AppCard
+      variant="panel"
+      :padding="16"
     >
       <el-table
         v-loading="loading"
         :data="tableData"
         stripe
-        border
       >
         <el-table-column
           prop="sampleNo"
@@ -311,12 +324,9 @@ onMounted(() => {
           align="center"
         >
           <template #default="{ row }">
-            <el-tag
-              type="primary"
-              effect="plain"
-            >
+            <StatusBadge :tone="statusTone(row.statusLabel)">
               {{ row.statusLabel }}
-            </el-tag>
+            </StatusBadge>
           </template>
         </el-table-column>
         <el-table-column
@@ -336,7 +346,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <span class="empty-tip">暂无待安排样品（需先在「项目分解」完成分解确认）</span>
+          <AppEmpty description="暂无待安排样品（需先在「项目分解」完成分解确认）" />
         </template>
       </el-table>
 
@@ -350,7 +360,7 @@ onMounted(() => {
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
       />
-    </el-card>
+    </AppCard>
 
     <!-- 安排抽屉 -->
     <el-drawer
@@ -366,16 +376,13 @@ onMounted(() => {
       >
         <template v-if="detail">
           <!-- 头部：样品摘要 + 进度 + 操作 -->
-          <section class="assign-head glass-card">
-            <div class="head-grid">
+          <AppCard variant="glass">
+            <div class="assign-head">
               <div class="head-cell">
                 <span class="cell-label">样品状态</span>
-                <el-tag
-                  type="primary"
-                  effect="plain"
-                >
+                <StatusBadge :tone="statusTone(detail.statusLabel)">
                   {{ detail.statusLabel }}
-                </el-tag>
+                </StatusBadge>
               </div>
               <div class="head-cell">
                 <span class="cell-label">指派进度</span>
@@ -417,17 +424,19 @@ onMounted(() => {
                 </el-tooltip>
               </div>
             </div>
-          </section>
+          </AppCard>
 
           <!-- 检测单项明细表 -->
-          <section class="glass-card">
+          <AppCard
+            variant="panel"
+            :padding="16"
+          >
             <h3 class="section-title">
               检测单项（{{ detail.items.length }}）
             </h3>
             <el-table
               :data="detail.items"
               stripe
-              border
             >
               <el-table-column
                 prop="itemOrder"
@@ -461,12 +470,12 @@ onMounted(() => {
                 align="center"
               >
                 <template #default="{ row }">
-                  <el-tag
-                    :type="row.assignStatus === 1 ? 'success' : 'info'"
-                    effect="plain"
+                  <StatusBadge
+                    :tone="row.assignStatus === 1 ? 'success' : 'pending'"
+                    size="sm"
                   >
                     {{ row.assignStatus === 1 ? '已指派' : '待指派' }}
-                  </el-tag>
+                  </StatusBadge>
                 </template>
               </el-table-column>
               <el-table-column
@@ -475,12 +484,12 @@ onMounted(() => {
                 align="center"
               >
                 <template #default="{ row }">
-                  <el-tag
-                    :type="assignTypeTag(row.assignType)"
-                    effect="plain"
+                  <StatusBadge
+                    :tone="assignTypeTone(row.assignType)"
+                    size="sm"
                   >
                     {{ assignTypeLabel(row.assignType) }}
-                  </el-tag>
+                  </StatusBadge>
                 </template>
               </el-table-column>
               <el-table-column
@@ -532,10 +541,13 @@ onMounted(() => {
                 </template>
               </el-table-column>
             </el-table>
-          </section>
+          </AppCard>
 
           <!-- 候选检验员说明 -->
-          <section class="glass-card candidate-card">
+          <AppCard
+            variant="panel"
+            :padding="16"
+          >
             <h3 class="section-title">
               候选检验员（{{ detail.candidates.length }}）
               <span class="section-hint">仅列出对该样品任一单项具备资质者，无资质者不展示</span>
@@ -561,13 +573,12 @@ onMounted(() => {
                 align="center"
               >
                 <template #default="{ row }">
-                  <el-tag
-                    :type="row.source === 'CATEGORY' ? 'primary' : 'success'"
-                    effect="plain"
-                    size="small"
+                  <StatusBadge
+                    :tone="row.source === 'CATEGORY' ? 'purple' : 'success'"
+                    size="sm"
                   >
                     {{ sourceLabel(row.source) }}
-                  </el-tag>
+                  </StatusBadge>
                 </template>
               </el-table-column>
               <el-table-column
@@ -583,10 +594,10 @@ onMounted(() => {
                 </template>
               </el-table-column>
               <template #empty>
-                <span class="empty-tip">当前样品无任何有资质检验员，请先在「基础数据 → 检验员方法资质」补录资质</span>
+                <AppEmpty description="当前样品无任何有资质检验员，请先在「基础数据 → 检验员方法资质」补录资质" />
               </template>
             </el-table>
-          </section>
+          </AppCard>
         </template>
       </div>
     </el-drawer>
@@ -599,38 +610,10 @@ onMounted(() => {
   flex-direction: column;
   gap: var(--lims-r-md);
 }
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--lims-r-xs);
-}
-.page-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.page-desc {
-  margin: 4px 0 0;
-  color: var(--lims-text-secondary);
-  font-size: 13px;
-}
-.glass-card {
-  border-radius: var(--lims-r-md);
-}
-.filter-card :deep(.el-form-item) {
-  margin-bottom: 0;
-}
 .pager {
   display: flex;
   justify-content: flex-end;
   margin-top: var(--lims-r-sm);
-}
-.empty-tip {
-  color: var(--lims-text-secondary);
-  font-size: 13px;
-  padding: var(--lims-r-sm) 0;
 }
 .progress-text {
   margin-left: 6px;
@@ -644,7 +627,7 @@ onMounted(() => {
   gap: var(--lims-r-md);
   padding: 0 var(--lims-r-xs);
 }
-.assign-head .head-grid {
+.assign-head {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) 2fr minmax(280px, 2fr);
   gap: var(--lims-r-md);
@@ -685,9 +668,6 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 400;
   color: var(--lims-text-secondary);
-}
-.candidate-card {
-  margin-top: var(--lims-r-xs);
 }
 
 .tester-cell {

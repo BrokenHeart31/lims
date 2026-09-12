@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
-import { MagicStick, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { ElMessage, type FormInstance } from 'element-plus'
+import { MagicStick, Operation, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
   JUDGE_TYPE_OPTIONS,
   confirmItemApi,
@@ -13,6 +13,11 @@ import {
   type ItemPendingRow,
   type SampleItem,
 } from '@/api/item'
+import { confirm } from '@/utils/confirm'
+import PageHeader from '@/components/common/PageHeader.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
 
 // ---------------- 待分解样品列表 ----------------
 const queryRef = ref<FormInstance>()
@@ -228,15 +233,13 @@ async function handleConfirm(): Promise<void> {
     ElMessage.warning('请先完成项目分解再确认')
     return
   }
-  try {
-    await ElMessageBox.confirm(
-      `确认保存后样品将进入「任务安排」流程，且不可再修改分解结果。是否继续？`,
-      '分解确认',
-      { type: 'warning', confirmButtonText: '确认保存', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  const ok = await confirm({
+    title: '分解确认',
+    message: '确认保存后样品将进入「任务安排」流程，且不可再修改分解结果。是否继续？',
+    tone: 'warning',
+    confirmText: '确认保存',
+  })
+  if (!ok) return
   confirming.value = true
   try {
     const res = await confirmItemApi(sampleId)
@@ -268,10 +271,16 @@ onMounted(() => {
 
 <template>
   <div class="item-decompose">
+    <PageHeader
+      title="项目分解"
+      subtitle="从项目标准库自动套用或人工编辑检测单项，确认后样品进入任务安排流程（S20 → S30）"
+      :icon="Operation"
+    />
+
     <!-- 查询区 -->
-    <el-card
-      shadow="never"
-      class="query-card"
+    <AppCard
+      variant="panel"
+      padding="18px 22px"
     >
       <el-form
         ref="queryRef"
@@ -312,22 +321,25 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppCard>
 
     <!-- 待分解清单 -->
-    <el-card
-      shadow="never"
-      class="table-card"
+    <AppCard
+      variant="panel"
+      padding="0"
     >
-      <template #header>
-        <span>待分解样品（登记确认 S20）</span>
-      </template>
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <span class="toolbar-title">待分解样品（登记确认 S20）</span>
+          <span class="toolbar-sub">共 {{ total }} 条</span>
+        </div>
+      </div>
       <el-table
         v-loading="loading"
         :data="tableData"
         border
         stripe
-        height="calc(100vh - 340px)"
+        height="calc(100vh - 360px)"
       >
         <el-table-column
           type="index"
@@ -375,20 +387,18 @@ onMounted(() => {
           align="center"
         >
           <template #default="{ row }">
-            <el-tag
+            <StatusBadge
               v-if="row.itemCount > 0"
-              type="success"
-              size="small"
+              tone="success"
             >
               {{ row.itemCount }} 项
-            </el-tag>
-            <el-tag
+            </StatusBadge>
+            <StatusBadge
               v-else
-              type="info"
-              size="small"
+              tone="blank"
             >
               未分解
-            </el-tag>
+            </StatusBadge>
           </template>
         </el-table-column>
         <el-table-column
@@ -397,12 +407,9 @@ onMounted(() => {
           align="center"
         >
           <template #default="{ row }">
-            <el-tag
-              type="primary"
-              size="small"
-            >
+            <StatusBadge tone="purple">
               {{ row.statusLabel }}
-            </el-tag>
+            </StatusBadge>
           </template>
         </el-table-column>
         <el-table-column
@@ -422,22 +429,26 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <el-empty description="暂无待分解样品（样品需先完成登记确认）" />
+          <AppEmpty
+            title="暂无待分解样品"
+            hint="样品需先完成「登记确认」（S20）才会出现在此列表"
+          />
         </template>
       </el-table>
 
-      <el-pagination
-        class="pager"
-        :current-page="current"
-        :page-size="size"
-        :total="total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        background
-        @current-change="handlePageChange"
-        @size-change="handleSizeChange"
-      />
-    </el-card>
+      <div class="pager">
+        <el-pagination
+          :current-page="current"
+          :page-size="size"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </div>
+    </AppCard>
 
     <!-- 分解抽屉 -->
     <el-drawer
@@ -467,21 +478,21 @@ onMounted(() => {
             新增检测单项
           </el-button>
           <span class="spacer" />
-          <el-tag type="info">
+          <StatusBadge tone="info">
             共 {{ editorItems.length }} 项
-          </el-tag>
-          <el-tag
+          </StatusBadge>
+          <StatusBadge
             v-if="refCount > 0"
-            type="warning"
+            tone="warning"
           >
             参考项 {{ refCount }} 项
-          </el-tag>
-          <el-tag
+          </StatusBadge>
+          <StatusBadge
             v-if="dirty"
-            type="danger"
+            tone="danger"
           >
             有未保存改动
-          </el-tag>
+          </StatusBadge>
         </div>
 
         <el-alert
@@ -624,12 +635,9 @@ onMounted(() => {
             align="center"
           >
             <template #default="{ row }">
-              <el-tag
-                :type="row.sourceType === 1 ? 'primary' : 'warning'"
-                size="small"
-              >
+              <StatusBadge :tone="row.sourceType === 1 ? 'info' : 'warning'">
                 {{ row.sourceType === 1 ? '标准库' : '人工' }}
-              </el-tag>
+              </StatusBadge>
             </template>
           </el-table-column>
           <el-table-column
@@ -649,7 +657,10 @@ onMounted(() => {
             </template>
           </el-table-column>
           <template #empty>
-            <el-empty description="暂无检测单项，请先「从项目库自动套用」或「新增检测单项」" />
+            <AppEmpty
+              title="暂无检测单项"
+              hint="请先「从项目库自动套用」或「新增检测单项」"
+            />
           </template>
         </el-table>
       </div>
@@ -681,26 +692,39 @@ onMounted(() => {
 
 <style scoped>
 .item-decompose {
-  padding: 4px;
-}
-.query-card {
-  margin-bottom: 12px;
-}
-.table-card :deep(.el-card__body) {
-  padding-top: 8px;
-}
-.pager {
-  margin-top: 12px;
-  justify-content: flex-end;
-}
-.drawer-body {
-  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lims-page-gap);
 }
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--lims-hair);
+}
+.toolbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.toolbar-title {
+  color: var(--lims-ink);
+  font-size: var(--lims-fs-base);
+  font-weight: 600;
+}
+.toolbar-sub {
+  color: var(--lims-faint);
+  font-size: var(--lims-fs-xs);
+}
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 22px;
+  border-top: 1px solid var(--lims-hair);
+}
+.drawer-body {
+  padding: 0 4px;
 }
 .toolbar .spacer {
   flex: 1;

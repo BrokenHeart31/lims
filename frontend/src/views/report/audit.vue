@@ -30,6 +30,24 @@ import {
   type AuditItem,
   type AuditPendingRow,
 } from '@/api/report'
+import PageHeader from '@/components/common/PageHeader.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+
+function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
+  if (!label) return 'neutral'
+  if (label.includes('签发') || label.includes('S80')) return 'purple'
+  if (label.includes('审核') || label.includes('S70')) return 'info'
+  if (label.includes('完成') || label.includes('S60')) return 'success'
+  return 'pending'
+}
+function conclusionTone(code: number | null | undefined): 'success' | 'danger' | 'pending' | 'neutral' {
+  if (code === 1) return 'success'
+  if (code === 2) return 'danger'
+  if (code === 3) return 'pending'
+  return 'neutral'
+}
 
 // ---------------- 列表（两个页签） ----------------
 type TabName = 'audit' | 'sign'
@@ -285,20 +303,31 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <header class="page-head">
-      <div>
-        <h2 class="page-title">
-          报告审核签发
-        </h2>
-        <p class="page-desc">
-          检验数据全部录齐后转入审核；经审核无误由中心领导签发（签发后方可生成检验报告）
-        </p>
-      </div>
-    </header>
+    <PageHeader
+      title="报告审核签发"
+      subtitle="检验数据全部录齐后转入审核；经审核无误由中心领导签发（签发后方可生成检验报告）"
+      icon="Stamp"
+    >
+      <template #breadcrumb>
+        <el-breadcrumb separator="/">
+          <el-breadcrumb-item :to="{ path: '/dashboard' }">
+            工作台
+          </el-breadcrumb-item>
+          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
+          <el-breadcrumb-item>报告审核签发</el-breadcrumb-item>
+        </el-breadcrumb>
+      </template>
+      <el-button
+        :icon="Refresh"
+        @click="loadPending"
+      >
+        刷新
+      </el-button>
+    </PageHeader>
 
-    <el-card
-      class="glass-card"
-      shadow="never"
+    <AppCard
+      variant="panel"
+      :padding="16"
     >
       <el-tabs
         v-model="activeTab"
@@ -468,9 +497,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <span class="empty-tip">
-            {{ isAuditTab ? '暂无待审核样品（需先在「结果录入」提交至检验完成）' : '暂无待签发样品' }}
-          </span>
+          <AppEmpty :description="isAuditTab ? '暂无待审核样品（需先在「结果录入」提交至检验完成）' : '暂无待签发样品'" />
         </template>
       </el-table>
 
@@ -484,7 +511,7 @@ onMounted(() => {
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
       />
-    </el-card>
+    </AppCard>
 
     <!-- 审核/签发抽屉 -->
     <el-drawer
@@ -500,25 +527,25 @@ onMounted(() => {
       >
         <template v-if="detail">
           <!-- 头部摘要 -->
-          <section class="glass-card audit-head">
-            <div class="head-grid">
+          <AppCard variant="glass">
+            <div class="audit-head">
               <div class="head-cell">
                 <span class="cell-label">样品状态</span>
-                <el-tag
-                  type="primary"
-                  effect="plain"
+                <StatusBadge
+                  :tone="statusTone(detail.statusLabel)"
+                  size="md"
                 >
                   {{ detail.statusLabel }}
-                </el-tag>
+                </StatusBadge>
               </div>
               <div class="head-cell">
                 <span class="cell-label">整体结论</span>
-                <el-tag
-                  :type="conclusionTagType(detail.conclusion)"
-                  effect="dark"
+                <StatusBadge
+                  :tone="conclusionTone(detail.conclusion)"
+                  size="md"
                 >
                   {{ detail.conclusionLabel ?? '—' }}
-                </el-tag>
+                </StatusBadge>
               </div>
               <div class="head-cell">
                 <span class="cell-label">检测单项</span>
@@ -549,12 +576,13 @@ onMounted(() => {
               <span>签发人：{{ detail.signBy }}</span>
               <span v-if="detail.signAt">签发时间：{{ detail.signAt }}</span>
             </div>
-          </section>
+          </AppCard>
 
           <!-- 异常项清单（放行红线） -->
-          <section
+          <AppCard
             v-if="hasAbnormal"
-            class="glass-card abnormal-card"
+            variant="panel"
+            :padding="16"
           >
             <h3 class="section-title warning-title">
               <el-icon><Warning /></el-icon>
@@ -622,10 +650,13 @@ onMounted(() => {
             >
               我已逐项确认上述异常项，仍要审核通过（将留痕记录）
             </el-checkbox>
-          </section>
+          </AppCard>
 
           <!-- 检测单项明细 -->
-          <section class="glass-card">
+          <AppCard
+            variant="panel"
+            :padding="16"
+          >
             <h3 class="section-title">
               检测单项（{{ detail.items.length }}）
               <span class="section-hint">单项结论由判定引擎生成，审核环节不改数据</span>
@@ -745,12 +776,14 @@ onMounted(() => {
                 </template>
               </el-table-column>
             </el-table>
-          </section>
+          </AppCard>
 
           <!-- 审核操作 -->
-          <section
+          <AppCard
             v-if="detail.allowAudit"
-            class="glass-card action-card"
+            variant="glass"
+            :padding="20"
+            accent
           >
             <h3 class="section-title">
               审核操作
@@ -806,12 +839,14 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-          </section>
+          </AppCard>
 
           <!-- 签发操作 -->
-          <section
+          <AppCard
             v-if="detail.allowSign"
-            class="glass-card action-card"
+            variant="glass"
+            :padding="20"
+            accent
           >
             <h3 class="section-title">
               签发操作
@@ -834,10 +869,13 @@ onMounted(() => {
                 签发 → S80（可生成报告）
               </el-button>
             </div>
-          </section>
+          </AppCard>
 
           <!-- 审核流水 -->
-          <section class="glass-card">
+          <AppCard
+            variant="panel"
+            :padding="16"
+          >
             <h3 class="section-title">
               审核/签发流水（{{ detail.logs.length }}）
             </h3>
@@ -896,11 +934,11 @@ onMounted(() => {
                 width="170"
               />
             </el-table>
-            <span
+            <AppEmpty
               v-else
-              class="empty-tip"
-            >暂无审核/签发记录</span>
-          </section>
+              description="暂无审核/签发记录"
+            />
+          </AppCard>
         </template>
       </div>
     </el-drawer>
@@ -913,26 +951,6 @@ onMounted(() => {
   flex-direction: column;
   gap: var(--lims-r-md);
 }
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--lims-r-xs);
-}
-.page-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.page-desc {
-  margin: 4px 0 0;
-  color: var(--lims-text-secondary);
-  font-size: 13px;
-}
-.glass-card {
-  border-radius: var(--lims-r-md);
-}
 .filter-form {
   margin-top: var(--lims-r-sm);
 }
@@ -944,11 +962,6 @@ onMounted(() => {
   justify-content: flex-end;
   margin-top: var(--lims-r-sm);
 }
-.empty-tip {
-  color: var(--lims-text-secondary);
-  font-size: 13px;
-  padding: var(--lims-r-sm) 0;
-}
 
 .drawer-body {
   display: flex;
@@ -956,7 +969,7 @@ onMounted(() => {
   gap: var(--lims-r-md);
   padding: 0 var(--lims-r-xs);
 }
-.audit-head .head-grid {
+.audit-head {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
   gap: var(--lims-r-md);

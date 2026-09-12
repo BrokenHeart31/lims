@@ -209,3 +209,93 @@ html.lims-theme-light {
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
   --lims-inner-hair: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
+
+/* ===========================================================================
+ * LIMS UI 升级扩展（2026-09-12 GLM UI overhaul）
+ * ----------------------------------------------------------------------------
+ * 设计基准：现代深色 SaaS 实验室信息管理系统，保留 Aurora Glass 华丽质感。
+ * 扩展原则：
+ *   ① 不破坏上方已落地的「极光玻璃」令牌；只新增布局/状态/组件级变量
+ *   ② 间距采用 4 的倍数；卡片 12px、按钮/输入 8px（贴合企业 SaaS 风格）
+ *   ③ 状态色新增 purple（用于「待判定」「审核中」等中性偏提示态）
+ *   ④ 三类表面限定用途：玻璃（卡片氛围） / 面板（数据密集区） / 平面（次级容器）
+ * =========================================================================== */
+:root {
+  /* -------- 布局尺寸：Sidebar 224 / Header 60 / Content padding 24 -------- */
+  --lims-sidebar-w: 224px;
+  --lims-sidebar-w-collapsed: 68px;
+  --lims-header-h: 60px;
+  --lims-content-px: 24px;
+  --lims-content-py: 24px;
+  --lims-page-gap: 16px;
+
+  /* -------- 间距扩展（4 的倍数，含 12 紧凑档与 28/40 标题档） -------- */
+  --lims-sp-0: 0;
+  --lims-sp-1: 4px;
+  --lims-sp-2: 8px;
+  --lims-sp-3: 12px;
+  --lims-sp-4: 16px;
+  --lims-sp-5: 20px;
+  --lims-sp-6: 24px;
+  --lims-sp-7: 28px;
+  --lims-sp-8: 32px;
+  --lims-sp-10: 40px;
+  --lims-sp-12: 48px;
+
+  /* -------- 圆角：卡片 12 / 按钮输入 8（提示词 §六：偏企业感） -------- */
+  --lims-r-card: 12px;
+  --lims-r-ctrl: 8px;
+  --lims-r-pill: 999px;
+
+  /* -------- 表格行高（提示词 §三十：52~60px） -------- */
+  --lims-row-h: 52px;
+  --lims-row-h-lg: 60px;
+
+  /* -------- 状态色扩展：purple 用于「待判定/审核中」中性提示态 -------- */
+  --lims-purple: #9b7cff;
+  --lims-purple-rgb: 155, 124, 255;
+  --lims-purple-soft: rgba(155, 124, 255, 0.14);
+  --lims-purple-line: rgba(155, 124, 255, 0.42);
+
+  /* 状态色「浅版」（用于 badge / 标签背景，比纯色柔和 80%） */
+  --lims-success-soft: rgba(34, 197, 94, 0.14);
+  --lims-success-line: rgba(34, 197, 94, 0.42);
+  --lims-warning-soft: rgba(245, 165, 36, 0.14);
+  --lims-warning-line: rgba(245, 165, 36, 0.42);
+  --lims-danger-soft: rgba(255, 83, 103, 0.14);
+  --lims-danger-line: rgba(255, 83, 103, 0.42);
+  --lims-info-soft: rgba(127, 216, 255, 0.14);
+  --lims-info-line: rgba(127, 216, 255, 0.42);
+
+  /* 检验结论三态（与判定引擎 ResultConclusion 对齐） */
+  --lims-conclusion-pass: var(--lims-success);
+  --lims-conclusion-fail: var(--lims-danger);
+  --lims-conclusion-pending: var(--lims-warning);
+  --lims-conclusion-blank: var(--lims-purple);
+
+  /* -------- PageHeader 专用：标题/副标题/操作区间距 -------- */
+  --lims-page-title-size: 22px;
+  --lims-page-sub-size: 13px;
+  --lims-page-header-py: 18px;
+
+  /* -------- 三类表面的进一步细分 -------- */
+  /** .lims-surface-2：卡片悬浮态，比 surface 略亮 */
+  --lims-surface-2: rgba(28, 32, 38, 0.72);
+  /** .lims-surface-3：下拉/弹窗/最高层级 */
+  --lims-surface-3: rgba(36, 41, 48, 0.86);
+
+  /* -------- 面包屑 -------- */
+  --lims-breadcrumb-fg: var(--lims-muted);
+  --lims-breadcrumb-fg-active: var(--lims-ink);
+  --lims-breadcrumb-sep: var(--lims-faint);
+
+  /* -------- 阴影（细颗粒） -------- */
+  --lims-shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 8px 24px rgba(0, 0, 0, 0.18);
+  --lims-shadow-pop:
+    0 12px 32px rgba(0, 0, 0, 0.36), 0 0 0 1px rgba(255, 255, 255, 0.04);
+
+  /* -------- 焦点环（用于键盘可达性） -------- */
+  --lims-focus-ring: 0 0 0 2px rgba(var(--lims-accent-rgb), 0.55);
+}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   createTaskApi,
   deleteTaskApi,
@@ -13,6 +13,11 @@ import {
   type SuperviseTask,
 } from '@/api/task'
 import { useAuthStore } from '@/stores/auth'
+import PageHeader from '@/components/common/PageHeader.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import { askConfirm } from '@/utils/confirm'
 
 const authStore = useAuthStore()
 
@@ -71,6 +76,16 @@ function handleSizeChange(s: number): void {
   pageSize.value = s
   pageNum.value = 1
   void loadList()
+}
+
+// task 状态 → tone（简单映射）
+function statusTone(s: string | undefined): 'success' | 'warning' | 'info' | 'pending' | 'neutral' | 'purple' {
+  if (!s) return 'neutral'
+  if (s.includes('完成') || s.includes('已签发')) return 'success'
+  if (s.includes('进行') || s.includes('中')) return 'pending'
+  if (s.includes('草稿')) return 'neutral'
+  if (s.includes('退回')) return 'warning'
+  return 'info'
 }
 
 // ---------------- 新建/编辑弹窗 ----------------
@@ -145,15 +160,7 @@ async function handleSubmit(): Promise<void> {
 }
 
 async function handleDelete(row: SuperviseTask): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确定删除任务「${row.taskName}（${row.taskNo}）」吗？`,
-      '删除确认',
-      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(`确定删除任务「${row.taskName}（${row.taskNo}）」吗？`, '删除确认', { type: 'warning' }))) return
   try {
     await deleteTaskApi(row.id!)
     ElMessage.success('删除成功')
@@ -170,10 +177,33 @@ onMounted(() => {
 
 <template>
   <div class="task-page">
+    <PageHeader
+      title="监抽任务"
+      subtitle="下达 / 维护食品质量监督抽检任务，作为后续采样的来源依据"
+      icon="Notebook"
+    >
+      <template #breadcrumb>
+        <el-breadcrumb separator="/">
+          <el-breadcrumb-item :to="{ path: '/dashboard' }">
+            工作台
+          </el-breadcrumb-item>
+          <el-breadcrumb-item>业务管理</el-breadcrumb-item>
+          <el-breadcrumb-item>监抽任务</el-breadcrumb-item>
+        </el-breadcrumb>
+      </template>
+      <el-button
+        v-if="authStore.hasPermission('task:add')"
+        type="primary"
+        @click="openCreate"
+      >
+        新建任务
+      </el-button>
+    </PageHeader>
+
     <!-- 查询区 -->
-    <el-card
-      shadow="never"
-      class="query-card"
+    <AppCard
+      variant="panel"
+      :padding="20"
     >
       <el-form
         ref="queryRef"
@@ -224,24 +254,16 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppCard>
 
     <!-- 列表区 -->
-    <el-card shadow="never">
-      <div class="table-toolbar">
-        <el-button
-          v-if="authStore.hasPermission('task:add')"
-          type="primary"
-          @click="openCreate"
-        >
-          新建任务
-        </el-button>
-      </div>
-
+    <AppCard
+      variant="panel"
+      :padding="16"
+    >
       <el-table
         v-loading="loading"
         :data="tableData"
-        border
         stripe
       >
         <el-table-column
@@ -287,9 +309,12 @@ onMounted(() => {
           width="90"
         >
           <template #default="{ row }">
-            <el-tag size="small">
+            <StatusBadge
+              :tone="statusTone((row as SuperviseTask).status)"
+              size="sm"
+            >
               {{ (row as SuperviseTask).status }}
-            </el-tag>
+            </StatusBadge>
           </template>
         </el-table-column>
         <el-table-column
@@ -316,10 +341,13 @@ onMounted(() => {
             </el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <AppEmpty description="暂无监抽任务，可点击右上「新建任务」下达" />
+        </template>
       </el-table>
 
       <el-pagination
-        class="pagination"
+        class="pager"
         :current-page="pageNum"
         :page-size="pageSize"
         :total="total"
@@ -327,7 +355,7 @@ onMounted(() => {
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
       />
-    </el-card>
+    </AppCard>
 
     <!-- 新建/编辑弹窗 -->
     <el-dialog
@@ -521,19 +549,10 @@ onMounted(() => {
 .task-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--lims-r-md);
 }
-
-.query-card :deep(.el-form-item) {
-  margin-bottom: 0;
-}
-
-.table-toolbar {
-  margin-bottom: 12px;
-}
-
-.pagination {
-  margin-top: 16px;
+.pager {
+  margin-top: var(--lims-r-sm);
   justify-content: flex-end;
 }
 </style>

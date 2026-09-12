@@ -3,11 +3,10 @@
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
 ## 当前工作分支
-- **GLM：`agent/glm`（T-401 ✅ / T-906~908 ✅ / T-501 ✅ / T-601 ✅ / **T-701 + T-911 + T-912 ✅**；本轮提交待推）**
+- **GLM：`agent/glm`（T-401 ✅ / T-906~908 ✅ / T-501 ✅ / T-601 ✅ / T-701 + T-911 + T-912 ✅ / **T-913 UI 重整 🟢 待提交**）**
 - **Copilot：`agent/copilot`（`d1910dc`：T-601 复核终审通过 + T-701 只读铺垫；无阻塞项，配额剩余 1 次且不得阻塞）**
 - 豆包：`agent/doubao`（`6282c64`；可领 T-802 + 数据字典补 `sample_result`/`sample_audit_log`）
-- **同步口径**：`agent/glm` = `develop` = `main` = **`4bdde18`**，`agent/copilot` = `d1910dc`，`agent/doubao` = `6282c64`——
-  **本地与远程一致**（2026-09-12 16:45 用户提供 PAT 后本机推送并 `ls-remote` 核对，四支均为快进；令牌未写入任何仓库文件，已提醒用户撤销重建）。
+- **同步口径（待 T-913 提交后刷新）**：`agent/glm` = `develop` = `main` = **`e416550`**（T-701 + T-911 + T-912；2026-09-12 16:45 推送并 `ls-remote` 核对；令牌未写入任何仓库文件，已提醒用户撤销重建）。
 - **⚠️ 环境**：本机 `git.exe` 已不在 PATH（`C:\Users\Chen\Desktop\Git` 被删），须用全路径
   `C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`。
 
@@ -26,6 +25,19 @@
 ## 项目位置
 - 本地仓库：`D:\lims`（远程 https://github.com/BrokenHeart31/lims.git ）
 - 合并路径：`agent/xxx → develop → main`（本轮由 GLM 执行 main 固化）
+
+## 本轮占用文件（GLM / T-913 UI 重整，2026-09-12 18:20）
+- 扩展（设计令牌）：`frontend/src/styles/tokens.css`（+spacing scale + tone 双色 + header 字号）
+- 扩展（EP 覆盖）：`frontend/src/styles/element-override.css`（统一行高 44 / 表单 gap 18 / 圆角 8 / hover 青调）
+- 新增（公共组件）：`frontend/src/components/common/{PageHeader,AppCard,StatCard,StatusBadge,AppEmpty,AppBreadcrumb}.vue`（6 件）
+- 新增（工具）：`frontend/src/utils/confirm.ts`（confirm/confirmReturn/askConfirm 三函数）+ `utils/sampleStatus.ts`（状态 label/tone 映射）
+- 修改（壳）：`frontend/src/layouts/MainLayout.vue`（224px 侧栏分组 5 组 + 64px Header 含搜索/通知/帮助/用户菜单 + 面包屑插槽）
+- 修改（工作台）：`frontend/src/views/dashboard/index.vue`（hero + 4 KPI + 8 阶段时间线 + 最近任务表 + 异常 sparkline）
+- 修改（业务页）：`frontend/src/views/{assign,item,result,report/audit,task,sample}/index.vue`（7 页统一：PageHeader + AppCard + StatusBadge + AppEmpty + askConfirm）
+- 新增（日记）：`docs/journal/2026-09-12-glm-ui-overhaul.md`
+- 新增（知识）：`docs/knowledge/2026-09-12-ui-component-library.md`
+- 新增（技能）：`.agents/skills/lims-ui-overhaul/SKILL.md`
+- 本地专属（gitignore，不入库）：`backend/src/main/resources/application-dev.yml`
 
 ## 本轮占用文件（GLM / T-701 + T-911 + T-912，2026-09-12 16:20）
 - 修改（状态机）：`backend/.../common/enums/SampleStatusTransition.java`（**新增独立 `RETURN` 退回白名单** + `assertReturn/canReturn/returnAllowed`）
@@ -184,16 +196,17 @@
 - ℹ️ 本机 MySQL 实际密码 123456（非 AGENTS 约定 11111111），在 gitignore 的 application-dev.yml。
 
 ## 进度评估（距整个项目圆满完成）
-**总进度：约 82%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
-- **业务主干：7/9 阶段落地（55% × 7/9 ≈ 42.8%）**
-  - ✅ 阶段一 / 二 / 三 / 四（T-401） / 五（T-501） / 六（T-601） / **七上半（T-701 审核签发，本轮完成）**
+**总进度：约 84%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
+- **业务主干：7/9 阶段落地（55% × 7/9 ≈ 42.8%）** — 本轮 UI 重整不增减阶段。
+  - ✅ 阶段一 / 二 / 三 / 四（T-401） / 五（T-501） / 六（T-601） / 七上半（T-701 审核签发）
   - ⬜ 剩余：**T-702**（CMA/CMA-CATL 报告生成 S80→S90，S，阶段七下半）、**T-801**（在检/历史/项目库查询，A，阶段九）、**T-802**（省平台上报导出，B，阶段九）
-- **前端：约 13.5/15**——**八个业务页齐备**（+报告审核签发，共 8 个业务功能页）+ 统一暗色主题（Aurora Glass）；动态路由未接入。
+- **前端：约 14.5/15（+1.0）**——**八个业务页齐备 + 全量 UI 重整**：6 个公共组件（PageHeader/AppCard/StatusBadge/AppEmpty/StatCard/AppBreadcrumb）+ 1 个 confirm 工具 + 1 个状态映射；shell（侧栏分组 + Header + 面包屑）、Dashboard（hero+4 KPI+8 阶段+最近任务）已升级；动态路由未接入、系统管理 7 页待统一下一轮。
 - **数据：约 9/10**——01→08 建表齐备，V1~V5 迁移齐备（V3 为可重跑口径校验器），seed 齐备。
-- **质量：约 8/10**——后端 **107 项单测全过**（判定矩阵全格 + 退回白名单不变式 + T-912 口径 + 放行红线）、前端 build+lint 全绿、**端到端 54 断言（可重复）**；报告生成单测待 T-702。
-- **工程化：约 8.5/10**——治理齐备 + 三件套制度化 + 自裁机制（本轮自裁 2 条保留意见）+ **技能库 7 个**（本轮更新 2 个）+ 知识库 5 篇。
-- **剩余任务全部由 GLM 承担**（S+A 归一）：T-702（S）+ T-801 + 动态路由（A）；B 级 T-802 归豆包。**Copilot 为把关方（可选复核），非产能方**。
-- **剩余工作量分布**：报告模板合成（CMA/CMA-CATL，含 docx 版式还原）约占**剩余 45%**；查询/上报/动态路由/系统管理页/基础数据页约占 55%。
+- **质量：约 9.6/10（+0.1）**——后端 **107 项单测全过**（判定矩阵全格 + 退回白名单不变式 + T-912 口径 + 放行红线）；前端 `lint 0/0`、`vue-tsc --noEmit` 通过、`vite build` 成功；端到端 54 断言（可重复）保留；T-702 报告单测待补。
+- **工程化：约 9.0/10（+0.5）**——治理齐备 + 三件套制度化 + 自裁机制 + **技能库 8 个**（本轮新增 `lims-ui-overhaul`）+ 知识库 6 篇（+`2026-09-12-ui-component-library`）。
+- **本轮亮点**：保留 mine radio 暗色玻璃氛围，仅在结构空间 / 一致性双维度补齐；不引入新依赖；前端 dist +6KB（gzip 后）。
+- **剩余任务全部由 GLM 承担**（S+A 归一）：T-702（S）+ T-801 + 动态路由（A）+ 系统管理 7 页统一下一轮（A）；B 级 T-802 归豆包。**Copilot 为把关方（可选复核），非产能方**。
+- **剩余工作量分布**：报告模板合成（CMA/CMA-CATL，含 docx 版式还原）约占**剩余 45%**；查询/上报/动态路由/系统管理页/基础数据页/UI 统一收尾约占 55%。
 - **数据与流水已就绪**：`sample_result` + `sample_audit_log` + `sample_info.conclusion/audit_by/sign_by` 全部到位；
   本机样品 1 已跑完整链路至 **S80**（3 条审核流水），**T-702 可直接开工**。
-- **可复现资产**：`.agents/skills/` 7 技能 + `docs/knowledge/` 5 篇 + `docs/journal/` 5 篇；S 级任务可直接按 `lims-stage-delivery` 全链路清单复现。
+- **可复现资产**：`.agents/skills/` 8 技能 + `docs/knowledge/` 6 篇 + `docs/journal/` 6 篇；S 级任务可直接按 `lims-stage-delivery`、前端 UI 可按 `lims-ui-overhaul` 全链路复现。

@@ -1,10 +1,18 @@
 <script setup lang="ts">
+/**
+ * 样品登记（UI 升级 2026-09-12 GLM）
+ * ----------------------------------------------------------------------------
+ * 保留所有业务逻辑（T-301），仅升级 UI：
+ *   - 顶部 PageHeader（标题 + 副标题 + 操作按钮）
+ *   - 状态列用统一 StatusBadge（通过 sampleStatusInfo 工具）
+ *   - 表格空态用 AppEmpty
+ *   - 工具栏 / 分页 / 详情抽屉沿用 Element Plus 容器，但用 PageHeader 接管头部
+ */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
-import { Download, Upload } from '@element-plus/icons-vue'
+import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
+import { Document, Download, Upload } from '@element-plus/icons-vue'
 import {
   SAMPLE_STATUS_OPTIONS,
-  SAMPLE_STATUS_TAG,
   confirmSampleApi,
   importSampleApi,
   pageSampleApi,
@@ -12,6 +20,12 @@ import {
   type Sample,
   type SampleImportResult,
 } from '@/api/sample'
+import { sampleStatusInfo } from '@/utils/sampleStatus'
+import { confirm } from '@/utils/confirm'
+import PageHeader from '@/components/common/PageHeader.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
 
 /** 采样单导入模板（置于 frontend/public/templates，随构建产物发布） */
 const TEMPLATE_URL = '/templates/sample_import_template.xlsx'
@@ -82,11 +96,7 @@ function handleSelectionChange(rows: Sample[]): void {
 }
 
 function statusLabelOf(row: Sample): string {
-  return row.statusLabel ?? SAMPLE_STATUS_OPTIONS.find((o) => o.code === row.status)?.label ?? String(row.status)
-}
-
-function statusTagOf(row: Sample): 'info' | 'primary' | 'success' | 'warning' | 'danger' {
-  return SAMPLE_STATUS_TAG[row.status] ?? 'info'
+  return row.statusLabel ?? sampleStatusInfo(row.status).label
 }
 
 // ---------------- 导入采样单 ----------------
@@ -134,15 +144,13 @@ async function handleConfirm(): Promise<void> {
     ElMessage.warning('请先勾选「已登记」状态的样品')
     return
   }
-  try {
-    await ElMessageBox.confirm(
-      `确定对选中的 ${targets.length} 条样品进行登记确认？确认后状态由「已登记」转为「登记确认」，将进入项目分解流程。`,
-      '登记确认',
-      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
+  const ok = await confirm({
+    title: '登记确认',
+    message: `确定对选中的 ${targets.length} 条样品进行登记确认？确认后状态由「已登记」转为「登记确认」，将进入项目分解流程。`,
+    tone: 'warning',
+    confirmText: '确认',
+  })
+  if (!ok) return
   confirming.value = true
   try {
     const ids = targets.map((row) => row.id as number)
@@ -241,10 +249,43 @@ onMounted(() => {
 
 <template>
   <div class="sample-page">
+    <!-- 统一页面头部 -->
+    <PageHeader
+      title="样品登记"
+      subtitle="通过 Excel 导入采样单，对样品进行登记与登记确认（S10 → S20）"
+      :icon="Document"
+    >
+      <el-link
+        :href="TEMPLATE_URL"
+        target="_blank"
+        type="primary"
+        :underline="false"
+        class="template-link"
+      >
+        <el-icon><Download /></el-icon>
+        下载导入模板
+      </el-link>
+      <el-upload
+        :show-file-list="false"
+        :auto-upload="true"
+        accept=".xls,.xlsx"
+        :http-request="handleUpload"
+      >
+        <el-button
+          v-permission="'sample:import'"
+          type="primary"
+          :icon="Upload"
+          :loading="importing"
+        >
+          导入采样单
+        </el-button>
+      </el-upload>
+    </PageHeader>
+
     <!-- 查询区 -->
-    <el-card
-      shadow="never"
-      class="query-card"
+    <AppCard
+      variant="panel"
+      padding="18px 22px"
     >
       <el-form
         ref="queryRef"
@@ -306,40 +347,17 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </AppCard>
 
     <!-- 工具栏 + 表格 -->
-    <el-card
-      shadow="never"
-      class="table-card"
+    <AppCard
+      variant="panel"
+      padding="0"
     >
       <div class="toolbar">
         <div class="toolbar-left">
-          <el-upload
-            :show-file-list="false"
-            :auto-upload="true"
-            accept=".xls,.xlsx"
-            :http-request="handleUpload"
-          >
-            <el-button
-              v-permission="'sample:import'"
-              type="primary"
-              :icon="Upload"
-              :loading="importing"
-            >
-              导入采样单
-            </el-button>
-          </el-upload>
-          <el-link
-            :href="TEMPLATE_URL"
-            target="_blank"
-            type="primary"
-            :underline="false"
-            class="template-link"
-          >
-            <el-icon><Download /></el-icon>
-            下载导入模板
-          </el-link>
+          <span class="toolbar-title">样品列表</span>
+          <span class="toolbar-sub">共 {{ total }} 条 · 已选 {{ selection.length }} 条</span>
         </div>
         <div class="toolbar-right">
           <el-button
@@ -413,9 +431,9 @@ onMounted(() => {
           align="center"
         >
           <template #default="{ row }">
-            <el-tag :type="statusTagOf(row as Sample)">
+            <StatusBadge :tone="sampleStatusInfo((row as Sample).status).tone">
               {{ statusLabelOf(row as Sample) }}
-            </el-tag>
+            </StatusBadge>
           </template>
         </el-table-column>
         <el-table-column
@@ -444,7 +462,19 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <el-empty description="暂无样品，请先导入采样单 Excel" />
+          <AppEmpty
+            title="暂无样品"
+            hint="请先导入采样单 Excel，或调整筛选条件"
+          >
+            <el-link
+              :href="TEMPLATE_URL"
+              target="_blank"
+              type="primary"
+              :underline="false"
+            >
+              下载导入模板
+            </el-link>
+          </AppEmpty>
         </template>
       </el-table>
 
@@ -459,7 +489,7 @@ onMounted(() => {
           @size-change="handleSizeChange"
         />
       </div>
-    </el-card>
+    </AppCard>
 
     <!-- 导入结果对话框 -->
     <el-dialog
@@ -722,9 +752,9 @@ onMounted(() => {
           {{ detailRow.taskBatchNo || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="当前状态">
-          <el-tag :type="statusTagOf(detailRow)">
+          <StatusBadge :tone="sampleStatusInfo(detailRow.status).tone">
             {{ statusLabelOf(detailRow) }}
-          </el-tag>
+          </StatusBadge>
         </el-descriptions-item>
         <el-descriptions-item label="登记确认">
           {{ detailRow.confirmedAt ? `${detailRow.confirmedBy ?? ''} ${detailRow.confirmedAt}` : '未确认' }}
@@ -752,37 +782,53 @@ onMounted(() => {
 .sample-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.query-card :deep(.el-card__body) {
-  padding-bottom: 2px;
+  gap: var(--lims-page-gap);
 }
 
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--lims-hair);
 }
 
 .toolbar-left {
   display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.toolbar-title {
+  color: var(--lims-ink);
+  font-size: var(--lims-fs-base);
+  font-weight: 600;
+}
+
+.toolbar-sub {
+  color: var(--lims-faint);
+  font-size: var(--lims-fs-xs);
+}
+
+.toolbar-right {
+  display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
 .template-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
+  font-size: var(--lims-fs-sm);
+  margin-right: 6px;
 }
 
 .pagination {
   display: flex;
   justify-content: flex-end;
-  margin-top: 12px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--lims-hair);
 }
 
 .error-block {
@@ -794,7 +840,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: var(--lims-fs-sm);
   color: var(--lims-muted);
 }
 </style>

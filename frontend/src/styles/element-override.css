@@ -200,6 +200,7 @@ html.dark {
 
 /* ---------------------------------------------------------------------------
  * 表格：数据密集区 —— 高对比、弱化模糊、hover 用极轻的青调
+ * 行高统一 52px（提示词 §三十「52~60px」）；cell 内部 padding 给到 12px 让数字呼吸
  * ------------------------------------------------------------------------- */
 .el-table {
   --el-table-bg-color: transparent;
@@ -210,6 +211,9 @@ html.dark {
   --el-table-row-hover-bg-color: rgba(var(--lims-accent-rgb), 0.06);
   --el-table-current-row-bg-color: rgba(var(--lims-accent-rgb), 0.1);
   --el-table-text-color: var(--lims-ink);
+  --el-table-header-font-weight: 600;
+  --el-table-border: 1px solid var(--lims-hair);
+  --el-table-row-hover-bg-color: rgba(var(--lims-accent-rgb), 0.06);
 
   border-radius: var(--lims-r-md);
   font-size: var(--lims-fs-sm);
@@ -218,6 +222,20 @@ html.dark {
 .el-table th.el-table__cell {
   font-weight: 600;
   letter-spacing: 0.2px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 12px 0;
+}
+
+.el-table .el-table__cell {
+  padding: 12px 0;
+}
+
+.el-table .el-table__row {
+  height: var(--lims-row-h);
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background: rgba(var(--lims-accent-rgb), 0.05) !important;
 }
 
 .el-table--border,
@@ -235,6 +253,11 @@ html.dark {
 
 .el-table__empty-text {
   color: var(--lims-muted);
+}
+
+.el-table .cell {
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 /* ---------------------------------------------------------------------------
