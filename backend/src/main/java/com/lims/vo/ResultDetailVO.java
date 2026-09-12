@@ -103,9 +103,13 @@ public class ResultDetailVO {
 
         private String remark;
 
-        /** 是否已录入结果（前端据此高亮「未录」行） */
-        public Boolean getEntered() {
-            return conclusion != null;
-        }
+        /**
+         * 是否已**有效录入**（T-912 定稿口径，由后端 {@code ResultEntryPolicy} 判定）：
+         * {@code testValue} 非空，或文本/感官项已人工选定合格/不合格。
+         *
+         * <p>未有效录入时，{@code conclusion} 相关字段一律不出网，前端统一显示「未录入」——
+         * 避免空值行遗留的 {@code conclusion=3} 伪装成「待判定」。前端据此高亮未录行。</p>
+         */
+        private Boolean entered;
     }
 }

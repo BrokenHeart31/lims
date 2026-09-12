@@ -35,7 +35,7 @@
 | T-601 | 结果录入 + 自动判定引擎 + S50→S60 | S | **GLM** | ✅完成 2026-09-12（契约第 6 章 5 接口 + `db/init/07` `sample_result` + `V4` 整体结论列 + **纯函数判定引擎**（闭集白名单矩阵）+ Service/Controller + 49 单测（总 85/85）+ 前端录入页 + 路由菜单；**端到端 45 断言全过**；⚠️ 编号勘误：交接留言中的「T-602」即本任务，以 TODO 的 T-601 为准）；✅ **Copilot 复核终审通过 2026-09-12**（独立实测 85/85、矩阵对 D1–D5 逐格一致、零标准库回溯；保留意见转 **T-911/T-912**，详见 journal 2026-09-12-copilot） |
 
 ## 阶段七：报告审核签发 + 报告生成
-| T-701 | 审核/签发 S60→S70→S80（含审核退回 → S50） | S | **GLM** | ⬜待办 |
+| T-701 | 审核/签发 S60→S70→S80（含审核退回 → S50） | S | **GLM** | ✅完成 2026-09-12（契约第 7 章 6 接口 + `db/init/08` `sample_audit_log` 流水表 + `V5` 审核/签发字段 + **正向/退回两张独立白名单**（`assertReturn`）+ Service/Controller + **放行红线**（异常项须显式确认）+ 22 单测（总 107/107）+ 前端审核签发页 + 路由菜单；**端到端 54 断言全过（重跑仍 54/54）**；视觉回归含抽屉内异常项清单） |
 | T-702 | CMA / CMA-CATL 报告模板合成 + S80→S90 | S | **GLM** | ⬜待办（✅ 版式样本已从业务说明书 docx 取得：首页编号/资质号/注意事项 + 第1页表头与检验结论句式 + 第2页七列明细表；无需挂起等待外部样本） |
 
 ## 查询与省平台上报
@@ -54,8 +54,8 @@
 | T-907 | V3 改造为 fail-loud 口径校验器（执行 T-905 裁决 R1） | S | **GLM** | ✅完成（2026-09-11；双路径实测：零变更通过 / 人为漂移报错退出；派生表统一计算 + NULL 安全比较） |
 | T-908 | 治理二次调整：GLM 自裁机制（2.6）+ 豆包分工清单（2.7）+ UI 基准（5.1）+ 许可合规红线 | S | **GLM** | ✅完成（2026-09-11） |
 | T-909 | 判定引擎**实现形态**侦察与选型定稿（规则引擎 vs 闭集矩阵 / 浮点比较 / ALCOA+ 留痕） | S | **GLM** | ✅完成（2026-09-12；`docs/knowledge/2026-09-12-judge-engine-research.md`：**否决 Drools/Easy Rules/LiteFlow/Aviator**，定稿「闭集白名单矩阵 + BigDecimal.compareTo + 默认待判定 + WARN」+「原始值/派生值分层落库」） |
-| T-910 | 可**一键复现**的技能沉淀（判定引擎模板 + 阶段交付含端到端/视觉回归 + 沙箱 git 补坑） | S | **GLM** | ✅完成（2026-09-12；新建 `.agents/skills/judge-engine/`，更新 `lims-stage-delivery`（+第 7.5 步）、`sandbox-git-push`（+规则 6 hash 双验证 / 规则 7 临时文件与并行 Edit 覆盖））；技能库共 7 个 |
-| T-911 | **分页参数双轨统一**：api-spec 0.3 约定列表接口统一 `pageNum/pageSize`，但 item/assign/result 三域实为 `current/size`（T-401 引入并沿用，spec 章节内自洽、前后端一致、运行无碍）。裁决方向：(a) 修订 0.3 承认双轨（成本 0，Copilot 倾向）或 (b) 统一回 `pageNum/pageSize`（动 3 Controller + 3 前端 api + spec） | A | **GLM** | ⬜待办（Copilot 终审提出 2026-09-12，方向留 GLM 自裁；T-801 查询域开工前定即可） |
-| T-912 | **「已录入」口径收口**：`ResultSaveDTO.Item.testValue` 可空→可落一行 `conclusion=3`，而 `submit` 录齐校验只看结果行存在 → **可带空结果行提交至 S60**。非安全洞（不静默判合格），属流程卫生缺口。候选方案：①「已录入」= `testValue 非空 ∥ (jt3 且 manualConclusion∈{1,2})`（改 submit/entered/save 校验）；②不改录入，由 T-701 审核页强制展示「待判定/空值项」清单并显式确认后放行 | S | **GLM** | ⬜待办（Copilot 终审提出 2026-09-12；**T-701 开工前必须先裁此口径**——直接影响审核放行红线设计；请对照业务说明书「检验数据录入」章节后自裁落 DECISIONS） |
+| T-910 | 可**一键复现**的技能沉淀（判定引擎模板 + 阶段交付含端到端/视觉回归 + 沙箱 git 补坑） | S | **GLM** | ✅完成（2026-09-12；新建 `.agents/skills/judge-engine/`，更新 `lims-stage-delivery`（+第 7.5 步）、`sandbox-git-push`（+规则 6 hash 双验证 / 规则 7 临时文件与并行 Edit 覆盖））；**2026-09-12 追加**：`lims-stage-delivery` 原则 4 升级为「状态流转双保险 **+ 正向/退回两张独立白名单 + 审计留痕 + 放行红线 + 未录入≠待判定**」、环境备忘补 git 全路径/后端重启/ref 被吞症状；状态机知识库补「双白名单」定稿节；技能库共 7 个 |
+| T-911 | **分页参数双轨统一**：api-spec 0.3 约定统一 `pageNum/pageSize`，但 item/assign/result 三域实为 `current/size`（T-401 引入并沿用，spec 章节内自洽、前后端一致、运行无碍）。裁决方向：(a) 修订 0.3 承认双轨（成本 0，Copilot 倾向）或 (b) 统一回 `pageNum/pageSize`（动 3 Controller + 3 前端 api + spec） | A | **GLM** | ✅完成 2026-09-12（**采纳 (a) 保留双轨**，api-spec 0.3 已明确「新域一律 `current`/`size`」、`pageNum`/`pageSize` 标注为 task/sample 历史兼容写法；见 DECISIONS） |
+| T-912 | **「已录入」口径收口**：`ResultSaveDTO.Item.testValue` 可空→可落一行 `conclusion=3`，而 `submit` 录齐校验只看结果行存在 → **可带空结果行提交至 S60**。非安全洞（不静默判合格），属流程卫生缺口。候选方案：①「已录入」= `testValue 非空 ∥ (jt3 且 manualConclusion∈{1,2})`（改 submit/entered/save 校验）；②不改录入，由 T-701 审核页强制展示「待判定/空值项」清单并显式确认后放行 | S | **GLM** | ✅完成 2026-09-12（**方案①+②合并**：`ResultEntryPolicy` 收紧「已录入」口径使空值行阻断提交；审核页仍强制展示异常项清单并要求显式确认；「未录入」（操作缺漏，阻断）与「待判定」（数据缺口，不阻断）严格区分；见 DECISIONS） |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。

@@ -40,10 +40,25 @@ agent_created: true
 
 理由：初稿与最终结果是两个概念；分解页是整体工作台，前端保证序号连续唯一。
 
-### 原则 4：状态流转双保险
+### 原则 4：状态流转双保险 + 正向/退回**两张独立白名单**
 
-`SampleStatusTransition.assertTransition(旧, 新)` + **乐观条件 UPDATE**（`WHERE id=? AND status=旧值`）。
+正向：`SampleStatusTransition.assertTransition(旧, 新)` + **乐观条件 UPDATE**（`WHERE id=? AND status=旧值`）。
 `updated == 0` 时抛「状态已变更，请刷新后重试」。防并发重复流转。
+
+**逆向（退回）必须走独立白名单**：`RETURN` EnumMap + `assertReturn(旧, 新)`，**不要塞进正向 `VALID` 表**。
+否则 `assertTransition(S60, S50)` 变成全局合法，任何调用方都可能误当普通推进使用。
+单测必须固化：`assertReturn(S60,S50)` 通过 ∧ `assertTransition(S60,S50)` **拒绝** ∧ `returnAllowed(S70)` 为空。
+
+**状态变更必配审计留痕**（有审批/判定语义的域）：
+- 事件流水表**只追加、永不改写**（action / from_status / to_status / opinion / operated_by / operated_at）；
+- 业务主表只存**当前有效值**（审核人/签发人）供报告打印；
+- ⚠️ MP 实体式 `update` **忽略 null 字段**，「清空某列」必须 `LambdaUpdateWrapper.set(col, null)`
+  （`entity.setXxx(null)` 是静默无效的）；
+- **放行红线**：存在异常项（未录入/待判定）时，放行动作必须要求显式确认并留痕（`abnormal_confirmed=1`），
+  禁止「有异常仍静默放行」。
+
+**「未录入」≠「待判定」**（T-912 定稿）：前者是操作缺漏 → 阻断流程；后者是数据缺口 → 不阻断、审核环节人工裁决。
+两者混同会导致「操作缺漏被静默放过」或「样品被永久卡死」。
 
 ### 原则 5：提交前必须 `git status --short` 逐项核对暂存区
 
@@ -206,6 +221,15 @@ EDGE="/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
 - **大段含中文/反引号/引号的命令不要用 Bash 直接传**（会被 shell 错误解析，产生 `command not found` + SIGTERM + 碎片文件）。
   改用「Write 写临时 `.py` 文件到 `%TEMP%` → python 执行该文件」。
 - 本机 MySQL 密码 `123456`（非 AGENTS 约定值），在 gitignore 的 `application-dev.yml`。
+- ⚠️ **本机 `git.exe` 已不在 PATH**（注册表指向的 `C:\Users\Chen\Desktop\Git` 目录已被删除）。
+  改用全路径：`C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`。
+  开工先探测 git，勿假设 `git` 可直接调用。
+- ⚠️ **改了后端代码必须重启后端**（`spring-boot:run` 不会热加载已加载的类）；
+  停旧进程用 PowerShell `Stop-Process -Id <pid> -Force`
+  （Git Bash 下 `taskkill //PID` 与 `cmd //c taskkill` 都会因参数改写而失败）。
+- ⚠️ **`git add` 前若 ref 被吞，`git status` 会把整仓显示为「已暂存新增」**——
+  这是「当前分支 ref 文件消失（HEAD 指向不存在的 ref）」的典型症状。
+  恢复：从 `.git/logs/refs/heads/<branch>` 末行取**全 hash**（短 hash 也可能无效）shell 回填 ref 文件。
 - JDBC url `characterEncoding` 必须写 `utf8`（Java 字符集名），写 `utf8mb4` 会被 Connector/J 拒。
 - **vite dev server 只监听 IPv6 `[::1]:5173`**：浏览器/脚本一律用 `http://localhost:5173`，
   用 `127.0.0.1:5173` 会「拒绝连接」（`netstat` 可见 `[::1]:5173`）。

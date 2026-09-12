@@ -6,6 +6,50 @@
 > - ⚠️ 注意：接口变更/字段改名/坑
 > - 【下一步】等待谁做什么
 
+### 2026-09-12 16:20 GLM（agent/glm）— T-701 审核/签发 + 审核退回 全链路完成 ✅（阶段七上半）+ T-911/T-912 裁决定稿
+
+- 【GLM】接 Copilot 复核条目，本轮四件事（**T-701 实现 + 两条保留意见自裁 + 环境修复 + 技能沉淀**）：
+  1. **T-701 全链路**：契约第 7 章 `/api/report`（6 接口）/ `db/init/08_audit_tables.sql`（`sample_audit_log` 只追加流水）
+     / `db/migrations/V5`（`sample_info` 审核签发 5 列）/ **独立 `RETURN` 退回白名单** + `assertReturn`
+     / AuditService+Impl / ReportController / 前端审核签发页（双页签 + 抽屉异常项清单 + 放行勾选）/ 路由 + 菜单。
+  2. **T-911 裁决：保留分页双轨、不追溯改**。api-spec **0.3 已明确唯一答案**：
+     **新域一律 `current`/`size`**，`pageNum`/`pageSize` 仅 task(2.2)/sample(3.3) 历史兼容写法。
+     理由：响应体两域一致、三域已端到端验证通过，改名是「无功能收益的破坏性变更」且会让 T-601 终审失效。
+  3. **T-912 裁决（关键概念切割）：「已录入」= `testValue` 非空白 ∥ jt3 已人工选结论**（`ResultEntryPolicy` 唯一权威）。
+     **未录入（操作缺漏）→ 阻断提交；待判定（数据缺口）→ 不阻断、审核环节显式确认后放行**。
+     依据：说明书第八条要求「检测数据**全部录入**后转入签发流程」——空值行不是检测数据。
+     附带修正：`ResultDetailVO.Item.entered` 由派生 getter 改为真实字段，**未录入时 conclusion 不出网**
+     （否则空值行的 `conclusion=3` 会被显示成「待判定」）。
+  4. **技能沉淀**：`lims-stage-delivery` 原则 4 升级为「双保险 **+ 正向/退回两张独立白名单 + 审计留痕 + 放行红线 + 未录入≠待判定**」；
+     状态机知识库补「双白名单」定稿节（并修正原第 5 条过时表述：退回不是 S70→S50、也不归 Copilot 补）。
+- ✅ **质量门禁**：后端 `mvn test` **107/107**（新增 22 = 审核 15 + 退回白名单 3 + T-912 口径 4）；
+  前端 `lint` 0/0、`build` ✅；**端到端 54/54 且重跑仍 54/54**；视觉回归（列表 + 抽屉含异常项清单）。
+- ✅ **端到端全链路实测**：`S40→录入→S50→提交→S60→审核被拒(异常未确认)→退回→S50→回到检验员待办→
+  重新提交→S60→审核通过(已确认)→S70→签发→S80`；负向：空原因退回 400 / 越态审核 400 / 重复签发 400 /
+  已签发退回 400 / R3 越权 403。真实流水 3 条（退回 60→50 / 审核通过 60→70 / 签发 70→80，含 `abnormal_confirmed`）。
+- ⚠️ **环境突变（必读）**：本机 `git.exe` **已不在 PATH**（注册表指向的 `C:\Users\Chen\Desktop\Git` 目录已被删）。
+  必须用全路径：`C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`。开工先探测，勿假设 `git` 可用。
+- ⚠️ **本轮 git 坑**：把 Copilot 复核提交并入 `agent/glm`/`main` 时 `update-ref` 后 **ref 文件又被吞掉**
+  （症状：`git status` 把**整个仓库**显示为「已暂存新增」，因为 HEAD 指向不存在的 ref）；
+  按技能规则 1 从 `.git/logs/...` 取**全 hash** shell 回填后恢复（短 hash 可能无效）。顺手修正 `agent/doubao` = `6282c64`。
+- ⚠️ **MP 坑（新）**：MyBatis-Plus **实体式 `update` 会忽略 null 字段**——「清空某列」必须
+  `LambdaUpdateWrapper.set(col, null)`，`entity.setXxx(null)` 静默无效（本轮「退回清空审核信息」踩到）。
+- ⚠️ **后端重启**：改了后端代码必须重启进程（不会热加载）；停进程用 PowerShell
+  `Stop-Process -Id <pid> -Force`（Git Bash 下 `taskkill //PID` / `cmd //c taskkill` 均失败）。
+- 【下一步】
+  - **@GLM（下一轮自己）**：① **T-702 CMA/CMA-CATL 报告生成**（S80→S90，S）——版式样本已在说明书 docx 内
+    （首页编号/资质号/注意事项 + 表头 + 检验结论句式 + 七列明细表 + 页脚「批准/审核/编制」署名）；
+    所需数据**全部就位**（`sample_info.conclusion/audit_by/sign_by`、`sample_result.judge_basis`、
+    `sample_audit_log` 流水）；② T-801 查询（A，含动态路由）；③ 推送四分支（等 PAT）。
+  - **@豆包**：`docs/database-dictionary.md` 补 `sample_result`、`sample_audit_log` 与 `sample_info.conclusion/audit_*/sign_*`；
+    T-802 省平台上报模板可继续。
+  - **@Copilot**：无阻塞项；如需对 T-701 做 diff 审查或复核本轮两条自裁（配额剩余 1 次）可介入。
+- 【本机环境状态】本机库已应用 `db/init/08` + `V5`；样品 1 已跑完整链路停在 **S80**
+  （`sample_result` 7 行 + `sample_audit_log` 3 行 + 审核/签发人 nj001），**T-702 可直接开工**。
+  后端 8080（`spring-boot:run`）与前端 vite 5173 本轮结束保持运行。
+- 【推送待办】远端三分支仍在 `fd6897b`；本地 `agent/glm`=`develop`=`main`（+本轮提交）、`agent/copilot`=`d1910dc`
+  领先，**仍需用户提供有写权限的 PAT**（fine-grained 需 Contents: Read and write）后一次性推送并 `ls-remote` 核对；用完请撤销重建。
+
 ### 2026-09-12 15:32 Copilot（agent/copilot）— T-601 复核终审：**通过**（2 条保留意见转 TODO）+ T-701 只读铺垫
 
 - 【Copilot】接 GLM T-601 交接留言，完成三类把关工作（**复核轮，零实现代码**）：

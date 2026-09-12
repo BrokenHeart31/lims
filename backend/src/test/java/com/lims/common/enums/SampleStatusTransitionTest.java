@@ -100,4 +100,51 @@ class SampleStatusTransitionTest {
         assertDoesNotThrow(() -> SampleStatusTransition.assertTransition(10, 20));
         assertThrows(BizException.class, () -> SampleStatusTransition.assertTransition(10, 90));
     }
+
+    // =========================================================================
+    // 退回白名单（T-701：独立于正向表，不污染正向语义）
+    // =========================================================================
+
+    @Test
+    @DisplayName("★退回：S60→S50 退回合法，且**正向表不含该边**（两张表互不干扰）")
+    void shouldAllowReturnFromS60ToS50ButNotInForwardTable() {
+        assertAll(
+                () -> assertDoesNotThrow(() -> SampleStatusTransition.assertReturn(SampleStatus.S60, SampleStatus.S50)),
+                () -> assertTrue(SampleStatusTransition.canReturn(SampleStatus.S60, SampleStatus.S50)),
+                // 关键不变式：退回不是正向流转，正向断言必须拒绝
+                () -> assertFalse(SampleStatusTransition.canTransition(SampleStatus.S60, SampleStatus.S50)),
+                () -> assertThrows(BizException.class,
+                        () -> SampleStatusTransition.assertTransition(SampleStatus.S60, SampleStatus.S50)),
+                // 正向断言也不承认退回（assertTransition 与 assertReturn 不可互相替代）
+                () -> assertThrows(BizException.class,
+                        () -> SampleStatusTransition.assertReturn(SampleStatus.S50, SampleStatus.S60))
+        );
+    }
+
+    @Test
+    @DisplayName("退回：仅 S60 有退回出边，其他状态一律不可退回")
+    void shouldOnlyAllowReturnFromS60() {
+        assertAll(
+                () -> assertEquals(1, SampleStatusTransition.returnAllowed(SampleStatus.S60).size()),
+                () -> assertTrue(SampleStatusTransition.returnAllowed(SampleStatus.S60).contains(SampleStatus.S50)),
+                // S70（已审核）尚无退回路径——签发环节若需退回，须先改 AGENTS 7.2 再动本类
+                () -> assertTrue(SampleStatusTransition.returnAllowed(SampleStatus.S70).isEmpty()),
+                () -> assertTrue(SampleStatusTransition.returnAllowed(SampleStatus.S90).isEmpty()),
+                () -> assertFalse(SampleStatusTransition.canReturn(SampleStatus.S50, SampleStatus.S40)),
+                () -> assertFalse(SampleStatusTransition.canReturn(null, SampleStatus.S50)),
+                () -> assertFalse(SampleStatusTransition.canReturn(SampleStatus.S60, null))
+        );
+    }
+
+    @Test
+    @DisplayName("退回：非法退回抛业务异常，业务码 400 且消息带「退回」字样")
+    void shouldThrowBizExceptionOnIllegalReturn() {
+        BizException ex = assertThrows(BizException.class,
+                () -> SampleStatusTransition.assertReturn(SampleStatus.S70, SampleStatus.S50));
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("退回"), ex.getMessage());
+
+        assertDoesNotThrow(() -> SampleStatusTransition.assertReturn(60, 50));
+        assertThrows(BizException.class, () -> SampleStatusTransition.assertReturn(70, 50));
+    }
 }

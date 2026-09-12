@@ -63,7 +63,8 @@ public final class SampleStatusTransition {
 2. **幂等**：S50→S50（续录）这类自环必须在白名单显式声明，否则重复提交报非法流转。
 3. **并发**：状态变更 SQL 用 `UPDATE ... WHERE id=? AND status=旧值` 乐观条件（MP LambdaUpdateWrapper），防并发双击跳态。
 4. **前端**：按 /me 返回或详情接口中的当前状态渲染操作按钮（AGENTS 7.2），前端不自算下一态。
-5. **驳回/回退分支**（如审核不通过 S70→S50）在 T-701 设计时由 Copilot 补充进白名单并同步 api-spec，他人不得私加。
+5. **退回（逆向）分支**：已由 T-701 落地为**独立 `RETURN` 白名单 + `assertReturn` 专用方法**
+   （当前唯一路径 `S60 → S50` 审核退回）。**不要**把退回塞进正向 `VALID` 表——详见下方「落地补充（T-701）」。他人不得私加路径。
 6. **单测**：白名单每个 entry 一条断言 + 至少一条非法流转断言（AGENTS 4.3 要求核心业务规则必测）。
 
 ## 落地补充（T-301 实测，2026-09-11 GLM）
@@ -84,3 +85,42 @@ public final class SampleStatusTransition {
 
 参考实现：`backend/src/main/java/com/lims/common/enums/SampleStatus.java`、
 `.../SampleStatusTransition.java`、`.../service/impl/SampleServiceImpl.java`（confirmSamples）。
+
+## 落地补充（T-701 实测，2026-09-12 GLM）：**正向与退回必须是两张独立白名单**
+
+### 问题
+
+AGENTS 7.2 末尾有「（退回）审核退回 → S50」。直觉做法是把 `S60 → S50` 加进 `VALID` 表，
+**这是错的**：正向表一旦含该边，`assertTransition(S60, S50)` 就变成**全局合法**——
+任何调用方（含未来新写的 Service）都可能把它当成普通推进使用，且单测无法区分「推进」与「打回重做」的意图。
+
+### 定稿
+
+```java
+private static final Map<SampleStatus, Set<SampleStatus>> VALID  = ...; // 正向：S60 → {S70}
+private static final Map<SampleStatus, Set<SampleStatus>> RETURN = ...; // 退回：S60 → {S50}
+
+public static void assertTransition(SampleStatus from, SampleStatus to) { /* 只认 VALID  */ }
+public static void assertReturn(SampleStatus from, SampleStatus to)     { /* 只认 RETURN */ }
+```
+
+**两个方法不可互相替代、不得合并。** 退回是比正向更强的约束：必须带原因、必须留痕、必须让检验员看到。
+
+单测固化的不变式（`SampleStatusTransitionTest`）：
+- `assertReturn(S60, S50)` 通过；
+- `assertTransition(S60, S50)` **必须拒绝**（退回不是正向）；
+- `assertReturn(S50, S60)` 拒绝（方向不可反）；
+- `returnAllowed(S60) = {S50}` 且 `returnAllowed(S70)` 为空（未定义退回路径的状态不得有出边）。
+
+### 配套：状态变更与审计留痕的分工
+
+| 载体 | 内容 | 语义 |
+|---|---|---|
+| `sample_audit_log`（**只追加**） | action / from_status / to_status / opinion / abnormal_confirmed / operated_by / operated_at | 事件流水：谁在何时因何把样品从什么状态推到什么状态 |
+| 业务主表上的 `audit_by/audit_at/sign_by/sign_at` | 当前有效的审核人/签发人 | 供报告打印直接取用（业务要求「报告无审核、批准人签字无效」） |
+
+两条硬规则：
+1. **退回要清空主表上的审核信息但保留流水**——报告上不得出现「未通过的审核人」，而「谁因何退回」是历史事实。
+2. ⚠️ **MyBatis-Plus 实体式 `update` 会忽略 null 字段**，所以「清空某列」必须用
+   `LambdaUpdateWrapper.set(col, null)` 显式表达；用 `entity.setXxx(null)` 是**无效**的（静默不清空）。
+

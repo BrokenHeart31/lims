@@ -21,6 +21,7 @@ import com.lims.service.ResultService;
 import com.lims.service.judge.JudgeEngine;
 import com.lims.service.judge.JudgeInput;
 import com.lims.service.judge.JudgeOutcome;
+import com.lims.service.result.ResultEntryPolicy;
 import com.lims.vo.ResultDetailVO;
 import com.lims.vo.ResultJudgeVO;
 import com.lims.vo.ResultPendingVO;
@@ -70,11 +71,6 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
 
     private static final int REFERENCE_YES = 1;
 
-    private static final Map<Integer, String> JUDGE_TYPE_LABELS = Map.of(
-            JudgeEngine.JT_LIMIT, "限量比较",
-            JudgeEngine.JT_NOT_DETECTED, "不得检出/不得使用",
-            JudgeEngine.JT_MANUAL, "文本/感官人工");
-
     // =========================================================================
     // 6.2 待录入列表 / 录入明细
     // =========================================================================
@@ -91,10 +87,12 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
                 .orderByDesc(Sample::getId));
 
         List<Long> ids = result.getRecords().stream().map(Sample::getId).toList();
-        Map<Long, Long> itemTotals = countItemsBySample(ids);
-        Map<Long, Long> enteredCounts = countResultsBySample(ids);
+        Map<Long, List<SampleItem>> itemsBySample = itemsBySample(ids);
+        Map<Long, Map<Long, SampleResult>> resultsBySample = resultsBySample(ids);
 
         List<ResultPendingVO> rows = result.getRecords().stream().map(s -> {
+            List<SampleItem> items = itemsBySample.getOrDefault(s.getId(), Collections.emptyList());
+            Map<Long, SampleResult> results = resultsBySample.getOrDefault(s.getId(), Collections.emptyMap());
             ResultPendingVO vo = new ResultPendingVO();
             vo.setId(s.getId());
             vo.setSampleNo(s.getSampleNo());
@@ -106,8 +104,9 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
             vo.setSamplingDate(s.getSamplingDate());
             vo.setStatus(s.getStatus() == null ? null : s.getStatus().getCode());
             vo.setStatusLabel(s.getStatusLabel());
-            vo.setItemTotal(itemTotals.getOrDefault(s.getId(), 0L).intValue());
-            vo.setEnteredCount(enteredCounts.getOrDefault(s.getId(), 0L).intValue());
+            vo.setItemTotal(items.size());
+            vo.setEnteredCount(countEntered(items, results));
+            vo.setAbnormalCount(countAbnormal(items, results));
             ResultConclusion conclusion = s.getConclusion();
             vo.setConclusion(conclusion == null ? null : conclusion.getCode());
             vo.setConclusionLabel(s.getConclusionLabel());
@@ -228,7 +227,10 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
             throw new BizException(400, "该样品尚无检测单项，无法提交");
         }
         Map<Long, SampleResult> results = resultsByItem(sampleId);
-        long missing = items.stream().filter(i -> !results.containsKey(i.getId())).count();
+        // T-912 定稿口径：空值行不算「已录入」（是操作缺漏，必须补录）；与「待判定」严格区分
+        long missing = items.stream()
+                .filter(i -> !ResultEntryPolicy.isEntered(i.getJudgeType(), results.get(i.getId())))
+                .count();
         if (missing > 0) {
             throw new BizException(400, "仍有 " + missing + " 个检测单项未录入结果，请先完成录入");
         }
@@ -378,7 +380,8 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
         boolean anyPending = false;
         for (SampleItem item : nonReference) {
             SampleResult r = results.get(item.getId());
-            if (r == null) {
+            // 未有效录入（无结果行 / 空值行）→ 未录齐 → 待判定
+            if (!ResultEntryPolicy.isEntered(item.getJudgeType(), r)) {
                 return ResultConclusion.PENDING;
             }
             ResultConclusion c = r.getConclusion();
@@ -398,9 +401,25 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
         return Objects.equals(item.getIsReference(), REFERENCE_YES);
     }
 
-    /** 已录入项数（仅统计该样品现存检测单项的结果） */
+    /** 已**有效录入**项数（T-912 口径：空值行不计入） */
     private int countEntered(List<SampleItem> items, Map<Long, SampleResult> results) {
-        return (int) items.stream().filter(i -> results.containsKey(i.getId())).count();
+        return (int) items.stream()
+                .filter(i -> ResultEntryPolicy.isEntered(i.getJudgeType(), results.get(i.getId())))
+                .count();
+    }
+
+    /** 异常项数 = 未有效录入 + 已录入但结论为待判定（供审核页展示与放行红线） */
+    private int countAbnormal(List<SampleItem> items, Map<Long, SampleResult> results) {
+        int count = 0;
+        for (SampleItem item : items) {
+            SampleResult r = results.get(item.getId());
+            if (!ResultEntryPolicy.isEntered(item.getJudgeType(), r)) {
+                count++;
+            } else if (r.getConclusion() == null || r.getConclusion() == ResultConclusion.PENDING) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private Map<Long, SampleResult> resultsByItem(Long sampleId) {
@@ -411,24 +430,26 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
                 .collect(Collectors.toMap(SampleResult::getSampleItemId, Function.identity(), (a, b) -> a));
     }
 
-    private Map<Long, Long> countItemsBySample(List<Long> sampleIds) {
+    private Map<Long, List<SampleItem>> itemsBySample(List<Long> sampleIds) {
         if (sampleIds.isEmpty()) {
             return Collections.emptyMap();
         }
         return sampleItemMapper.selectList(new LambdaQueryWrapper<SampleItem>()
                         .in(SampleItem::getSampleId, sampleIds))
                 .stream()
-                .collect(Collectors.groupingBy(SampleItem::getSampleId, Collectors.counting()));
+                .collect(Collectors.groupingBy(SampleItem::getSampleId));
     }
 
-    private Map<Long, Long> countResultsBySample(List<Long> sampleIds) {
+    private Map<Long, Map<Long, SampleResult>> resultsBySample(List<Long> sampleIds) {
         if (sampleIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        return baseMapper.selectList(new LambdaQueryWrapper<SampleResult>()
+        Map<Long, Map<Long, SampleResult>> out = new LinkedHashMap<>();
+        baseMapper.selectList(new LambdaQueryWrapper<SampleResult>()
                         .in(SampleResult::getSampleId, sampleIds))
-                .stream()
-                .collect(Collectors.groupingBy(SampleResult::getSampleId, Collectors.counting()));
+                .forEach(r -> out.computeIfAbsent(r.getSampleId(), k -> new LinkedHashMap<>())
+                        .put(r.getSampleItemId(), r));
+        return out;
     }
 
     // =========================================================================
@@ -480,23 +501,30 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
         vo.setMethods(item.getMethods());
         vo.setStdValue(item.getStdValue());
         vo.setJudgeType(item.getJudgeType());
-        vo.setJudgeTypeLabel(JUDGE_TYPE_LABELS.getOrDefault(item.getJudgeType(), "未知"));
+        vo.setJudgeTypeLabel(ResultEntryPolicy.judgeTypeLabel(item.getJudgeType()));
         vo.setIsReference(item.getIsReference());
         vo.setLowerLimit(item.getLowerLimit());
         vo.setTesterNo(item.getTesterNo());
         vo.setTesterName(item.getTesterName());
+
+        boolean entered = ResultEntryPolicy.isEntered(item.getJudgeType(), result);
+        vo.setEntered(entered);
         if (result != null) {
             vo.setTestValue(result.getTestValue());
+            vo.setEnteredBy(result.getEnteredBy());
+            vo.setEnteredAt(result.getEnteredAt());
+            vo.setRemark(result.getRemark());
+        }
+        if (entered) {
             vo.setConclusion(result.getConclusion() == null ? null : result.getConclusion().getCode());
             vo.setConclusionLabel(result.getConclusionLabel());
             vo.setConclusionSource(result.getConclusionSource() == null
                     ? null : result.getConclusionSource().getCode());
             vo.setConclusionSourceLabel(result.getConclusionSourceLabel());
             vo.setJudgeBasis(result.getJudgeBasis());
-            vo.setEnteredBy(result.getEnteredBy());
-            vo.setEnteredAt(result.getEnteredAt());
-            vo.setRemark(result.getRemark());
         }
+        // 未有效录入（无结果行 / 空值行）→ 不出网历史结论，前端统一显示「未录入」
+        // （T-912：空值行遗留的 conclusion=3 不得伪装成「待判定」）
         return vo;
     }
 
@@ -521,8 +549,9 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
         vo.setSampleNo(sample.getSampleNo());
         vo.setStatus(status);
         vo.setStatusLabel(SampleStatus.of(status).getLabel());
-        vo.setItemTotal(listItems(sample.getId()).size());
-        vo.setEnteredCount(resultsByItem(sample.getId()).size());
+        List<SampleItem> allItems = listItems(sample.getId());
+        vo.setItemTotal(allItems.size());
+        vo.setEnteredCount(countEntered(allItems, resultsByItem(sample.getId())));
         vo.setConclusion(overall.getCode());
         vo.setConclusionLabel(overall.getLabel());
         vo.setItems(items);

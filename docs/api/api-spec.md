@@ -34,8 +34,10 @@
 - 前端只认 `body.code`（见 `frontend/src/utils/request.ts`），调用方无需关心 HTTP 层差异。
 
 ### 0.3 分页约定（列表接口统一）
-- 请求参数：`pageNum`（从 1 起）、`pageSize`（默认 10，上限 500），外加各域查询条件。
-- 响应 data：
+
+- **请求参数（新域一律用这一套）**：`current`（页码，从 1 起，默认 1）、`size`（每页条数，默认 10，上限 500），外加各域查询条件。
+- **历史兼容写法**：`/api/task/page`（2.2）与 `/api/sample/page`（3.3）用的是 `pageNum`/`pageSize`（T-201/T-301 先行落地时沿用 RuoYi 惯例），**该写法仅为这两处既成事实，不再扩散**；新域（item/assign/result/report/query 等）一律用 `current`/`size`。
+- 响应 data（**统一，与请求参数名无关**）：
 
 ```json
 {
@@ -45,6 +47,12 @@
   "size": 10
 }
 ```
+
+> **T-911 裁决（2026-09-12 GLM 自裁，已记 DECISIONS）**：请求参数名保留双轨、不追溯改已有代码。
+> 理由：①响应体两域一致，前端解包逻辑已统一（只取 `records/total`）；②三域（item/assign/result）
+> 与前端 `api/*.ts` 已端到端验证通过，改名属于「无功能收益的破坏性变更」，还会让 T-601 刚通过的
+> 终审失效；③真正的风险不是「两套名字并存」，而是**下一棒不知道该用哪套**——本节已给出唯一答案：
+> **新域用 `current`/`size`**。
 
 ### 0.4 字段命名
 JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）；数据库列 snake_case 由 MyBatis-Plus 自动映射，禁止出网 snake_case 字段。
@@ -702,7 +710,117 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ---
 
-## 7. 待落地域（占位，按七阶段顺序补充）
+## 7. 检验报告审核签发域 `/api/report`（T-701）
+
+> 阶段七上半：检验数据全部录齐（S60）→ **审核**（S60→S70）→ **签发**（S70→S80），
+> 并支持**审核退回**（S60→S50）把样品打回检验员重录。
+> 业务依据：业务说明书「八、检验业务流程之五：检验报告审核签发」——
+> 「样品检测单项的检测数据**全部录入**系统后，样品即转入签发流程。**经审核无误**中心领导即可**签发**。」
+> 权限标识：`report:audit`（审核，seed `sys_menu` id=711）、`report:sign`（签发，id=712），
+> 与 AGENTS 8.2 严格一致；按 AGENTS 8.1 二者均属 R100（综合管理）。
+
+### 7.0 三条硬规则
+
+1. **正向与退回是两张独立白名单**：正向流转走 `SampleStatusTransition.assertTransition`（S60 的出边只有 S70）；**退回走 `assertReturn`**（S60→S50，独立 `RETURN` 表）。
+   > 为什么不把退回塞进正向表：那样 `assertTransition(S60, S50)` 会变成全局合法，任何调用方都可能误当普通推进使用；退回是比正向更强的约束（必须带原因、必须留痕），必须走专用方法。
+2. **每次动作追加一条流水**（`sample_audit_log`），**永不改写**；`sample_info` 上另存**当前有效**的审核人/签发人供报告打印（业务要求「报告无制表、审核、批准人签字无效」）。
+3. **放行红线：存在异常项时不得静默放行**。审核通过前必须显式确认异常项清单（见 7.4）。
+
+### 7.1 字段模型
+
+**`sample_audit_log`（流水，只追加）**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `action` | number | 1=审核通过 2=审核退回 3=签发 |
+| `fromStatus` / `toStatus` | number | 动作前后状态 code |
+| `opinion` | string | 意见 / 退回原因（退回必填），≤500 |
+| `abnormalConfirmed` | number | 放行前是否已确认异常项清单：0=否 1=是 |
+| `operatedBy` / `operatedAt` | string | 操作人与时间 |
+| `createdBy/createdAt/updatedBy/updatedAt` | string | 审计字段 |
+
+**`sample_info` 增量（当前有效值，供报告打印）**：`auditBy`、`auditAt`、`auditOpinion`、`signBy`、`signAt`。
+
+### 7.2 分页查询待审核 / 待签发样品
+
+- `GET /api/report/audit/pending`　权限：`report:audit`　（status=**S60 检验完成**）
+- `GET /api/report/sign/pending`　权限：`report:sign`　（status=**S70 已审核**）
+- 参数：`current`（默认 1）、`size`（默认 10，≤500）、`sampleNo`（模糊）、`sampleName`（模糊）
+- 响应 `data`：`{ records, total, current, size }`，`records[]` 字段：
+  `id / sampleNo / sampleName / clientName / taskNo / inspectType / samplingDate /
+  status / statusLabel / conclusion / conclusionLabel / itemTotal / enteredCount / abnormalCount /
+  auditBy / auditAt / auditOpinion`（后三者在待签发列表才有值）
+
+### 7.3 审核 / 签发明细
+
+`GET /api/report/detail/{sampleId}`　权限：`report:audit` **或** `report:sign`
+
+- 响应 `data`：
+  - `sampleId / sampleNo / sampleName / clientName / taskNo / status / statusLabel /
+    conclusion / conclusionLabel / itemTotal / enteredCount /
+    blankCount（未录入数） / pendingCount（待判定数） / abnormalCount（= 前两者之和） /
+    allowAudit（status=S60） / allowSign（status=S70） /
+    auditBy / auditAt / auditOpinion / signBy / signAt`
+  - `items[]`：`{ id, itemOrder, itemName, unit, basisCode, stdValue, judgeType, judgeTypeLabel,
+    isReference, lowerLimit, testerNo, testerName, testValue, conclusion, conclusionLabel,
+    conclusionSource, conclusionSourceLabel, judgeBasis, enteredBy, enteredAt, entered }`
+    —— **`entered=false` 时 `conclusion` 相关字段一律为 null**（空值行不得伪装成「待判定」，T-912）。
+  - `abnormalItems[]`：`{ itemId, itemOrder, itemName, type, typeLabel, reason }`
+    —— `type`：`BLANK`（未录入，操作缺漏）/ `PENDING`（待判定，数据缺口）。**审核人放行前必须看到这张清单。**
+  - `logs[]`：`{ id, action, actionLabel, fromStatus, fromStatusLabel, toStatus, toStatusLabel,
+    opinion, abnormalConfirmed, operatedBy, operatedAt }`（按 id 倒序）
+- 样品不存在 → `code=400`。
+
+### 7.4 审核通过（S60 → S70）
+
+`POST /api/report/audit/approve`　权限：`report:audit`
+
+- 请求体：
+
+```json
+{ "sampleId": 1, "opinion": "数据核对无误", "abnormalConfirmed": true }
+```
+
+- 校验：
+  - 样品存在且状态为 **S60**，否则 `code=400`；
+  - **放行红线**：若存在异常项（未录入 / 待判定）且 `abnormalConfirmed != true` →
+    `code=400`「该样品存在 N 个待判定/未录入项，请先逐项确认「异常项清单」后再审核通过」；
+  - 无异常项时 `abnormalConfirmed` 传值不影响结果。
+- 流转：`assertTransition(S60, S70)` + 乐观条件 UPDATE（`WHERE id=? AND status=60`），
+  `updated==0` → `code=400`「样品状态已变更，请刷新后重试」。
+- 落库：`sample_info` 写 `auditBy/auditAt/auditOpinion`；追加流水 `action=1`。
+- 响应 `data`：`{ sampleId, sampleNo, status, statusLabel, action, actionLabel, opinion, abnormalConfirmed, operatedBy, operatedAt }`
+
+### 7.5 审核退回（S60 → S50）
+
+`POST /api/report/audit/return`　权限：`report:audit`
+
+- 请求体：`{ "sampleId": 1, "reason": "铅的原始记录与录入值不一致，请复核后重录" }`
+- 校验：
+  - 样品存在且状态为 **S60**；
+  - `reason` **必填**（≤500），空白 → `code=400`；
+  - `assertReturn(S60, S50)`——**独立退回白名单**（正向表不含该边）。
+- 流转：乐观条件 UPDATE（`WHERE id=? AND status=60`）落 S50。
+- 落库：**清空** `sample_info` 的 `auditBy/auditAt/auditOpinion`（审核未通过，报告上不得出现审核人）；
+  追加流水 `action=2`，`opinion` 记退回原因。
+- 响应 `data`：同 7.4，`status=50`、`action=2`。
+- **「通知检验员」**：样品回到 S50 后重新出现在检验员的「结果录入」待办列表（`/api/result/pending` 收录 S40/S50），
+  通知由待办可见性承担，不引入额外消息通道。
+
+### 7.6 签发（S70 → S80）
+
+`POST /api/report/sign`　权限：`report:sign`
+
+- 请求体：`{ "sampleId": 1, "opinion": "同意签发" }`
+- 校验：样品存在且状态为 **S70**（未审核不可签发，禁止跳过审核），否则 `code=400`。
+- 流转：`assertTransition(S70, S80)` + 乐观条件 UPDATE（`WHERE id=? AND status=70`）。
+- 落库：`sample_info` 写 `signBy/signAt`；追加流水 `action=3`。
+- 响应 `data`：同 7.4，`status=80`、`action=3`。
+- 后续：S80→S90 由 T-702 报告生成触发。
+
+---
+
+## 8. 待落地域（占位，按七阶段顺序补充）
 
 | 域 | 前缀 | 对应任务 | 状态 |
 |---|---|---|---|
@@ -714,5 +832,6 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 | 项目分解 | /api/item/* | T-401 | ✅（第 4 章） |
 | 任务安排 | /api/assign/* | T-501 | ✅（第 5 章） |
 | 结果录入（自动判定） | /api/result/* | T-601 | ✅（第 6 章） |
-| 报告审核签发/生成 | /api/report/* | T-701/T-702 | ⬜ |
+| 报告审核签发 | /api/report/* | T-701 | ✅（第 7 章） |
+| 报告生成 | /api/report/* | T-702 | ⬜ |
 | 查询与省平台上报 | /api/query/* /api/export/* | T-801/T-802 | ⬜ |

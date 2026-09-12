@@ -10,6 +10,7 @@ import {
   Fold,
   List,
   Monitor,
+  Notebook,
   Operation,
   SwitchButton,
   UserFilled,
@@ -32,6 +33,7 @@ const menus = [
   { path: '/item/decompose', title: '项目分解', icon: markRaw(Operation) },
   { path: '/assign/index', title: '任务安排', icon: markRaw(UserFilled) },
   { path: '/result/entry', title: '结果录入', icon: markRaw(EditPen) },
+  { path: '/report/audit', title: '报告审核', icon: markRaw(Notebook) },
 ]
 
 /** 侧栏折叠（专注录入时可收起，给数据区让出宽度） */

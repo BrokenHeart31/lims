@@ -61,6 +61,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '结果录入', permissions: ['result:entry'] },
       },
       {
+        path: 'report/audit',
+        name: 'report-audit',
+        component: () => import('@/views/report/audit.vue'),
+        meta: { title: '报告审核签发', permissions: ['report:audit', 'report:sign'] },
+      },
+      {
         path: '403',
         name: 'forbidden',
         component: () => import('@/views/error/403.vue'),

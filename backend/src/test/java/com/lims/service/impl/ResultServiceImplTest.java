@@ -29,6 +29,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -403,5 +404,105 @@ class ResultServiceImplTest {
         BizException ex = assertThrows(BizException.class,
                 () -> service.judgePreview(11L, "0.1", null));
         assertEquals(400, ex.getCode());
+    }
+
+    // ============================================================ T-912 口径
+    // 「已录入」= testValue 非空 ∥ (jt3 且已人工选结论)；空值行不算录入，
+    // 与引擎产出的「待判定」严格区分（前者是操作缺漏，后者是数据缺口）。
+
+    /** 空值结果行（有值但被清空 / 保存时即留空） */
+    private SampleResult blankResult(Long itemId, int judgeType) {
+        SampleResult r = new SampleResult();
+        r.setSampleId(SAMPLE_ID);
+        r.setSampleItemId(itemId);
+        r.setTestValue("   ");
+        r.setConclusion(ResultConclusion.PENDING);
+        r.setConclusionSource(
+                judgeType == 3 ? ConclusionSource.MANUAL : ConclusionSource.ENGINE);
+        if (judgeType == 3) {
+            // jt3 空值且未选结论 → 未录入
+            r.setConclusion(ResultConclusion.PENDING);
+        }
+        return r;
+    }
+
+    @Test
+    @DisplayName("★T-912：存在空值结果行 → 提交被拒（空值不算「已录入」）")
+    void submit_blankValueRow_rejected() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S50));
+        when(sampleItemMapper.selectList(any())).thenReturn(List.of(
+                item(11L, 1, "铅（以Pb计）", 1, "0.5", "0.02", 0),
+                item(12L, 2, "镉（以Cd计）", 1, "0.1", "0.01", 0)));
+        resultStore.add(stored(11L, ResultConclusion.QUALIFIED));   // 有效录入
+        resultStore.add(blankResult(12L, 1));                        // 空值 → 未录入
+
+        BizException ex = assertThrows(BizException.class, () -> service.submit(SAMPLE_ID));
+
+        assertAll(
+                () -> assertEquals(400, ex.getCode()),
+                () -> assertTrue(ex.getMessage().contains("未录入结果"), ex.getMessage()),
+                () -> assertTrue(ex.getMessage().contains("1"), ex.getMessage())
+        );
+        verify(sampleMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("★T-912：明细中空值行 entered=false 且不出网 conclusion（不伪装成待判定）")
+    void detail_blankRow_notEntered() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S50));
+        when(sampleItemMapper.selectList(any()))
+                .thenReturn(List.of(item(11L, 1, "铅（以Pb计）", 1, "0.5", "0.02", 0)));
+        resultStore.add(blankResult(11L, 1));
+
+        ResultDetailVO vo = service.detail(SAMPLE_ID);
+
+        assertAll(
+                () -> assertEquals(0, vo.getEnteredCount(), "空值行不计入已录入"),
+                () -> assertFalse(vo.getItems().get(0).getEntered()),
+                () -> assertNull(vo.getItems().get(0).getConclusion(), "未录入不出网 conclusion"),
+                () -> assertNull(vo.getItems().get(0).getConclusionLabel()),
+                () -> assertEquals(ResultConclusion.PENDING.getCode(), vo.getConclusion(),
+                        "未录齐 → 整体待判定")
+        );
+    }
+
+    @Test
+    @DisplayName("T-912：保存空值（清空既有录入）→ 已录入数归零、整体结论回退待判定")
+    void save_clearedValue_notEntered() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S50));
+        when(sampleItemMapper.selectList(any()))
+                .thenReturn(List.of(item(11L, 1, "铅（以Pb计）", 1, "0.5", "0.02", 0)));
+
+        ResultSaveDTO dto = new ResultSaveDTO();
+        dto.setSampleId(SAMPLE_ID);
+        dto.setItems(List.of(dtoItem(11L, "   ")));   // 清空该值
+
+        ResultSaveVO vo = service.save(dto);
+
+        assertAll(
+                () -> assertEquals(0, vo.getEnteredCount(), "空值不算已录入"),
+                () -> assertEquals(ResultConclusion.PENDING.getCode(), vo.getConclusion())
+        );
+    }
+
+    @Test
+    @DisplayName("T-912：jt3 感官项检验值可空，但已选结论即视为已录入")
+    void save_manualJudgeType_enteredWithoutText() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S50));
+        when(sampleItemMapper.selectList(any()))
+                .thenReturn(List.of(item(11L, 1, "感官", 3, "符合要求", null, 0)));
+
+        ResultSaveDTO dto = new ResultSaveDTO();
+        dto.setSampleId(SAMPLE_ID);
+        ResultSaveDTO.Item it = dtoItem(11L, "");
+        it.setManualConclusion(ResultConclusion.QUALIFIED.getCode());
+        dto.setItems(List.of(it));
+
+        ResultSaveVO vo = service.save(dto);
+
+        assertAll(
+                () -> assertEquals(1, vo.getEnteredCount(), "jt3 已选结论 → 已录入"),
+                () -> assertEquals(ResultConclusion.QUALIFIED.getCode(), vo.getConclusion())
+        );
     }
 }

@@ -114,6 +114,29 @@ public class Sample extends BaseEntity {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime confirmedAt;
 
+    // ---------------------------------------------------------------------
+    // 审核 / 签发（T-701：S60→S70→S80）
+    // 完整流水见 sample_audit_log；本处保存**当前有效值**，供 T-702 报告合成直接取用
+    // （业务说明书报告页脚：「报告无制表、审核、批准人签字无效」）。
+    // ---------------------------------------------------------------------
+
+    /** 审核人工号（S60→S70 写入；审核退回时清空） */
+    private String auditBy;
+
+    /** 审核时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime auditAt;
+
+    /** 审核意见（可空；审核退回时原因记入 sample_audit_log.opinion） */
+    private String auditOpinion;
+
+    /** 签发人工号（S70→S80 写入） */
+    private String signBy;
+
+    /** 签发时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime signAt;
+
     /** 状态中文名（非持久化，出网供前端展示，避免前端维护 code→label 字典） */
     public String getStatusLabel() {
         return status == null ? null : status.getLabel();

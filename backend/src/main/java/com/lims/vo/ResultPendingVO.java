@@ -38,8 +38,11 @@ public class ResultPendingVO {
     /** 检测单项总数 */
     private Integer itemTotal;
 
-    /** 已录入结果的单项数 */
+    /** 已**有效录入**项数（T-912 口径：空值行不计入） */
     private Integer enteredCount;
+
+    /** 异常项数（未录入 + 待判定） */
+    private Integer abnormalCount;
 
     /** 整体结论 code（未录齐时为 null 或 3） */
     private Integer conclusion;
