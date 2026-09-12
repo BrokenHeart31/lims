@@ -40,7 +40,7 @@
 
 ## 查询与省平台上报
 | T-801 | 在检/历史/项目库查询 | A | **GLM** | ⬜待办 |
-| T-802 | 省平台上报 Excel 导出 | B | 豆包 | ⬜待办 |
+| T-802 | 省平台上报 Excel 导出 | B | 豆包 | 🔵进行中(豆包：格式定稿+样例已交付 2026-09-12；后端 `/api/export/province` 端点+前端按钮归 GLM，格式见 `docs/knowledge/2026-09-12-province-export-format.md`，样例 `docs/reference/province_export_sample.xlsx`) |
 
 ## 治理维护
 | 任务ID | 任务 | 级别 | Owner | 状态 |

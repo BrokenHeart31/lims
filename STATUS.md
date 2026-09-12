@@ -5,10 +5,17 @@
 ## 当前工作分支
 - **GLM：`agent/glm`（T-401 ✅ / T-906~908 ✅ / T-501 ✅ / T-601 ✅ / T-701 + T-911 + T-912 ✅ / **T-913 UI 重整 🟢 待提交**）**
 - **Copilot：`agent/copilot`（`d1910dc`：T-601 复核终审通过 + T-701 只读铺垫；无阻塞项，配额剩余 1 次且不得阻塞）**
-- 豆包：`agent/doubao`（`6282c64`；可领 T-802 + 数据字典补 `sample_result`/`sample_audit_log`）
+- 豆包：`agent/doubao`（2026-09-12 豆包轮：T-802 格式定稿+样例已交付于 docs/，项目已启动供测试；后端导出端点仍归 GLM）
 - **同步口径（待 T-913 提交后刷新）**：`agent/glm` = `develop` = `main` = **`e416550`**（T-701 + T-911 + T-912；2026-09-12 16:45 推送并 `ls-remote` 核对；令牌未写入任何仓库文件，已提醒用户撤销重建）。
 - **⚠️ 环境**：本机 `git.exe` 已不在 PATH（`C:\Users\Chen\Desktop\Git` 被删），须用全路径
   `C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`。
+
+## 本轮占用文件（豆包 / T-802 格式定稿 + 项目启动，2026-09-12 19:15）
+- 新增（知识）：`docs/knowledge/2026-09-12-province-export-format.md`（省平台上报 10 列格式 + 字段映射 + 参考 SQL + 待 GLM 落档点）
+- 新增（参考样例）：`docs/reference/province_export_sample.xlsx`（本机样品 1 真实数据 7 行）
+- 新增（日记）：`docs/journal/2026-09-12-doubao-t802-and-launch.md`
+- 修改（治理）：`TODO.md`（T-802 标 🔵进行中(豆包)）、`HANDOFF.md`（+豆包交接段）、本文件
+- **未动 backend/ frontend/ 代码与 db/ 脚本**；项目已本地启动（前端 5173 / 后端 8080）供用户测试。
 
 ## 🔴 4070ea6 误删事故与修复（全员必读）
 - **事故**：GLM 的 `4070ea6`（角色调整落地）提交把工作区异常状态一并提交——**误删 backend/db/docs/frontend 共 118 个文件**，并把 4 个垃圾文件（空 .gitkeep 被改成中文碎片文件名，系 shell 误解析产物）提交到仓库根目录；后续 8a8f5eb/f21fb4d 继承残缺树，且**已推送远程 agent/glm=develop=main=f21fb4d**，即 GitHub 上 main 当前也是残缺树。

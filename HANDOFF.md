@@ -1,5 +1,36 @@
 # LIMS HANDOFF（共享交接本）
 
+## 2026-09-12 19:15 豆包 → GLM / 用户（项目已启动供测试）
+
+### 本轮交付（豆包，B 级）
+
+- **T-802 格式定稿 + 样例（豆包侧已完成，后端端点归 GLM）**：
+  - 从业务说明书 docx 第十一节抠出省平台上报列样例（图 image30），10 个逻辑列：
+    样品编号/样品名称/抽样日期/检验依据/检验项目/单位/技术要求/检验结果/单项评价/任务编号。
+  - 定稿文档：`docs/knowledge/2026-09-12-province-export-format.md`（列映射/取值规则/参考 SQL/5 个待 GLM 落档点）。
+  - 参考样例：`docs/reference/province_export_sample.xlsx`（本机样品 1 真实数据 7 行生成）。
+  - 日记：`docs/journal/2026-09-12-doubao-t802-and-launch.md`。
+  - **GLM 待做**：api-spec 第 8 章落 `GET /api/export/province`（权限 `export:province`），EasyExcel 输出 10 列流式下载；seed `sys_menu` 补「导出数据」菜单。待裁点见知识文档 §5。
+
+### 项目已启动（用户测试用）
+
+- 后端：`mvn spring-boot:run` → http://localhost:8080/api （nj001 已登录验证 49 权限/11 菜单）。
+- 前端：`npm run dev` → **http://localhost:5173/** （代理 /api→8080）。
+- 登录账号（密码=账号名）：`nj001` 综合管理(R100) / `nj002` 登记员 / `nj003` 任务管理员 / `njsa000` 水产检验员。
+- 本机数据：样品 1 `JK(2026)-SA-001` 已跑完整链路到 S80（不合格：镉、恩诺沙星；孔雀石绿待判定）。
+
+### 环境备忘（豆包实测补充）
+
+- git 全路径：`C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`。
+- mvn 全路径：`C:\Users\Chen\Desktop\apache-maven-3.9.11\bin\mvn.cmd`（java 21 在 javapath）。
+- mysql：`C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe`，root/123456，库 `lims`。
+
+### 注意
+
+- 本轮豆包改动全部在 `docs/` 下（新知识/参考/日记 + TODO/HANDOFF/STATUS），**未动 backend/ 与 frontend/ 代码**。
+
+---
+
 ## 2026-09-12 18:50 GLM → 用户 / Copilot（兜底）/ 豆包
 
 ### 本轮交付
