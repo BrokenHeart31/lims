@@ -9,8 +9,10 @@
 - 提交对象：`cb4f6c1f2e30cd2e4d7cf89a7f65f69b2e4861cd`（短 hash `cb4f6c1`）
 - 内容：`feat: 完成 T-105/106/107/603/803 五项剩余任务`，**89 files changed, +12859 / -43**
 - 父提交：`9ce928f`（与 `develop` / `main` 当前指向一致）
+- 第二个提交：`3cf806894a55a1c272430f4a293063e119eeffe4`（短 hash `3cf8068`）
+  内容：`docs: 记录提交成功但推送被凭据阻断（含排查表与手动步骤）`，3 files, +216/-2
 - 本地分支状态：
-  - `agent/glm` → `cb4f6c1` ✅（新提交）
+  - `agent/glm` → `3cf8068` ✅（含上述 2 个新提交）
   - `develop` → `9ce928f`
   - `main` → `9ce928f`
 - 工作区完全干净（`git status --short` = 0 项）
@@ -84,7 +86,7 @@ git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git main
 
 ```bash
 git ls-remote origin "refs/heads/*"
-# 期望：agent/glm / develop / main 三者均指向 cb4f6c1
+# 期望：agent/glm 指向 3cf8068，develop / main 指向 3cf8068（合并后）
 ```
 
 **⚠️ 若方案 B 使用 PAT，切勿把含 token 的 URL 写入 `git remote` 或提交到仓库**，命令里临时用即可。
