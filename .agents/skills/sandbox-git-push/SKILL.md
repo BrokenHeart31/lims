@@ -1,6 +1,6 @@
 ---
 name: sandbox-git-push
-description: 在 WorkBuddy 沙箱内安全完成 git 提交、分支合并与向 GitHub 推送，规避「agent 分支引用被静默丢弃」「切分支被 SIGTERM」「证书 MITM」「无凭据时 push 挂起」「密钥被 Push Protection 拦截」等已知坑；并收录沙箱通用坑（递归删除守卫、端口占用排查、长中文命令解析）。当需要在 D:\lims（或任何 WorkBuddy 沙箱仓库）里 commit / merge / push，或在沙箱内做批量删除/进程管理时使用。
+description: 在 WorkBuddy 沙箱内安全完成 git 提交、分支合并与向 GitHub 推送，规避「agent 分支引用被静默丢弃（含整个 ref 文件未创建）」「切分支被 SIGTERM」「证书 MITM」「无凭据时 push 静默挂起 / could not read Username」「密钥被 Push Protection 拦截」等已知坑；并收录沙箱通用坑（递归删除守卫、端口占用排查、长中文命令解析）。当需要在 D:\lims（或任何 WorkBuddy 沙箱仓库）里 commit / merge / push，或在沙箱内做批量删除/进程管理时使用。
 agent_created: true
 ---
 
@@ -41,6 +41,23 @@ printf '%s\n' "$HASH" > .git/refs/heads/agent/glm
 git branch -v   # 校验：不应再出现 "does not have any commits yet"
 ```
 
+**2026-09-13 复现的更严重变体：`refs/heads/agent/` 目录连同 ref 一起未创建**（不只是写错末位，
+而是整个文件不存在）。此时 `git rev-parse HEAD` 报 `fatal: ambiguous argument 'HEAD': unknown revision`，
+`git branch` 里看不到 `agent/glm`。**提交对象本身是完好的**，从 reflog 精确取回：
+
+```bash
+cd /d/lims
+cat .git/HEAD                      # 确认 ref: refs/heads/agent/glm
+ls .git/refs/heads/                # 若 agent/ 目录缺失 → 命中本变体
+tail -3 .git/logs/HEAD             # 末行的「第 2 列」= 本次提交 hash，父节点在「第 1 列」
+git cat-file -t <hash>             # 必须回 commit，确认对象完好
+printf '%s' <hash> > .git/refs/heads/agent/glm   # 注意：不要加 \n，与 develop/main 写法保持一致
+git log --oneline -1               # 校验
+```
+
+> 判据：`.git/refs/heads/develop` 里没有换行符（`printf '%s'` 写的），
+> 所以补 ref 时也用 `printf '%s'`（不加 `\n`），避免与其他 ref 文件的格式不一致。
+
 `refs/remotes/origin/*` 同样会被丢弃（表现为 `[origin/xxx: gone]`），纯显示问题，用 `ls-remote` 的真实结果回填：
 
 ```bash
@@ -80,6 +97,33 @@ git -c http.sslVerify=false -c credential.helper= \
 - `-c http.sslVerify=false`：绕过沙箱 MITM 代理（`127.0.0.1:2400`）的证书错误。**一次性用，勿写入 config。**
 - `-c credential.helper=`：置空凭据助手，避免 GCM 挂起。**这是关键。**
 - 诊断挂起：`GIT_CURL_VERBOSE=1 git ... push`，看是否 `401 WWW-Authenticate: Basic realm="GitHub"`。
+
+**必须提供 PAT（或用交互终端）——GCM 缓存不可依赖。** 2026-09-13 实测凭据链完全为空：
+
+| 凭据来源 | 状态 |
+|---|---|
+| `credential.helper` | `!...git-credential-manager.exe`（GCM，交互式） |
+| `C:/Users/Chen/.git-credentials` | 不存在 |
+| `C:/Users/Chen/AppData/Local/.gcm` | 不存在 |
+| `~/.gcm` | 不存在 |
+| `GH_TOKEN` / `GITHUB_TOKEN` / `GH_ENTERPRISE_TOKEN` | 均未设置 |
+| `gh` CLI | 未安装 |
+
+此时不加 `credential.helper=` 的命令会**静默挂起**（>120s 无输出、日志 0 字节、最终 SIGTERM）；
+加上后才会快失败并给出可读错误 `could not read Username for 'https://github.com': terminal prompts disabled`。
+**看到这条错误 = 确认「代码/网络/TLS 都没问题，纯缺凭据」**，不要再往 TLS 方向排查。
+
+**错误链的排查顺序（照此逐层剥离，勿跳步）**：
+
+```
+CRYPT_E_NO_REVOCATION_CHECK      → TLS 层（schannel），加 sslVerify=false 或换 openssl 后端
+unable to get local issuer cert  → TLS 层（openssl），加 sslVerify=false
+命令挂起无输出                    → 凭据层，GCM 阻塞 → 加 credential.helper=
+could not read Username          → 凭据层，确认缺 PAT → 交给用户，停止重试
+```
+
+> ⚠️ **不要在缺凭据时反复重试不同 TLS 开关**——本轮为此浪费了 4 次尝试。
+> 判断依据：`ls-remote` 能成功（说明网络与 TLS 都通）而 `push` 挂起 → 一定是凭据问题。
 
 ### 规则 4：令牌权限判断只看 401/403/成功三态
 
@@ -173,11 +217,13 @@ git -c http.sslVerify=false ls-remote "https://<PAT>@github.com/<owner>/<repo>.g
 | 现象 | 根因 | 处理 |
 |---|---|---|
 | `branch does not have any commits yet`（刚 commit 过） | git.exe 丢弃 `refs/heads/agent/*` | 规则 1 shell 回填 |
+| `ambiguous argument 'HEAD': unknown revision`（刚 commit 过） | **整个 `refs/heads/agent/glm` 文件未创建**（比丢弃更彻底） | 从 `.git/logs/HEAD` 末行取 hash → `cat-file -t` 验对象 → `printf '%s' <hash> > .git/refs/heads/agent/glm` |
 | `[origin/xxx: gone]` | git.exe 丢弃 `refs/remotes/origin/*` | 用 `ls-remote` 结果 shell 回填 |
 | `index.lock: File exists` | 前次 SIGTERM 遗留 | `rm -f .git/index.lock` |
 | 半切换工作树（大量 ` D`） | `git checkout` 被 SIGTERM | `rm -f .git/index.lock && git checkout -- .`，后续改用 `update-ref` |
 | `CRYPT_E_NO_REVOCATION_CHECK` | 沙箱 MITM 代理证书链 | `-c http.sslVerify=false`（一次性） |
-| `push` 长时间挂起 | GCM 弹窗阻塞，无缓存凭据 | `-c credential.helper=` + `GCM_INTERACTIVE=never` |
+| `push` 长时间挂起 / 日志 0 字节 / SIGTERM | **凭据链为空**，GCM 交互阻塞（不是 TLS！） | `-c credential.helper=` + `GCM_INTERACTIVE=never` + `GIT_TERMINAL_PROMPT=0` → 得到可读错误 |
+| `could not read Username for 'https://github.com'` | 确认缺凭据，沙箱无法授权 | **停止重试，交用户手动推**（详见规则 3 的错误链表） |
 | `403 Permission denied` | fine-grained PAT Contents 只读 | 改为 Contents: Read and write |
 | `GH013 push cannot contain secrets` | 仓库文件含明文令牌 | 脱敏 + `commit --amend` 改写历史后重推 |
 | `Everything up-to-date`（但远程确实落后） | 本地 develop/main 引用未跟上 | 先 `update-ref` 再推 |
