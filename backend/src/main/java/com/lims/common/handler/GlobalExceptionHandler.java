@@ -5,6 +5,7 @@ import com.lims.common.ResultCode;
 import com.lims.common.exception.BizException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -13,12 +14,24 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 /**
- * 全局异常处理器：所有异常统一转换为 {@link R}，HTTP 状态保持 200，
- * 业务码经 body.code 传递（安全层 401/403 除外，见 security 包 EntryPoint/DeniedHandler）。
+ * 全局异常处理器：所有异常统一转换为 {@link R}。
+ *
+ * <p><b>HTTP 状态约定（AGENTS 统一响应规范）</b>：
+ * <ul>
+ *   <li><b>业务异常</b>（{@link BizException}）→ HTTP <b>200</b> + {@code body.code} 传业务码；</li>
+ *   <li><b>安全层拒绝</b>（{@link AccessDeniedException} 403 / {@link AuthenticationException} 401）→
+ *       <b>带真实 HTTP 状态码</b>，与 {@code security} 包 EntryPoint/DeniedHandler 的 URL 级拒绝保持同一形态。</li>
+ * </ul>
+ *
+ * <p>⚠️ 2026-09-13 修复：此前方法级鉴权（{@code @PreAuthorize}）的拒绝走本类兜底，
+ * 返回的是 <b>HTTP 200 + body.code=403</b>，而 URL 级拒绝走 {@code RestAccessDeniedHandler}
+ * 返回真 HTTP 403——<b>同一语义两种形态</b>，客户端无法仅凭 HTTP 状态判断鉴权结果（违反上述约定）。
+ * 现统一为真 HTTP 状态码；前端两分支均可正确呈现（401→跳登录，403→提示「无访问权限」）。</p>
  */
 @Slf4j
 @RestControllerAdvice
@@ -61,14 +74,16 @@ public class GlobalExceptionHandler {
         return R.fail(ResultCode.BAD_REQUEST.getCode(), "请求体格式错误");
     }
 
-    /** 无权限（@PreAuthorize 拒绝等，Controller 层抛出时兜底） */
+    /** 无权限（@PreAuthorize 拒绝等，Controller 层抛出时兜底）——带真 HTTP 403，与 URL 级拒绝同形态 */
     @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
     public R<Void> handleAccessDenied(AccessDeniedException e) {
         return R.fail(ResultCode.FORBIDDEN);
     }
 
-    /** 未认证兜底 */
+    /** 未认证兜底——带真 HTTP 401，便于前端统一触发「重新登录」 */
     @ExceptionHandler(AuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public R<Void> handleAuthentication(AuthenticationException e) {
         return R.fail(ResultCode.UNAUTHORIZED);
     }

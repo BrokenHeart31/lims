@@ -12,6 +12,7 @@
  */
 import { get, post } from '@/utils/request'
 import type { PageResult } from '@/types/api'
+import type { ReportVO } from '@/types/report'
 
 /** 审核/签发动作 */
 export const AUDIT_ACTION_OPTIONS = [
@@ -181,4 +182,67 @@ export function returnAuditApi(sampleId: number, reason: string): Promise<AuditA
 /** 签发（S70→S80）：POST /report/sign */
 export function signReportApi(sampleId: number, opinion: string | null): Promise<AuditActionResult> {
   return post<AuditActionResult>('/report/sign', { sampleId, opinion })
+}
+
+/**
+ * 报告类型 code —— T-702（与后端 common/enums/ReportType 一致）。
+ * 对外契约统一为数字 code：1=CMA / 2=CMA-CATL（请求体与响应 VO 同口径）。
+ */
+export type ReportTypeCode = 1 | 2
+
+/** 报告类型下拉选项（前端展示用） */
+export const REPORT_TYPE_OPTIONS: { value: ReportTypeCode; label: string }[] = [
+  { value: 1, label: 'CMA检验报告' },
+  { value: 2, label: 'CMA-CATL检验报告' },
+]
+
+/** 报告生成列表行（status ∈ {S80 已签发, S90 已出报告}） */
+export interface ReportPendingRow {
+  id: number
+  sampleNo: string
+  sampleName?: string | null
+  clientName?: string | null
+  taskNo?: string | null
+  inspectType?: string | null
+  samplingDate?: string | null
+  /** 80=已签发 90=已出报告 */
+  status: number
+  statusLabel?: string
+  conclusion?: number | null
+  conclusionLabel?: string | null
+  itemTotal: number
+  auditBy?: string | null
+  signBy?: string | null
+  signAt?: string | null
+  /** 报告类型 code（未生成时 null） */
+  reportType?: number | null
+  reportTypeLabel?: string | null
+  reportGeneratedAt?: string | null
+}
+
+/** 报告生成列表查询参数 */
+export interface ReportPendingQuery {
+  current: number
+  size: number
+  sampleNo?: string
+  sampleName?: string
+  taskNo?: string
+}
+
+/** 分页查询可生成/可重打样品：GET /report/generate/pending */
+export function pageReportPendingApi(params: ReportPendingQuery): Promise<PageResult<ReportPendingRow>> {
+  return get<PageResult<ReportPendingRow>>(
+    '/report/generate/pending',
+    params as unknown as Record<string, unknown>,
+  )
+}
+
+/** 生成检验报告（S80→S90）：POST /report/generate */
+export function generateReportApi(sampleNo: string, reportType: ReportTypeCode): Promise<ReportVO> {
+  return post<ReportVO>('/report/generate', { sampleNo, reportType })
+}
+
+/** 查询报告详情（供打印/重打，不改状态）：GET /report/detail */
+export function getReportDetailApi(sampleNo: string, reportType?: ReportTypeCode): Promise<ReportVO> {
+  return get<ReportVO>('/report/detail', { sampleNo, reportType })
 }

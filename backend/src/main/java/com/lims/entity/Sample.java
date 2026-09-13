@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.lims.common.enums.ReportType;
 import com.lims.common.enums.ResultConclusion;
 import com.lims.common.enums.SampleStatus;
 import lombok.Data;
@@ -136,6 +137,22 @@ public class Sample extends BaseEntity {
     /** 签发时间 */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime signAt;
+
+    // ---------------------------------------------------------------------
+    // 报告生成（T-702：S80→S90）
+    // 落 S90 时写入，供 T-801 历史查询按「报告类型 / 是否已出报告」筛选；
+    // 中文类型名由 ReportType.label 出网，禁止前端硬编码字典。
+    // ---------------------------------------------------------------------
+
+    /** 报告类型：1=CMA 2=CMA-CATL（reportGeneratedAt 非空即表示报告已生成） */
+    private ReportType reportType;
+
+    /** 报告生成时间（S80→S90 时写入） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime reportGeneratedAt;
+
+    /** 报告生成人（sys_user.id） */
+    private Long reportGeneratedBy;
 
     /** 状态中文名（非持久化，出网供前端展示，避免前端维护 code→label 字典） */
     public String getStatusLabel() {

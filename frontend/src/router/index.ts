@@ -67,12 +67,51 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '报告审核签发', permissions: ['report:audit', 'report:sign'] },
       },
       {
+        path: 'report/generate',
+        name: 'report-generate',
+        component: () => import('@/views/report/generate.vue'),
+        meta: { title: '报告生成', permissions: ['report:generate'] },
+      },
+      {
+        path: 'query/testing',
+        name: 'query-testing',
+        component: () => import('@/views/query/testing.vue'),
+        meta: { title: '在检样品查询', permissions: ['query:testing'] },
+      },
+      {
+        path: 'query/history',
+        name: 'query-history',
+        component: () => import('@/views/query/history.vue'),
+        meta: { title: '历史样品查询', permissions: ['query:history'] },
+      },
+      {
+        path: 'query/lib',
+        name: 'query-library',
+        component: () => import('@/views/query/library.vue'),
+        meta: { title: '项目库查询', permissions: ['base:lib:list'] },
+      },
+      {
+        path: 'export/province',
+        name: 'export-province',
+        component: () => import('@/views/export/province.vue'),
+        meta: { title: '数据导出', permissions: ['export:province'] },
+      },
+      {
         path: '403',
         name: 'forbidden',
         component: () => import('@/views/error/403.vue'),
         meta: { title: '无权限访问' },
       },
     ],
+  },
+  {
+    // 报告打印页（T-702）刻意放在**布局之外**：报告是白底 A4 纸质文档，
+    // 不需要侧栏/顶栏外壳，独立路由可让「打印」直接得到干净的纸张效果
+    // （否则需要在打印 CSS 里反向隐藏外壳，脆弱且易漏）。
+    path: '/report/print',
+    name: 'report-print',
+    component: () => import('@/views/report/print.vue'),
+    meta: { title: '报告打印', permissions: ['report:generate', 'report:print'] },
   },
   {
     path: '/:pathMatch(.*)*',

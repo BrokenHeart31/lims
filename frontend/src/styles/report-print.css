@@ -1,0 +1,378 @@
+/* =============================================================================
+ * report-print.css —— 检验报告打印版式（T-702）
+ * -----------------------------------------------------------------------------
+ * 设计红线：
+ *   1. 本页是「白底纸质文档」，与系统暗色主题完全隔离——
+ *      **所有颜色写死黑白灰，禁止引用任何 --lims-* 设计令牌**。
+ *   2. 所有选择器一律挂在根容器 .report-print-root 下，绝不泄漏到其他页面；
+ *      组件卸载后残留的 <style> 因作用域不存在而不生效。
+ *   3. 根容器用 position:fixed; inset:0 盖住暗色外壳（MainLayout）；
+ *      打印时通过 Teleport 落到 <body> 直下，配合 @media print 隐藏其余节点。
+ *   4. 分页：封面 / 第 1 页 / 第 2 页各占一页（page-break-after），最后一页不加。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * 根容器：全屏白底覆盖层
+ * ------------------------------------------------------------------------- */
+.report-print-root {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  overflow: auto;
+  background: #fff;
+  color: #000;
+  font-family: "SimSun", "Songti SC", "Microsoft YaHei", "PingFang SC", serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.report-print-root * {
+  box-sizing: border-box;
+}
+
+/* 工具条（打印时隐藏） */
+.report-print-root .report-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+}
+
+.report-print-root .report-loading {
+  padding: 48px;
+  text-align: center;
+  color: #666;
+}
+
+/* ---------------------------------------------------------------------------
+ * 页容器（屏幕上模拟 A4；打印时交由 @page 控制边距）
+ * ------------------------------------------------------------------------- */
+.report-print-root .report-page {
+  width: 186mm;
+  min-height: 269mm;
+  margin: 12px auto;
+  padding: 6mm 0;
+  background: #fff;
+  color: #000;
+}
+
+/* 屏幕上的页面分隔线（打印不需要） */
+.report-print-root .report-page + .report-page {
+  border-top: 1px dashed #ccc;
+}
+
+/* 页眉：标题居中 + 页码靠右 */
+.report-print-root .page-head {
+  position: relative;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.report-print-root .page-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #000;
+}
+
+.report-print-root .page-count {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  font-size: 12px;
+  color: #000;
+}
+
+/* ---------------------------------------------------------------------------
+ * 封面
+ * ------------------------------------------------------------------------- */
+.report-print-root .cover-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 255mm;
+}
+
+.report-print-root .cover-no {
+  text-align: right;
+  font-size: 13px;
+  color: #000;
+}
+
+.report-print-root .cover-qual {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.9;
+  color: #000;
+}
+
+.report-print-root .qual-line {
+  letter-spacing: 0.5px;
+}
+
+.report-print-root .cover-title {
+  margin-top: 56px;
+  text-align: center;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 12px;
+  color: #000;
+}
+
+.report-print-root .cover-fields {
+  margin: 56px auto 0;
+  width: 78%;
+}
+
+.report-print-root .cover-field {
+  display: flex;
+  align-items: flex-end;
+  margin-bottom: 20px;
+  font-size: 16px;
+}
+
+.report-print-root .cover-field__label {
+  flex: none;
+  white-space: nowrap;
+}
+
+.report-print-root .cover-field__value {
+  flex: 1;
+  min-width: 0;
+  padding: 0 6px 2px;
+  border-bottom: 1px solid #000;
+  text-align: center;
+}
+
+.report-print-root .cover-org {
+  margin-top: 48px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #000;
+}
+
+.report-print-root .cover-notes {
+  margin-top: 40px;
+}
+
+.report-print-root .notes-title {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  margin-bottom: 8px;
+}
+
+.report-print-root .notes-list {
+  margin: 0;
+  padding-left: 22px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #000;
+}
+
+.report-print-root .notes-list li {
+  margin-bottom: 2px;
+}
+
+.report-print-root .cover-contact {
+  margin-top: 36px;
+  font-size: 13px;
+  line-height: 2;
+  color: #000;
+}
+
+/* 公文式联系方式标签对齐：
+ * 「地址 / 电话 / 传真」与「邮政编码」都要让冒号后的内容左边界对齐，
+ * 公文习惯是把两字标签用空格撑成四字宽。这里**用 CSS 实现而不是在模板里打全角空格**
+ * —— 源码中的不可见字符既过不了 lint(no-irregular-whitespace)，
+ * 也是「改了看不出来」的隐性 bug 源。 */
+.report-print-root .cover-contact .contact-label {
+  display: inline-block;
+  min-width: 4.2em;
+  text-align: justify;
+  text-align-last: justify;
+}
+
+/* ---------------------------------------------------------------------------
+ * 第 1 页信息表（12 行 × 4 列）
+ * ------------------------------------------------------------------------- */
+.report-print-root .info-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.report-print-root .info-table td {
+  border: 1px solid #000;
+  padding: 5px 6px;
+  vertical-align: middle;
+  word-break: break-all;
+}
+
+.report-print-root .info-table .cell-label {
+  width: 20%;
+  text-align: center;
+  font-weight: 700;
+  background: #fafafa;
+}
+
+.report-print-root .info-table .cell-value {
+  width: 30%;
+  text-align: left;
+}
+
+.report-print-root .cell-conclusion {
+  vertical-align: top;
+}
+
+.report-print-root .conclusion-seal {
+  text-align: center;
+  color: #000;
+}
+
+.report-print-root .conclusion-sign {
+  margin-top: 6px;
+  text-align: left;
+}
+
+/* 签署行：批准 / 审核 / 编制 */
+.report-print-root .sign-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: #000;
+}
+
+.report-print-root .sign-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.report-print-root .sign-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  height: 28px;
+  vertical-align: middle;
+}
+
+.report-print-root .sign-img {
+  max-height: 28px;
+  max-width: 120px;
+}
+
+/* 无签名图片时的虚线占位框（框内写姓名——绝不伪造签名图片） */
+.report-print-root .sign-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px dashed #999;
+  color: #333;
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 第 2 页结果表（7 列）
+ * ------------------------------------------------------------------------- */
+.report-print-root .result-meta {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: #000;
+}
+
+.report-print-root .result-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.report-print-root .result-table th,
+.report-print-root .result-table td {
+  border: 1px solid #000;
+  padding: 5px 6px;
+  text-align: center;
+  vertical-align: middle;
+  word-break: break-all;
+}
+
+.report-print-root .result-table th {
+  font-weight: 700;
+  background: #fafafa;
+}
+
+.report-print-root .result-table td:first-child,
+.report-print-root .result-table th:first-child {
+  text-align: left;
+}
+
+/* 单项结论「不合格」浅红底提示；其余保持黑白 */
+.report-print-root .result-table td.is-unqualified {
+  background: #fde2e2;
+  color: #000;
+}
+
+/* ---------------------------------------------------------------------------
+ * 打印：A4 分页 + 隐藏暗色外壳与工具条
+ * ------------------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+
+  /* 隐藏除打印根之外的一切（含暗色外壳）；打印根已 Teleport 到 body 直下 */
+  body > *:not(.report-print-root) {
+    display: none !important;
+  }
+
+  /* 打印时取消固定定位与内部滚动，让页面自然分页 */
+  .report-print-root {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .report-print-root .report-toolbar,
+  .report-print-root .no-print {
+    display: none !important;
+  }
+
+  .report-print-root .report-page {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    border-top: none;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  /* 最后一页不加分页，避免尾部空白页 */
+  .report-print-root .report-page-last {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .report-print-root .cover-page {
+    min-height: auto;
+  }
+}

@@ -343,7 +343,10 @@ lims/
 R100 综合管理（审核签发/权限管理/全部查询）；R1 样品登记员；R2 任务管理员（分解/安排/资质维护）；R3 检验员（含 R3-NA/XA/SA 共享检验员账号 njna000/njxa000/njsa000）。
 
 ### 8.2 权限标识（resource:action，与业务模块对齐，供接口与 v-permission 共用）
-`sys:user:*`、`sys:role:*`、`sys:menu:*`、`sys:dept:*`、`base:lib:*`、`base:basis:*`、`base:tester-method:*`、`base:customer:*`、`task:*`、`sample:import`、`sample:confirm`、`sample:query`、`item:decompose`、`assign:confirm`、`assign:reassign`、`result:entry`、`result:export-excel`、`report:audit`、`report:sign`、`report:generate`、`report:print`、`query:testing`、`query:history`、`export:province`、`log:view`。
+`sys:user:*`、`sys:role:*`、`sys:menu:*`、`sys:dept:*`、`base:lib:*`、`base:basis:*`、`base:tester-method:*`、`base:customer:*`、`task:*`、`sample:import`、`sample:confirm`、`sample:query`、`item:decompose`、`assign:confirm`、`assign:reassign`、`result:entry`、`result:export-excel`、`report:audit`、`report:sign`、`report:generate`、`report:print`、`query:testing`、`query:history`、`stat:view`、`export:province`、`log:view`。
+
+> `stat:view` 为 **T-803 可视化看板**新增（2026-09-13，GLM 自裁并落 DECISIONS）：质量分析/统计报表属独立信息域，
+> 复用 `query:*` 会语义混淆（查询是「找样本」，统计是「看趋势」）；seed `sys_menu` id=841 与之对应。
 
 ### 8.3 鉴权流程
 `POST /api/auth/login` 返回 JWT → `GET /api/auth/me` 返回用户+角色+权限标识集合+菜单树 → 接口按权限标识鉴权 → 数据权限：普通用户仅本部门及下属部门，R100 全部。

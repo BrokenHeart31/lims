@@ -261,6 +261,49 @@ html.dark {
 }
 
 /* ---------------------------------------------------------------------------
+ * 固定列（fixed="right" 的操作列）必须有不透明底色
+ * ---------------------------------------------------------------------------
+ * 本主题把 --el-table-bg-color / --el-table-tr-bg-color 设为 transparent（让玻璃卡片透出底色），
+ * 副作用是：**固定列失去不透明背板**。EP 2.9 的固定列用 `position: sticky` 实现
+ * （类名 `el-table-fixed-column--right`，不是旧版的 `el-table__fixed-right` 包裹层），
+ * 其底色取自 `--el-table-bg-color` → 变透明 → 横向溢出时滚动内容从固定列下方透出，
+ * 视觉上是两列文字重叠糊在一起（1366×768 下「整体结论」与「操作」列即如此）。
+ *
+ * 这里用 !important 强制实体底色：这是**主题必须压过基础变量**的场景
+ * （基础变量被刻意设为 transparent，此处需要反向兜底），且所有含固定列的表格共用。
+ */
+.el-table .el-table-fixed-column--left,
+.el-table .el-table-fixed-column--right {
+  background-color: var(--lims-surface-solid) !important;
+}
+
+.el-table th.el-table-fixed-column--left,
+.el-table th.el-table-fixed-column--right {
+  background-color: #171d25 !important;
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table-fixed-column--left,
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table-fixed-column--right {
+  background-color: #151a21 !important;
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table-fixed-column--left,
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table-fixed-column--right {
+  background-color: #1a2028 !important;
+}
+
+/* 固定列边缘：EP 默认给灰白阴影，暗色下发灰；换成发丝线更贴合主题 */
+.el-table .el-table-fixed-column--right.is-first-column::before,
+.el-table .el-table-fixed-column--left.is-last-column::before {
+  box-shadow: none;
+  border-left: 1px solid var(--lims-hair);
+}
+.el-table .el-table-fixed-column--left.is-last-column::before {
+  border-left: none;
+  border-right: 1px solid var(--lims-hair);
+}
+
+/* ---------------------------------------------------------------------------
  * 表单控件
  * ------------------------------------------------------------------------- */
 .el-input__wrapper,

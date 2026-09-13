@@ -346,7 +346,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <AppEmpty description="暂无待安排样品（需先在「项目分解」完成分解确认）" />
+          <AppEmpty title="暂无待安排样品（需先在「项目分解」完成分解确认）" />
         </template>
       </el-table>
 
@@ -594,7 +594,7 @@ onMounted(() => {
                 </template>
               </el-table-column>
               <template #empty>
-                <AppEmpty description="当前样品无任何有资质检验员，请先在「基础数据 → 检验员方法资质」补录资质" />
+                <AppEmpty title="当前样品无任何有资质检验员，请先在「基础数据 → 检验员方法资质」补录资质" />
               </template>
             </el-table>
           </AppCard>

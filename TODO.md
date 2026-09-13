@@ -36,11 +36,24 @@
 
 ## 阶段七：报告审核签发 + 报告生成
 | T-701 | 审核/签发 S60→S70→S80（含审核退回 → S50） | S | **GLM** | ✅完成 2026-09-12（契约第 7 章 6 接口 + `db/init/08` `sample_audit_log` 流水表 + `V5` 审核/签发字段 + **正向/退回两张独立白名单**（`assertReturn`）+ Service/Controller + **放行红线**（异常项须显式确认）+ 22 单测（总 107/107）+ 前端审核签发页 + 路由菜单；**端到端 54 断言全过（重跑仍 54/54）**；视觉回归含抽屉内异常项清单） |
-| T-702 | CMA / CMA-CATL 报告模板合成 + S80→S90 | S | **GLM** | ⬜待办（✅ 版式样本已从业务说明书 docx 取得：首页编号/资质号/注意事项 + 第1页表头与检验结论句式 + 第2页七列明细表；无需挂起等待外部样本） |
+| T-702 | CMA / CMA-CATL 报告模板合成 + S80→S90 + 报告打印 | S | **GLM** | 🔵进行中(GLM 2026-09-13)（版式已从说明书 docx 逐格提取：封面资质块/注意事项 7 条 + 第1页 12×4 信息表 + 检验结论句式 + 第2页 7 列结果表；电子签名取「占位 + 可配置」降级方案） |
+
+## 阶段六延伸：检验员任务查询与导出
+| 任务ID | 任务 | 级别 | Owner | 状态 |
+|---|---|---|---|---|
+| T-603 | 检验员查询自己的检验任务 + 下载任务 Excel（说明书第七节；当前仅预留 `result:export-excel` 标识，接口未实现） | A | **GLM** | ⬜待办 |
+
+## 阶段一延伸：基础数据维护界面（说明书二(2)(3)；当前有表有数据、无管理页）
+| 任务ID | 任务 | 级别 | Owner | 状态 |
+|---|---|---|---|---|
+| T-105 | 方法-检验员资质设置（`tester_method` CRUD + 导入；说明书原文「添加检验员-检验方法」） | A | **GLM** | ⬜待办 |
+| T-106 | 项目标准库维护 + 「导入新的项目库」Excel 批量导入（`product_lib`/`product_lib_item`） | A | **GLM** | ⬜待办 |
+| T-107 | 系统管理 4 页：用户（含角色分配/启停/重置密码）、角色（含菜单权限树）、菜单、部门 | A | **GLM** | ⬜待办 |
 
 ## 查询与省平台上报
 | T-801 | 在检/历史/项目库查询 | A | **GLM** | ⬜待办 |
 | T-802 | 省平台上报 Excel 导出 | B | 豆包 | 🔵进行中(豆包：格式定稿+样例已交付 2026-09-12；后端 `/api/export/province` 端点+前端按钮归 GLM，格式见 `docs/knowledge/2026-09-12-province-export-format.md`，样例 `docs/reference/province_export_sample.xlsx`) |
+| T-803 | 可视化看板：工作台图表 + 质量分析 + 统计报表（须基于真实统计接口，**禁 mock 假数据**） | A | **GLM** | ⬜待办 |
 
 ## 治理维护
 | 任务ID | 任务 | 级别 | Owner | 状态 |
@@ -57,5 +70,8 @@
 | T-910 | 可**一键复现**的技能沉淀（判定引擎模板 + 阶段交付含端到端/视觉回归 + 沙箱 git 补坑） | S | **GLM** | ✅完成（2026-09-12；新建 `.agents/skills/judge-engine/`，更新 `lims-stage-delivery`（+第 7.5 步）、`sandbox-git-push`（+规则 6 hash 双验证 / 规则 7 临时文件与并行 Edit 覆盖））；**2026-09-12 追加**：`lims-stage-delivery` 原则 4 升级为「状态流转双保险 **+ 正向/退回两张独立白名单 + 审计留痕 + 放行红线 + 未录入≠待判定**」、环境备忘补 git 全路径/后端重启/ref 被吞症状；状态机知识库补「双白名单」定稿节；技能库共 7 个 |
 | T-911 | **分页参数双轨统一**：api-spec 0.3 约定统一 `pageNum/pageSize`，但 item/assign/result 三域实为 `current/size`（T-401 引入并沿用，spec 章节内自洽、前后端一致、运行无碍）。裁决方向：(a) 修订 0.3 承认双轨（成本 0，Copilot 倾向）或 (b) 统一回 `pageNum/pageSize`（动 3 Controller + 3 前端 api + spec） | A | **GLM** | ✅完成 2026-09-12（**采纳 (a) 保留双轨**，api-spec 0.3 已明确「新域一律 `current`/`size`」、`pageNum`/`pageSize` 标注为 task/sample 历史兼容写法；见 DECISIONS） |
 | T-912 | **「已录入」口径收口**：`ResultSaveDTO.Item.testValue` 可空→可落一行 `conclusion=3`，而 `submit` 录齐校验只看结果行存在 → **可带空结果行提交至 S60**。非安全洞（不静默判合格），属流程卫生缺口。候选方案：①「已录入」= `testValue 非空 ∥ (jt3 且 manualConclusion∈{1,2})`（改 submit/entered/save 校验）；②不改录入，由 T-701 审核页强制展示「待判定/空值项」清单并显式确认后放行 | S | **GLM** | ✅完成 2026-09-12（**方案①+②合并**：`ResultEntryPolicy` 收紧「已录入」口径使空值行阻断提交；审核页仍强制展示异常项清单并要求显式确认；「未录入」（操作缺漏，阻断）与「待判定」（数据缺口，不阻断）严格区分；见 DECISIONS） |
+
+| T-913 | **前端 UI 结构/空间重整**（保留 mine radio「Aurora Glass」华丽美感，聚焦结构、间距、层级与一致性） | A | **GLM** | ✅完成 2026-09-12（`f751e8f`：tokens 扩展 + element-override 统一行高/圆角 + 6 个公共组件（PageHeader/AppCard/StatCard/StatusBadge/AppEmpty/AppBreadcrumb）+ `utils/confirm.ts`/`sampleStatus.ts` + MainLayout 224px 分组侧栏 & 64px Header + 工作台重构 + 7 业务页迁移；lint 0/0、build 通过；资产见 `docs/journal/2026-09-12-glm-ui-overhaul.md`、`docs/knowledge/2026-09-12-ui-component-library.md`、skill `lims-ui-overhaul`） |
+| T-914 | **补充治理**：TODO 补齐 T-913 行 + 新增 T-105/T-106/T-107/T-603/T-803 五行（说明书要求但此前未登记的任务） | B | **GLM** | ✅完成 2026-09-13 |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。

@@ -16,8 +16,10 @@
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Check, Promotion, Refresh, Search } from '@element-plus/icons-vue'
+import { Check, Download, Promotion, Refresh, Search } from '@element-plus/icons-vue'
 import { JUDGE_TYPE_OPTIONS } from '@/api/item'
+import { exportMyTasksApi } from '@/api/exportApi'
+import { downloadBlob } from '@/utils/download'
 import {
   getResultDetailApi,
   judgeResultApi,
@@ -310,6 +312,23 @@ async function handleSubmit(): Promise<void> {
   }
 }
 
+// ---------------- 导出我的检验任务（T-603） ----------------
+const exporting = ref(false)
+
+/** 下载「安排给自己的全部检验任务」Excel（R100 综合管理导出全部） */
+async function handleExportMyTasks(): Promise<void> {
+  exporting.value = true
+  try {
+    const blob = await exportMyTasksApi()
+    downloadBlob(blob)
+    ElMessage.success('导出已开始下载')
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(() => {
   void loadPending()
 })
@@ -331,6 +350,13 @@ onMounted(() => {
           <el-breadcrumb-item>结果录入</el-breadcrumb-item>
         </el-breadcrumb>
       </template>
+      <el-button
+        :icon="Download"
+        :loading="exporting"
+        @click="handleExportMyTasks"
+      >
+        导出我的任务
+      </el-button>
       <el-button
         :icon="Refresh"
         @click="loadPending"
@@ -477,7 +503,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <AppEmpty description="暂无待录入样品（需先在「任务安排」完成安排确认）" />
+          <AppEmpty title="暂无待录入样品（需先在「任务安排」完成安排确认）" />
         </template>
       </el-table>
 

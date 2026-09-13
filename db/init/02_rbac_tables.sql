@@ -23,6 +23,7 @@ CREATE TABLE `sys_user` (
   `dept_id`     BIGINT       DEFAULT NULL COMMENT '所属部门 dept.id（数据权限用）',
   `email`       VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
   `phone`       VARCHAR(20)  DEFAULT NULL COMMENT '手机号',
+  `signature_url` VARCHAR(255) DEFAULT NULL COMMENT '电子签名图片地址（报告自动调用；空则报告渲染占位框，T-702）',
   `status`      TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1=启用 0=停用',
   `remark`      VARCHAR(255) DEFAULT NULL COMMENT '备注',
   `created_by`  VARCHAR(64)  DEFAULT NULL COMMENT '创建人',

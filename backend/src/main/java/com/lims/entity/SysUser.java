@@ -33,6 +33,12 @@ public class SysUser extends BaseEntity {
 
     private String phone;
 
+    /**
+     * 电子签名图片地址（T-702）：报告自动调用。
+     * 为空时报告渲染虚线占位框——<b>绝不伪造签名图片</b>。
+     */
+    private String signatureUrl;
+
     /** 状态 1=启用 0=停用 */
     private Integer status;
 

@@ -497,7 +497,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <AppEmpty :description="isAuditTab ? '暂无待审核样品（需先在「结果录入」提交至检验完成）' : '暂无待签发样品'" />
+          <AppEmpty :title="isAuditTab ? '暂无待审核样品（需先在「结果录入」提交至检验完成）' : '暂无待签发样品'" />
         </template>
       </el-table>
 
@@ -936,7 +936,7 @@ onMounted(() => {
             </el-table>
             <AppEmpty
               v-else
-              description="暂无审核/签发记录"
+              title="暂无审核/签发记录"
             />
           </AppCard>
         </template>

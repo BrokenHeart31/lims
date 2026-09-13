@@ -17,6 +17,7 @@ import {
   ArrowDown,
   Bell,
   Document,
+  Download,
   EditPen,
   Expand,
   Fold,
@@ -29,6 +30,8 @@ import {
   Operation,
   Search,
   SwitchButton,
+  Tickets,
+  TrendCharts,
   User,
   UserFilled,
 } from '@element-plus/icons-vue'
@@ -46,7 +49,8 @@ interface MenuGroup {
 }
 
 /** 侧栏分组（提示词 §七：业务管理 / 实验室业务 / 数据中心 / 系统管理）。
- *  本轮只渲染已落地的 7 个业务页；数据中心/系统管理未实现，预留分组名（隐藏分组本身）。 */
+ *  分组按「用户要干什么」而非「后端模块」划分——实验室人员的心智模型是流程（业务管理→实验室业务），
+ *  管理者的是结果（数据中心），两者混在一列会让人找不到入口。 */
 const menuGroups: MenuGroup[] = [
   {
     title: '工作台',
@@ -66,7 +70,20 @@ const menuGroups: MenuGroup[] = [
     items: [
       { path: '/result/entry', title: '结果录入', icon: markRaw(EditPen) },
       { path: '/report/audit', title: '报告审核', icon: markRaw(Notebook) },
+      { path: '/report/generate', title: '报告生成', icon: markRaw(Tickets) },
     ],
+  },
+  {
+    title: '数据中心',
+    items: [
+      { path: '/query/testing', title: '在检样品', icon: markRaw(Search) },
+      { path: '/query/history', title: '历史样品', icon: markRaw(Histogram) },
+      { path: '/query/lib', title: '项目库', icon: markRaw(TrendCharts) },
+    ],
+  },
+  {
+    title: '数据导出',
+    items: [{ path: '/export/province', title: '省平台上报', icon: markRaw(Download) }],
   },
 ]
 

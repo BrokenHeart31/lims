@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  QueryMapper.xml —— T-801 查询域 / T-802 导出域 只读 SQL
+  ============================================================================
+  约定：
+    1. 自定义 XML 不受 MyBatis-Plus 逻辑删除自动追加，故每条 SQL 均显式 `deleted = 0`。
+    2. map-underscore-to-camel-case = true（application.yml），列名下划线自动映射 VO 驼峰属性；
+       仅当「同列需映射到不同属性」时才显式 AS 别名（如 audit_by -> audit_by_no）。
+    3. 结论 / 状态中文一律不在 SQL 里拼（会硬编码），交由 Service 用枚举 getLabel() 填充。
+-->
+<mapper namespace="com.lims.mapper.QueryMapper">
+
+    <!-- 样品通用筛选（在检 / 历史共用），q 为 QuerySampleDTO -->
+    <sql id="sampleFilters">
+        <if test="q.sampleNo != null and q.sampleNo != ''">
+            AND s.sample_no LIKE CONCAT(#{q.sampleNo}, '%')
+        </if>
+        <if test="q.sampleName != null and q.sampleName != ''">
+            AND s.sample_name LIKE CONCAT('%', #{q.sampleName}, '%')
+        </if>
+        <if test="q.clientName != null and q.clientName != ''">
+            AND s.client_name LIKE CONCAT('%', #{q.clientName}, '%')
+        </if>
+        <if test="q.taskNo != null and q.taskNo != ''">
+            AND s.task_no = #{q.taskNo}
+        </if>
+        <if test="q.status != null">
+            AND s.status = #{q.status}
+        </if>
+        <if test="q.samplingDateFrom != null">
+            AND s.sampling_date &gt;= #{q.samplingDateFrom}
+        </if>
+        <if test="q.samplingDateTo != null">
+            AND s.sampling_date &lt;= #{q.samplingDateTo}
+        </if>
+    </sql>
+
+    <!-- 在检样品分页：status IN (10..70)；派生列在 Service 补齐 -->
+    <select id="pageTesting" resultType="com.lims.vo.TestingQueryVO">
+        SELECT s.id,
+               s.sample_no,
+               s.sample_name,
+               s.client_name,
+               s.task_no,
+               s.inspect_type,
+               s.sampling_date,
+               s.status,
+               s.conclusion,
+               s.confirmed_by,
+               s.audit_by,
+               s.created_at,
+               s.confirmed_at,
+               s.updated_at,
+               s.audit_at
+        FROM sample_info s
+        WHERE s.deleted = 0
+          AND s.status BETWEEN 10 AND 70
+        <include refid="sampleFilters"/>
+        ORDER BY s.id DESC
+    </select>
+
+    <!-- 历史样品分页：status IN (80,90) + 整体结论 + 是否已生成报告 -->
+    <select id="pageHistory" resultType="com.lims.vo.HistoryQueryVO">
+        SELECT s.id,
+               s.sample_no,
+               s.sample_name,
+               s.client_name,
+               s.task_no,
+               s.inspect_type,
+               s.sampling_date,
+               s.status,
+               s.conclusion,
+               s.audit_by AS audit_by_no,
+               s.audit_at,
+               s.sign_by AS sign_by_no,
+               s.sign_at,
+               s.report_type,
+               s.report_generated_at
+        FROM sample_info s
+        WHERE s.deleted = 0
+          AND s.status IN (80, 90)
+        <include refid="sampleFilters"/>
+        <if test="q.conclusion != null">
+            AND s.conclusion = #{q.conclusion}
+        </if>
+        <if test="q.reportGenerated != null and q.reportGenerated">
+            AND s.report_generated_at IS NOT NULL
+        </if>
+        <if test="q.reportGenerated != null and !q.reportGenerated">
+            AND s.report_generated_at IS NULL
+        </if>
+        ORDER BY s.id DESC
+    </select>
+
+    <!-- 项目库（产品）分页，带检测单项数；子查询统计有效明细数 -->
+    <select id="pageLibrary" resultType="com.lims.vo.LibraryQueryVO">
+        SELECT p.id,
+               p.product_name,
+               p.category,
+               (SELECT COUNT(*)
+                  FROM product_lib_item i
+                 WHERE i.product_lib_id = p.id
+                   AND i.deleted = 0) AS item_count
+        FROM product_lib p
+        WHERE p.deleted = 0
+        <if test="q.productName != null and q.productName != ''">
+            AND p.product_name LIKE CONCAT('%', #{q.productName}, '%')
+        </if>
+        <if test="q.category != null and q.category != ''">
+            AND p.category = #{q.category}
+        </if>
+        ORDER BY p.id
+    </select>
+
+    <!--
+      省平台上报导出：一行 = 样品 × 检测单项。
+      范围 status >= 80（含 S80 已签发 / S90 已出报告，已拍板）；可选按 task_no 筛选。
+      结论只取码值（conclusion），中文由 Service 用 ResultConclusion 填充。
+      排序：sample_info.id, sample_item.item_order。
+    -->
+    <select id="listProvinceRows" resultType="com.lims.dto.excel.ProvinceExportRow">
+        SELECT s.sample_no,
+               s.sample_name,
+               DATE_FORMAT(s.sampling_date, '%Y.%m.%d') AS sampling_date,
+               i.basis_code,
+               i.item_name,
+               i.unit,
+               i.std_value,
+               COALESCE(r.test_value, '') AS test_value,
+               r.conclusion,
+               s.task_no
+        FROM sample_info s
+                 JOIN sample_item i ON i.sample_id = s.id AND i.deleted = 0
+                 LEFT JOIN sample_result r ON r.sample_item_id = i.id AND r.deleted = 0
+        WHERE s.deleted = 0
+          AND s.status &gt;= 80
+        <if test="taskNo != null and taskNo != ''">
+            AND s.task_no = #{taskNo}
+        </if>
+        ORDER BY s.id, i.item_order
+    </select>
+
+    <!--
+      检验员任务导出：一行 = 样品 × 已指派检测单项，status >= 40。
+      testerNo 为空时不加检验员过滤（R100 综合管理导出全部）。
+    -->
+    <select id="listMyTasks" resultType="com.lims.dto.excel.MyTaskExportRow">
+        SELECT s.sample_no,
+               s.sample_name,
+               s.client_name,
+               s.task_no,
+               i.item_order,
+               i.item_name,
+               i.methods,
+               i.basis_code,
+               i.std_value,
+               i.unit,
+               i.lower_limit,
+               s.sample_state
+        FROM sample_item i
+                 JOIN sample_info s ON s.id = i.sample_id AND s.deleted = 0
+        WHERE i.deleted = 0
+          AND s.status &gt;= 40
+        <if test="testerNo != null and testerNo != ''">
+            AND i.tester_no = #{testerNo}
+        </if>
+        ORDER BY s.id, i.item_order
+    </select>
+
+</mapper>

@@ -342,7 +342,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <AppEmpty description="暂无监抽任务，可点击右上「新建任务」下达" />
+          <AppEmpty title="暂无监抽任务，可点击右上「新建任务」下达" />
         </template>
       </el-table>
 

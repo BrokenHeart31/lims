@@ -30,8 +30,9 @@
 | 500 | 系统异常 | 前端提示稍后重试 |
 | 1000+ | 业务自定义 | 按模块分段，新增时必须登记在本文件对应域 |
 
-- 安全层（未带/非法 token、权限不足）返回 **HTTP 401/403 + 上述响应体**；业务异常返回 HTTP 200 + body.code 区分。
-- 前端只认 `body.code`（见 `frontend/src/utils/request.ts`），调用方无需关心 HTTP 层差异。
+- 安全层（未带/非法 token、权限不足）返回 **HTTP 401/403 + 上述响应体**（URL 级与 `@PreAuthorize` 方法级**一律如此**）；业务异常返回 HTTP 200 + body.code 区分。
+  > ⚠️ 2026-09-13 实现勘误：方法级鉴权拒绝曾返回「HTTP 200 + body.code=403」，与本节及 URL 级拒绝（真 403）形态不一致，已修复（`GlobalExceptionHandler` 补 `@ResponseStatus`）。
+- 前端同时兼容两种形态（见 `frontend/src/utils/request.ts`：HTTP 401 → 清 token 跳 /login；body.code≠0 → 提示 msg；非 2xx → 读取 `error.response.data.msg`），故调用方无需关心 HTTP 层差异，但**服务端必须按上一条输出**。
 
 ### 0.3 分页约定（列表接口统一）
 
@@ -820,18 +821,229 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ---
 
-## 8. 待落地域（占位，按七阶段顺序补充）
+## 8. 检验报告生成与打印域 `/api/report`（T-702）
+
+> 阶段七下半：已签发（S80）→ **合成 CMA / CMA-CATL 检验报告** → **S90 已出报告** → 供打印。
+> 业务依据：业务说明书「九、检验业务流程之六：自动生成检验报告。菜单：15 报告打印」——
+> 「报告打印是将系统里的检测数据与报告模板自动合成生成检测报告。检验报告可自动调用预先保存的电子签名。」
+> 「检验报告根据资质分为『CMA检验报告』和『CMA-CATL检验报告』，可根据资质选择生成相应类型的检验报告。」
+> 「样品信息可以按任务编号进行筛选」。
+> 权限：`report:generate`（生成，seed `sys_menu` id=721）、`report:print`（打印，id=722）。
+
+### 8.0 三条设计口径（GLM 自裁，见 DECISIONS）
+
+1. **报告不落快照，实时聚合**：报告内容由 `sample_info + sample_item + sample_result + sample_audit_log + sys_user` 实时组装。
+   依据：S80 已签发后样品再无写路径（S90 为终态），数据天然冻结，实时聚合不会漂移；落快照反而引入「两处真相」的一致性与维护成本。
+2. **电子签名「占位 + 可配置」**：签名取 `sys_user.signature_url`。**该列为空时报告渲染虚线占位框（框内印姓名），绝不伪造签名图片**——
+   业务要求「报告无制表、审核、批准人签字无效」，伪造签名是资质红线。
+3. **报告类型差异仅在资质行**：`CMA` 显示 `lims.report.cma-no` 一行；`CMA_CATL` 显示 `cma-no + catl-no` 两行。
+   机构名/地址/电话/邮编/传真/注意事项/实验环境条件统一取自 `application.yml` 的 `lims.report.*`（配置化，便于换证）。
+
+### 8.1 字段模型（`sample_info` 增量）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `reportType` | number | 1=CMA 2=CMA-CATL（`common/enums/ReportType`） |
+| `reportGeneratedAt` | string | 报告生成时间（S80→S90 时写入） |
+| `reportGeneratedBy` | number | 报告生成人 `sys_user.id` |
+
+`sys_user` 增量：`signatureUrl`（电子签名图片地址，可空）。
+
+### 8.2 分页查询待出报告样品
+
+`GET /api/report/generate/pending`　权限：`report:generate`
+
+- 参数：`current`（默认 1）、`size`（默认 10，≤500）、`sampleNo`（模糊）、`sampleName`（模糊）、`taskNo`（精确）
+- 范围：`status IN (S80 已签发, S90 已出报告)`——后者用于**重打印**
+- 响应 `data`：分页结构，`records[]` 字段：
+  `id / sampleNo / sampleName / clientName / taskNo / inspectType / samplingDate / status / statusLabel /
+  conclusion / conclusionLabel / itemTotal / auditBy / signBy / signAt / reportType / reportTypeLabel / reportGeneratedAt`
+
+### 8.3 生成报告（S80 → S90）
+
+`POST /api/report/generate`　权限：`report:generate`
+
+- 请求体：`{ "sampleNo": "JK(2026)-SA-001", "reportType": 1 }`
+  - **`reportType` 是数字 code：1=CMA、2=CMA-CATL；缺省按 1=CMA**（与 8.4 响应中的 `reportType` 同一口径，前后端只认数字）。
+    非法 code → `code=400`「非法的报告类型编码」。
+- 校验：样品必须存在且 `status = S80`；否则 `code=400`「仅已签发样品可生成报告」
+- 流转：`assertTransition(S80, S90)` + 乐观条件 UPDATE（`WHERE id=? AND status=80`）；
+  `updated==0` → `code=400`「样品状态已变更，请刷新后重试」
+- 落库：写 `reportType / reportGeneratedAt / reportGeneratedBy`
+- 响应 `data`：完整 `ReportVO`（见 8.4）
+- 说明：**生成即出报告**（S90）。重打印不再调本接口，直接调 8.4 详情。
+
+### 8.4 报告详情 / 重打印取数
+
+`GET /api/report/detail?sampleNo=&reportType=`　权限：`report:generate`
+
+- 参数：`sampleNo`（必填）、`reportType`（选填，缺省 1=CMA）
+- 行为：**只读聚合，不改任何状态**（供打印页与「重打印」调用）
+- 样品不存在 → `code=400`
+- 响应 `data`（`ReportVO`）：
+
+```json
+{
+  "reportType": 1,
+  "reportTypeLabel": "CMA检验报告",
+  "reportNo": "JK(2026)-SA-001",
+  "qualificationLines": ["181004090030"],
+  "orgName": "南通市食品质量检验测试中心",
+  "address": "南通市通州区江海大道18号",
+  "phone": "0513-83548999",
+  "postcode": "226011",
+  "fax": "0513-83548888",
+  "notes": ["报告无“检验报告专用章”或检验单位公章无效。", "..."],
+  "productName": "花鲢",
+  "clientName": "南通润发生态园",
+  "inspectType": "监督抽检",
+  "spec": null, "brand": null, "manufacturer": null, "grade": null,
+  "samplingAddress": "通州区平潮镇5组",
+  "samplingDate": "2026.09.12",
+  "sampleQuantity": "3kg", "sampler": "徐宇宏", "samplingBase": null,
+  "originalNo": "TZ（2026）-01", "sampleState": "鲜活",
+  "itemSummary": "见第2页",
+  "basisText": "GB 2733-2015、GB 2762-2017、GB 31650-2019",
+  "inspectDate": "2026.09.12",
+  "conclusionText": "本样品所检项目按GB 2733-2015、GB 2762-2017、GB 31650-2019规定的要求进行判定，其中镉（以Cd计）、恩诺沙星超标，判定为不合格。",
+  "instrument": null,
+  "environment": "温度：20℃-25℃  湿度：40%-60%",
+  "remark": null,
+  "signAt": "2026-09-12 16:20:00",
+  "approveName": "综合管理员", "approveSignatureUrl": null,
+  "auditName": "综合管理员", "auditSignatureUrl": null,
+  "editName": "水产检验员", "editSignatureUrl": null,
+  "items": [
+    {
+      "itemOrder": 1, "itemName": "孔雀石绿", "testValue": "0.01",
+      "basisCode": "GB 31650-2019", "stdValue": "不得检出", "unit": "μg/kg",
+      "lowerLimit": null, "conclusionCode": 3, "conclusionText": "待判定", "isReference": 0
+    }
+  ]
+}
+```
+
+**`conclusionText` 生成规则（照业务说明书句式；⚠️ 按下列优先级判定，不得跳级）**
+1. 存在**不合格**项：`本样品所检项目按{basisText}规定的要求进行判定，其中{不合格项名、顿号连接}超标，判定为不合格。`
+2. 无不合格但存在**待判定**项：`本样品所检项目按{basisText}规定的要求进行判定，其中{待判定项名、顿号连接}需人工确认，暂判定为待判定。`
+   > ⚠️ **优先级说明（2026-09-13 定稿）**：待判定一律**优先于**「合格」——任何「有未决项却写出合格结论」的路径都是 fail-loud 违规。
+   > 本项目铁律「禁止静默判合格」（AGENTS 7.3）在此处同样适用：宁可出「待判定」，不可出「合格」。
+3. 全部为非参考项合格（含参考项一并合格）：`本样品所检项目按{basisText}规定的要求进行判定，判定为合格。`
+
+中文一律取 `ResultConclusion.getLabel()`，**禁止硬编码**。
+
+### 8.5 报告版式（前端 `views/report/print.vue` 还原，白底 A4）
+
+- **封面**：右上「编号：`reportNo`」→ 资质行（`qualificationLines` 逐行）→ 大标题「检 验 报 告」→
+  「产品名称：/ 受检单位：/ 检验类别：」三行带下划线 → 机构名 → 「注 意 事 项」+ `notes` 逐条编号 → 联系方式块
+- **第 1 页**（页眉右「共2页 第1页」）：标题「检 验 报 告」+ **12 行 × 4 列**信息表：产品名称/规格型号 → 空/商标 →
+  受检单位/检验类别 → 生产单位/样品等级 → 抽样地点/采样日期 → 样品数量/采样者 → 抽样基数/原编号或生产日期 →
+  样品状态/检测项目 → 检测依据/检验日期 → **检验结论**（右列合并 2 列，含「（检验报告专用章）」与「签发日期：`signAt`」）→
+  主要仪器/实验环境条件 → 备注；表格下「批准：`approveName`　审核：`auditName`　编制：`editName`」+ 三个签名位
+- **第 2 页**（页眉右「共2页 第2页」）：标题「检 验 结 果」+ 表头两行「样品编号：`reportNo`」「样品名称：`productName`」+
+  **7 列**明细表 `检验项目 | 检验数据 | 检测依据 | 标准值 | 单位 | 最低检出限 | 单项结论`（取 `items`）
+- **参考项**（`isReference=1`）在报告中的「检验项目」名前加 `*`（纸质报告惯例；省平台导出**不加**）
+- **打印样式隔离**：报告为白底纸质文档，**不引用任何 `--lims-*` 暗色令牌**；样式全部挂在 `.report-print-root` 下，
+  确保切回业务页时暗色主题不受影响；`@media print` 用 `@page { size: A4 }` 并在页间 `page-break-after: always`
+
+---
+
+## 9. 查询域 `/api/query`（T-801）
+
+> 业务依据：说明书「十、查询功能」——在检项目查询、历史项目查询、项目库查询。
+> 权限：`query:testing`（在检）、`query:history`（历史）、`base:lib:list`（项目库，复用基础数据标识，与 seed `sys_menu` id=831 一致）。
+> 分页一律 `current`/`size`（api-spec 0.3 裁决）。
+
+### 9.0 「有效录入」口径复用
+
+在检/历史查询的 `itemTotal / enteredCount / pendingCount / abnormalCount` **必须复用**
+`com.lims.service.result.ResultEntryPolicy.isEntered(judgeType, sampleResult)`（T-912 定稿口径），
+禁止在新域另写一套判定——否则「已录入」会在两个页面给出不同答案。
+
+### 9.1 在检样品查询
+
+`GET /api/query/testing/page`　权限：`query:testing`
+
+- 范围：`status IN (S10..S70)`（未出报告的在检样品）
+- 参数：`current`、`size`、`sampleNo`（前缀）、`sampleName`（模糊）、`clientName`（模糊）、`taskNo`（精确）、
+  `status`（精确 code）、`samplingDateFrom`/`samplingDateTo`（yyyy-MM-dd）
+- 响应 `records[]`：`id / sampleNo / sampleName / clientName / taskNo / inspectType / samplingDate / status / statusLabel /
+  itemTotal / enteredCount / pendingCount / abnormalCount / conclusion / conclusionLabel /
+  currentHandler / stageEnteredAt / stageStayHours / updatedAt`
+- **`currentHandler` 推导**（不新增表）：`S10/S20`→`confirmedBy`（空则「待登记确认」）；`S30`→「待项目分解」；
+  `S40/S50`→`sample_item.tester_name` 去重顿号连接；`S60`→「待审核」；`S70`→`auditBy` 姓名
+- **`stageEnteredAt` 推导**（用既有字段近似，**不新建状态流水表**）：`S10`→`createdAt`；`S20`→`confirmedAt`；
+  `S30`→`updatedAt`；`S40`→`MAX(sample_item.assigned_at)`；`S50/S60`→`MAX(sample_result.updated_at)`；`S70`→`auditAt`
+- `stageStayHours` = 当前时间与 `stageEnteredAt` 的小时差（一位小数）；`stageEnteredAt` 为空时为 `null`
+
+### 9.2 历史样品查询
+
+`GET /api/query/history/page`　权限：`query:history`
+
+- 范围：`status IN (S80, S90)`
+- 参数：同 9.1，另加 `conclusion`（1/2/3）、`reportGenerated`（true/false，按 `report_generated_at` 是否为空筛）
+- 响应 `records[]`：`id / sampleNo / sampleName / clientName / taskNo / inspectType / samplingDate / status / statusLabel /
+  conclusion / conclusionLabel / itemTotal / abnormalCount / auditBy / auditAt / signBy / signAt /
+  reportType / reportTypeLabel / reportGeneratedAt`
+
+### 9.3 项目库查询
+
+- `GET /api/query/library/page`　权限：`base:lib:list`　参数：`current`、`size`、`productName`（模糊）、`category`（精确）
+  响应 `records[]`：`id / productName / category / itemCount`
+- `GET /api/query/library/{productLibId}/items`　权限：`base:lib:list`
+  响应 `data[]`：`id / itemOrder / itemName / basisCode / methods / stdValue / judgeType / judgeTypeLabel / isReference / lowerLimit / unit`
+- 产品不存在 → `code=400`
+
+---
+
+## 10. 导出域 `/api/export`（T-802 省平台上报 + T-603 检验员任务导出）
+
+> 业务依据：说明书「十一、网上平台对接数据生成」（导出农/畜/水省平台上报数据）
+> 与「七、检验员检验任务查询——可下载该任务的 Excel 文档」。
+> 格式定稿：`docs/knowledge/2026-09-12-province-export-format.md`（豆包整理，含参考 SQL）。
+> 技术：EasyExcel 3.3.4 流式写出（禁 POI 裸 API，DECISIONS 2026-09-11）。
+
+### 10.1 省平台上报数据导出
+
+`GET /api/export/province?taskNo=`　权限：`export:province`
+
+- 参数：`taskNo`（选填，按监抽任务编号筛选——说明书原文「样品信息可以按任务编号进行筛选」）
+- **范围（GLM 自裁）**：`sample_info.status >= 80`。理由：报告已签发即构成可上报的最终结论；S90 只是报告落盘动作，不作为上报门槛。
+- 粒度：**一行 = 一个「样品 × 检测单项」**，样品头信息在每行重复
+- 排序：`sample_info.id, sample_item.item_order`
+- 输出：**严格 10 列、无空隔列、无第二层表头**
+  `样品编号 | 样品名称 | 抽样日期 | 检验依据 | 检验项目 | 单位 | 技术要求 | 检验结果 | 单项评价 | 任务编号`
+- 取值：`sample_no` / `sample_name` / `sampling_date`（`yyyy.MM.dd`）/ `sample_item.basis_code` / `item_name` / `unit` /
+  `std_value` / `sample_result.test_value`（缺失为空串）/ `conclusion` 中文（取 `ResultConclusion.getLabel()`）/ `task_no`
+- **参考项（`is_reference=1`）不在检验项目名前加 `*`**（结构化上报数据；星号仅用于纸质报告）
+- 响应：`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`；
+  `Content-Disposition: attachment; filename*=UTF-8''<urlencoded 系统导出数据yyyyMMddHHmmss.xlsx>`
+
+### 10.2 检验员任务导出
+
+`GET /api/export/my-tasks`　权限：`result:export-excel`
+
+- 数据范围：`sample_item.tester_no = 当前登录人工号` 且 `sample_info.status >= 40`；
+  **R100（综合管理）调用时不加 `tester_no` 过滤，导出全部**
+- 输出 12 列：`样品编号 | 样品名称 | 受检单位 | 任务编号 | 项次 | 检验项目 | 检验方法 | 检测依据 | 标准值 | 单位 | 最低检出限 | 样品状态`
+- 文件名：`检验任务<yyyyMMddHHmmss>.xlsx`
+
+---
+
+## 11. 待落地域（占位，按七阶段顺序补充）
 
 | 域 | 前缀 | 对应任务 | 状态 |
 |---|---|---|---|
 | 认证 | /api/auth/* | T-102 | ✅（第 1 章） |
 | 监抽任务 | /api/task/* | T-201 | ✅（第 2 章） |
-| 系统管理（用户/角色/菜单/部门） | /api/sys/* | T-101 后续 | ⬜ |
-| 基础数据（lib/basis/tester-method/customer） | /api/base/* | T-103 | ⬜ |
+| 系统管理（用户/角色/菜单/部门） | /api/sys/* | T-107 | ⬜ |
+| 基础数据（lib/basis/tester-method/customer） | /api/base/* | T-105/T-106 | ⬜ |
 | 样品登记（Excel 导入） | /api/sample/* | T-301 | ✅（第 3 章） |
 | 项目分解 | /api/item/* | T-401 | ✅（第 4 章） |
 | 任务安排 | /api/assign/* | T-501 | ✅（第 5 章） |
 | 结果录入（自动判定） | /api/result/* | T-601 | ✅（第 6 章） |
 | 报告审核签发 | /api/report/* | T-701 | ✅（第 7 章） |
-| 报告生成 | /api/report/* | T-702 | ⬜ |
-| 查询与省平台上报 | /api/query/* /api/export/* | T-801/T-802 | ⬜ |
+| 报告生成与打印 | /api/report/* | T-702 | ✅（第 8 章） |
+| 查询（在检/历史/项目库） | /api/query/* | T-801 | ✅（第 9 章） |
+| 导出（省平台/任务） | /api/export/* | T-802/T-603 | ✅（第 10 章） |
+| 统计看板（工作台/质量分析/统计报表） | /api/stat/* | T-803 | ⬜ |
