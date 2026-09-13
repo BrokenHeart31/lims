@@ -13,11 +13,12 @@
 | 1 | `cb4f6c1` | `feat: 完成 T-105/106/107/603/803 五项剩余任务` | 89 files, +12859/-43 |
 | 2 | `3cf8068` | `docs: 记录提交成功但推送被凭据阻断（含排查表与手动步骤）` | 3 files, +216/-2 |
 | 3 | `dbf5f33` | `docs: 补全第二提交 hash 与推后校验期望值` | 2 files, +47/-1 |
+| 4 | `cd7909f` | `docs(handoff): 同步最终提交链 dbf5f33 与 PAT 推送参数` | 1 file |
 
-- **HEAD（`agent/glm`）**：`dbf5f33805af5f6b408d650e15fc597d3f67aab9`（短 hash `dbf5f33`）
-- 累计变更：`git diff --shortstat 9ce928f..dbf5f33` → **89 files changed, +13122 / -44**
+- **HEAD（`agent/glm`）**：`cd7909fc43f7024d6124ead76fea4c30b8a3577a`（短 hash `cd7909f`）
+- 累计变更：`git diff --shortstat 9ce928f..HEAD` → **89 files changed, +13135 / -44**
 - 本地分支状态：
-  - `agent/glm` → `dbf5f33` ✅（含上述 3 个新提交）
+  - `agent/glm` → `cd7909f` ✅（含上述 4 个新提交）
   - `develop` → `9ce928f`（未合并）
   - `main` → `9ce928f`（未合并）
 - 工作区完全干净（`git status --short` = 0 项）
@@ -92,14 +93,14 @@ git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git 9ce928f:mai
 ```
 
 > 注意：`develop` / `main` 目前仍停在 `9ce928f`。若希望两者也前移到本次成果，
-> 需先本地合并（见方案 A 的 merge 步骤），再用 `dbf5f33:develop` / `dbf5f33:main` 推送。
+> 需先本地合并（见方案 A 的 merge 步骤），再用 `cd7909f:develop` / `cd7909f:main` 推送。
 > **合并 main 属组长权限**，请遵循 AGENTS 0.3。
 
 **⚠️ 推完后请校验远端 ref**（GCM/沙箱偶发写错 ref 末位，务必核对）：
 
 ```bash
 git ls-remote origin "refs/heads/*"
-# 期望：agent/glm 指向 dbf5f33，develop / main 指向 dbf5f33（合并后）
+# 期望：agent/glm 指向 cd7909f，develop / main 指向 cd7909f（合并后）
 ```
 
 **⚠️ 若方案 B 使用 PAT，切勿把含 token 的 URL 写入 `git remote` 或提交到仓库**，命令里临时用即可。
