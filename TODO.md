@@ -36,7 +36,7 @@
 
 ## 阶段七：报告审核签发 + 报告生成
 | T-701 | 审核/签发 S60→S70→S80（含审核退回 → S50） | S | **GLM** | ✅完成 2026-09-12（契约第 7 章 6 接口 + `db/init/08` `sample_audit_log` 流水表 + `V5` 审核/签发字段 + **正向/退回两张独立白名单**（`assertReturn`）+ Service/Controller + **放行红线**（异常项须显式确认）+ 22 单测（总 107/107）+ 前端审核签发页 + 路由菜单；**端到端 54 断言全过（重跑仍 54/54）**；视觉回归含抽屉内异常项清单） |
-| T-702 | CMA / CMA-CATL 报告模板合成 + S80→S90 + 报告打印 | S | **GLM** | 🔵进行中(GLM 2026-09-13)（版式已从说明书 docx 逐格提取：封面资质块/注意事项 7 条 + 第1页 12×4 信息表 + 检验结论句式 + 第2页 7 列结果表；电子签名取「占位 + 可配置」降级方案） |
+| T-702 | CMA / CMA-CATL 报告模板合成 + S80→S90 + 报告打印 | S | **GLM** | ✅完成 2026-09-13（契约第 8 章 `/api/report` 4 接口：pending/detail/generate/print + `ReportType` 枚举（1=CMA / 2=CMA-CATL，差异仅在资质行）+ `ReportProperties` 配置化机构/资质/7 条注意事项 + 报告**实时聚合**不落快照 + 电子签名「占位 + 可配置」绝不伪造 + `ReportAssembler` 实时拼装 sample_info+sample_item+sample_result+sample_audit_log+sys_user；`db/migrations/V6` + `sys_user.signature_url`；前端 `views/report/{generate,print}.vue` + `components/report/{ReportCover,ReportPage1,ReportPage2}.vue` + 公文 `report-print.css`；端到端 54/54 + 后端单测 107/107 + 视觉回归 1366/1400/1920 三档全过） |
 
 ## 阶段六延伸：检验员任务查询与导出
 | 任务ID | 任务 | 级别 | Owner | 状态 |
@@ -51,8 +51,8 @@
 | T-107 | 系统管理 4 页：用户（含角色分配/启停/重置密码）、角色（含菜单权限树）、菜单、部门 | A | **GLM** | ⬜待办 |
 
 ## 查询与省平台上报
-| T-801 | 在检/历史/项目库查询 | A | **GLM** | ⬜待办 |
-| T-802 | 省平台上报 Excel 导出 | B | 豆包 | 🔵进行中(豆包：格式定稿+样例已交付 2026-09-12；后端 `/api/export/province` 端点+前端按钮归 GLM，格式见 `docs/knowledge/2026-09-12-province-export-format.md`，样例 `docs/reference/province_export_sample.xlsx`) |
+| T-801 | 在检/历史/项目库查询 | A | **GLM** | ✅完成 2026-09-13（契约第 9 章 `/api/query` 3 接口：testing/history/lib + 分页 current/size + 停留时长**近似推导**（不新建流水表，按 createdAt/confirmedAt/updatedAt/MAX(assigned_at)/MAX(sample_result.updated_at)/auditAt 拼）+ `itemTotal/enteredCount/pendingCount/abnormalCount` 强制复用 `ResultEntryPolicy`（T-912 唯一口径）+ 权限 `query:testing/query:history/query:lib`；前端 `views/query/{testing,history,lib}.vue` 三个查询页 + 路由菜单；端到端 54/54 + 视觉回归全过） |
+| T-802 | 省平台上报 Excel 导出 | B | 豆包 | ✅完成 2026-09-13（豆包：格式定稿+样例已交付 2026-09-12；GLM：契约第 10 章 `/api/export/province` + **EasyExcel 3.3.4 流式**禁用 POI 裸 API + 阈值 `status>=80`（已签发即可上报，含 S90 已出报告）+ **严格 10 列不插空隔列** + 参考项不加 `*` 前缀 + 支持 `?taskNo=` 筛选 + 权限 `export:province`；前端 `views/export/province.vue` + `utils/download.ts` + 路由菜单；端到端 54/54 含 njsa000 越权真 HTTP 403） |
 | T-803 | 可视化看板：工作台图表 + 质量分析 + 统计报表（须基于真实统计接口，**禁 mock 假数据**） | A | **GLM** | ⬜待办 |
 
 ## 治理维护
@@ -73,5 +73,6 @@
 
 | T-913 | **前端 UI 结构/空间重整**（保留 mine radio「Aurora Glass」华丽美感，聚焦结构、间距、层级与一致性） | A | **GLM** | ✅完成 2026-09-12（`f751e8f`：tokens 扩展 + element-override 统一行高/圆角 + 6 个公共组件（PageHeader/AppCard/StatCard/StatusBadge/AppEmpty/AppBreadcrumb）+ `utils/confirm.ts`/`sampleStatus.ts` + MainLayout 224px 分组侧栏 & 64px Header + 工作台重构 + 7 业务页迁移；lint 0/0、build 通过；资产见 `docs/journal/2026-09-12-glm-ui-overhaul.md`、`docs/knowledge/2026-09-12-ui-component-library.md`、skill `lims-ui-overhaul`） |
 | T-914 | **补充治理**：TODO 补齐 T-913 行 + 新增 T-105/T-106/T-107/T-603/T-803 五行（说明书要求但此前未登记的任务） | B | **GLM** | ✅完成 2026-09-13 |
+| T-915 | **T-702/T-801/T-802 实施期实测发现 2 项**：①契约违例 `GlobalExceptionHandler` 对 `@PreAuthorize` 拒绝曾返回 HTTP 200 + body.code=403，与 §0.2「安全层 HTTP 401/403」及 URL 级拒绝（真 403）形态不一致——补 `@ResponseStatus(HttpStatus.FORBIDDEN)` 兑现契约；②暗色主题布局缺陷 `--el-table-bg-color: transparent` 使固定列失去不透明背板，1366×768 下「整体结论」与「操作」列横向溢出文字重叠糊——补 `el-table-fixed-column--right` 单元格背景 + 表头/striped/hover 三态单独覆盖（全局修复受益所有含固定列的表格）+ MySQL 保留字 `generated` 改 `cnt_generated` | S | **GLM** | ✅完成 2026-09-13（与 c385166 一并落地；端到端 54/54 含 njsa000 越权真 HTTP 403 + 视觉回归三档全过） |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。
