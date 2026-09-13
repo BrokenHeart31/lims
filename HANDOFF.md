@@ -6,27 +6,30 @@
 
 ### 已完成
 
-本地共 **3 个新提交**（父提交均为 `9ce928f`，与 `develop` / `main` 当前指向一致）：
+- 基线提交：`9ce928f`（本轮所有新提交均基于它，且与 `develop` / `main` 当前指向一致）
+- 本轮在 `agent/glm` 上新增一组成果提交，**以 `git log` / `git rev-parse HEAD` 为准**
+  （避免在此处硬编码 hash 造成自指失效）：
 
-| # | hash | 内容 | 变更 |
-|---|---|---|---|
-| 1 | `cb4f6c1` | `feat: 完成 T-105/106/107/603/803 五项剩余任务` | 89 files, +12859/-43 |
-| 2 | `3cf8068` | `docs: 记录提交成功但推送被凭据阻断（含排查表与手动步骤）` | 3 files, +216/-2 |
-| 3 | `dbf5f33` | `docs: 补全第二提交 hash 与推后校验期望值` | 2 files, +47/-1 |
-| 4 | `cd7909f` | `docs(handoff): 同步最终提交链 dbf5f33 与 PAT 推送参数` | 1 file |
+  ```bash
+  cd /d/lims && git rev-parse HEAD && git log 9ce928f..HEAD --oneline
+  ```
 
-- **HEAD（`agent/glm`）**：`cd7909fc43f7024d6124ead76fea4c30b8a3577a`（短 hash `cd7909f`）
+- 三类内容：
+  | 类型 | 内容 |
+  |---|---|
+  | 功能 | `feat: 完成 T-105/106/107/603/803 五项剩余任务`（89 files, +12859/-43，主体提交） |
+  | 交接 | `docs: 记录提交成功但推送被凭据阻断…` 及其后的 HANDOFF 同步补正提交 |
 - 累计变更：`git diff --shortstat 9ce928f..HEAD` → **89 files changed, +13135 / -44**
 - 本地分支状态：
-  - `agent/glm` → `cd7909f` ✅（含上述 4 个新提交）
+  - `agent/glm` → **HEAD（含本轮全部新提交）** ✅
   - `develop` → `9ce928f`（未合并）
   - `main` → `9ce928f`（未合并）
 - 工作区完全干净（`git status --short` = 0 项）
 - 提交前核对：**0 个删除项**、**0 个构建产物**（`dist*` / `node_modules` / `target/` / `*.class` 均未进入任何提交），符合 AGENTS 2.5 提交纪律
 - 远端现状（`ls-remote` 实测）：`agent/glm` / `develop` / `main` 仍均为 `9ce928f` —— **确认推送未生效**
 
-> 说明：提交 2、3 记录的是本轮推送排查过程与后续交接信息（HANDOFF/日记/技能/memory），
-> 内容对后续接手的 Agent 有直接价值，故一并入库。
+> 说明：除功能提交外，还有若干用于记录本轮推送排查过程与交接信息的文档提交
+> （HANDOFF / 日记 / 技能 / memory），内容对后续接手的 Agent 有直接价值，故一并入库。
 
 ### ⚠️ 推送失败根因（非代码问题，非 TLS 问题）
 
@@ -93,14 +96,14 @@ git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git 9ce928f:mai
 ```
 
 > 注意：`develop` / `main` 目前仍停在 `9ce928f`。若希望两者也前移到本次成果，
-> 需先本地合并（见方案 A 的 merge 步骤），再用 `cd7909f:develop` / `cd7909f:main` 推送。
+> 需先本地合并（见方案 A 的 merge 步骤），再用 `<HEAD>:develop` / `<HEAD>:main` 推送（HEAD 取 `git rev-parse HEAD`）。
 > **合并 main 属组长权限**，请遵循 AGENTS 0.3。
 
 **⚠️ 推完后请校验远端 ref**（GCM/沙箱偶发写错 ref 末位，务必核对）：
 
 ```bash
 git ls-remote origin "refs/heads/*"
-# 期望：agent/glm 指向 cd7909f，develop / main 指向 cd7909f（合并后）
+# 期望：agent/glm 指向本轮 HEAD（git rev-parse HEAD），develop / main 合并后亦同
 ```
 
 **⚠️ 若方案 B 使用 PAT，切勿把含 token 的 URL 写入 `git remote` 或提交到仓库**，命令里临时用即可。
