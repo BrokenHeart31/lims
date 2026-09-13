@@ -6,17 +6,26 @@
 
 ### 已完成
 
-- 提交对象：`cb4f6c1f2e30cd2e4d7cf89a7f65f69b2e4861cd`（短 hash `cb4f6c1`）
-- 内容：`feat: 完成 T-105/106/107/603/803 五项剩余任务`，**89 files changed, +12859 / -43**
-- 父提交：`9ce928f`（与 `develop` / `main` 当前指向一致）
-- 第二个提交：`3cf806894a55a1c272430f4a293063e119eeffe4`（短 hash `3cf8068`）
-  内容：`docs: 记录提交成功但推送被凭据阻断（含排查表与手动步骤）`，3 files, +216/-2
+本地共 **3 个新提交**（父提交均为 `9ce928f`，与 `develop` / `main` 当前指向一致）：
+
+| # | hash | 内容 | 变更 |
+|---|---|---|---|
+| 1 | `cb4f6c1` | `feat: 完成 T-105/106/107/603/803 五项剩余任务` | 89 files, +12859/-43 |
+| 2 | `3cf8068` | `docs: 记录提交成功但推送被凭据阻断（含排查表与手动步骤）` | 3 files, +216/-2 |
+| 3 | `dbf5f33` | `docs: 补全第二提交 hash 与推后校验期望值` | 2 files, +47/-1 |
+
+- **HEAD（`agent/glm`）**：`dbf5f33805af5f6b408d650e15fc597d3f67aab9`（短 hash `dbf5f33`）
+- 累计变更：`git diff --shortstat 9ce928f..dbf5f33` → **89 files changed, +13122 / -44**
 - 本地分支状态：
-  - `agent/glm` → `3cf8068` ✅（含上述 2 个新提交）
-  - `develop` → `9ce928f`
-  - `main` → `9ce928f`
+  - `agent/glm` → `dbf5f33` ✅（含上述 3 个新提交）
+  - `develop` → `9ce928f`（未合并）
+  - `main` → `9ce928f`（未合并）
 - 工作区完全干净（`git status --short` = 0 项）
-- 提交前核对：**0 个删除项**、**0 个构建产物**（`dist*` / `node_modules` / `target/` / `*.class` 均未进入暂存区），符合 AGENTS 2.5 提交纪律
+- 提交前核对：**0 个删除项**、**0 个构建产物**（`dist*` / `node_modules` / `target/` / `*.class` 均未进入任何提交），符合 AGENTS 2.5 提交纪律
+- 远端现状（`ls-remote` 实测）：`agent/glm` / `develop` / `main` 仍均为 `9ce928f` —— **确认推送未生效**
+
+> 说明：提交 2、3 记录的是本轮推送排查过程与后续交接信息（HANDOFF/日记/技能/memory），
+> 内容对后续接手的 Agent 有直接价值，故一并入库。
 
 ### ⚠️ 推送失败根因（非代码问题，非 TLS 问题）
 
@@ -77,16 +86,20 @@ git checkout agent/glm
 
 ```bash
 cd /d D:\lims
-git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git agent/glm
-git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git develop
-git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git main
+git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git agent/glm:agent/glm
+git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git 9ce928f:develop
+git push https://<用户名>:<PAT>@github.com/BrokenHeart31/lims.git 9ce928f:main
 ```
+
+> 注意：`develop` / `main` 目前仍停在 `9ce928f`。若希望两者也前移到本次成果，
+> 需先本地合并（见方案 A 的 merge 步骤），再用 `dbf5f33:develop` / `dbf5f33:main` 推送。
+> **合并 main 属组长权限**，请遵循 AGENTS 0.3。
 
 **⚠️ 推完后请校验远端 ref**（GCM/沙箱偶发写错 ref 末位，务必核对）：
 
 ```bash
 git ls-remote origin "refs/heads/*"
-# 期望：agent/glm 指向 3cf8068，develop / main 指向 3cf8068（合并后）
+# 期望：agent/glm 指向 dbf5f33，develop / main 指向 dbf5f33（合并后）
 ```
 
 **⚠️ 若方案 B 使用 PAT，切勿把含 token 的 URL 写入 `git remote` 或提交到仓库**，命令里临时用即可。
