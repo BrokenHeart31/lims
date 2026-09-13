@@ -74,5 +74,28 @@
 | T-913 | **前端 UI 结构/空间重整**（保留 mine radio「Aurora Glass」华丽美感，聚焦结构、间距、层级与一致性） | A | **GLM** | ✅完成 2026-09-12（`f751e8f`：tokens 扩展 + element-override 统一行高/圆角 + 6 个公共组件（PageHeader/AppCard/StatCard/StatusBadge/AppEmpty/AppBreadcrumb）+ `utils/confirm.ts`/`sampleStatus.ts` + MainLayout 224px 分组侧栏 & 64px Header + 工作台重构 + 7 业务页迁移；lint 0/0、build 通过；资产见 `docs/journal/2026-09-12-glm-ui-overhaul.md`、`docs/knowledge/2026-09-12-ui-component-library.md`、skill `lims-ui-overhaul`） |
 | T-914 | **补充治理**：TODO 补齐 T-913 行 + 新增 T-105/T-106/T-107/T-603/T-803 五行（说明书要求但此前未登记的任务） | B | **GLM** | ✅完成 2026-09-13 |
 | T-915 | **T-702/T-801/T-802 实施期实测发现 2 项**：①契约违例 `GlobalExceptionHandler` 对 `@PreAuthorize` 拒绝曾返回 HTTP 200 + body.code=403，与 §0.2「安全层 HTTP 401/403」及 URL 级拒绝（真 403）形态不一致——补 `@ResponseStatus(HttpStatus.FORBIDDEN)` 兑现契约；②暗色主题布局缺陷 `--el-table-bg-color: transparent` 使固定列失去不透明背板，1366×768 下「整体结论」与「操作」列横向溢出文字重叠糊——补 `el-table-fixed-column--right` 单元格背景 + 表头/striped/hover 三态单独覆盖（全局修复受益所有含固定列的表格）+ MySQL 保留字 `generated` 改 `cnt_generated` | S | **GLM** | ✅完成 2026-09-13（与 c385166 一并落地；端到端 54/54 含 njsa000 越权真 HTTP 403 + 视觉回归三档全过） |
+| T-916 | **前端动态路由接入**（按 `/me` 菜单树生成路由 + 侧栏；选型「路径注册表 + 中间件转换」） | A | **GLM** | ✅完成 2026-09-13（用户决策方案 1；新建 `router/routeRegistry.ts`（21 条显式登记 + `PATH_ALIAS` 兼容层 + `normalizeMenuPath`）、`router/dynamicRoutes.ts`（`buildNavigation` 路由与菜单**同源产出**）；重写 `router/index.ts`（五步守卫 + **`registerNotFound()` 移除后重加**规避 catch-all 顺序陷阱）、`stores/auth.ts`（`navMenus`/`navReady`/`setNavMenus`）；`MainLayout.vue` 侧栏改菜单树驱动 + 图标白名单 + 真实全局搜索；`db/seed/01_rbac_seed.sql` 修正 2 条错路径 / 3 条 `visible=0` / 新增 4 条（我的检验任务、项目标准库）+ 授权同步且**已应用到活库**；验证 `vue-tsc` 0 错、`vite build` 成功、**离线路由断言 31/0**、`/me` 实测 R100 见 11 组 / R3 见 2 组、SPA 深链接 6 条 HTTP 200；**未改任何 DB 表结构、未改任何 API 契约**） |
+| T-917 | **UI/UX 全面重构**（用户 2026-09-13 指定后续主线；约 17 页统一升级，报告审核页为第一批重点） | A | **GLM** | 🔵进行中（GLM）——分解为 STEP 1~10，见下方「UI 重构任务分解」 |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。
+
+## UI/UX 全面重构任务分解（T-917，用户 2026-09-13 指令）
+
+> **范围界定（用户原话要点）**：这是**整个 LIMS 项目的统一升级**，不是只改报告审核页；报告审核页作为**第一批重点重构对象**；最终统一升级约 **17 个页面**。
+> **不可破坏项**：除非确认存在严重问题，否则**不修改** DB 表结构 / 已有 API / API 参数 / 核心业务状态 / Pinia Store 数据结构 / 登录认证 / 权限体系 / 已有业务流程。
+> **工作顺序（用户指定，不得跳步）**：动态路由 → 完成路由稳定性 → 分析现有全部页面 → 建立 Design System → 重构 Layout → 重构公共组件 → 逐页 UI 重构 → 完善交互 → ECharts/Dashboard → 全局视觉统一 → 自测。
+> **设计规范来源**：`C:/Users/Chen/Desktop/前端优化/ui提示词.txt`（1613 行 / 38 章）。
+
+| 任务ID | STEP | 任务 | 级别 | Owner | 状态 |
+|---|---|---|---|---|---|
+| T-917-1 | STEP 1 | **分析现有项目与 UI 现状**：盘点技术栈 / 页面清单 / 公共组件 / `styles/` / stores / API / design token / ECharts 配置 / 权限路由，输出「现有 → 新 UI 系统」映射表 + UI 问题清单（**只读不改码**） | A | **GLM** | ⬜待办 |
+| T-917-2 | STEP 2 | **统一 Design Token**：按提示词 §五 对齐色板（品牌色 `#18D6C5` 等）、间距、圆角、字号、阴影；收敛 `styles/tokens.css`，消除散落硬编码色值 | A | **GLM** | ⬜待办 |
+| T-917-3 | STEP 3 | **重构 Layout 外壳**：Sidebar 224 / Header 64 / 菜单树驱动 / 激活态 3px 品牌竖条 / 面包屑 / 折叠态 | A | **GLM** | ⬜待办 |
+| T-917-4 | STEP 4 | **重构公共组件 + Element Plus 主题覆盖**：`AppCard`/`AppButton`/`AppModal`/`AppDrawer`/`AppEmpty`/`AppLoading`/`AppConfirm` + `DataTable`/`DataFilter`/`StatusBadge`/`ProgressBar`/`StatCard` | A | **GLM** | ⬜待办 |
+| T-917-5 | STEP 5 | **逐页 UI 重构（约 17 页）**：按提示词 §三十六 顺序推进；**报告审核页为第一批重点**；结果录入页异常行高亮；Dashboard 接真实业务数据 | A | **GLM** | ⬜待办 |
+| T-917-6 | STEP 6~10 | **交互完善 + ECharts/Dashboard + 全局视觉统一 + 自测**：三档分辨率（1440×900 / 1920×1080 / 1366×768）验证 + 用户 20 项 Checklist 逐条核对 + 输出变更清单 | A | **GLM** | ⬜待办 |
+
+**用户 20 项验收 Checklist**（T-917 最终验收依据，逐条须可举证）：
+① Sidebar ② Header ③ Card ④ Button ⑤ Input ⑥ Table ⑦ StatusBadge ⑧ Modal/Drawer ⑨ Loading/Empty/Error ⑩ 十项组件视觉统一
+⑪ 品牌色统一 ⑫ 无大面积空白 ⑬ 数据层级清晰 ⑭ 异常数据明显 ⑮ Dashboard 有真实业务数据 ⑯ ECharts 有实际意义
+⑰ 无 Console Error ⑱ 不破坏业务 ⑲ 无横向溢出 ⑳ 1440×900 与 1920×1080 布局正常

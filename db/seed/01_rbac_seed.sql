@@ -64,7 +64,9 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `title`, `path`, `icon`, `menu_type`,
 (23, 2, '任务编辑', NULL, NULL, 3, 'task:edit',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (24, 2, '任务删除', NULL, NULL, 3, 'task:remove', 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
 -- 样品登记（T-301）
-(3, 0, '样品登记', '/sample/register', 'Document', 2, NULL, 3, 1, 'seed', NOW(), 'seed', NOW(), 0),
+-- ⚠️ path 必须与前端路由注册表（frontend/src/router/routeRegistry.ts）的规范路径一致，
+--    否则动态路由无法生成该页面。本行原为 '/sample/register'，与前端 '/sample' 不符（2026-09-13 修正）。
+(3, 0, '样品登记', '/sample', 'Document', 2, NULL, 3, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (31, 3, '采样单导入', NULL, NULL, 3, 'sample:import',  1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (32, 3, '登记确认',   NULL, NULL, 3, 'sample:confirm', 2, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (33, 3, '样品查询',   NULL, NULL, 3, 'sample:query',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
@@ -72,13 +74,18 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `title`, `path`, `icon`, `menu_type`,
 (4, 0, '项目分解', '/item/decompose', 'Files', 2, NULL, 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (41, 4, '分解确认', NULL, NULL, 3, 'item:decompose', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 -- 任务安排（T-501）
-(5, 0, '任务安排', '/assign', 'User', 2, NULL, 5, 1, 'seed', NOW(), 'seed', NOW(), 0),
+-- ⚠️ path 原为 '/assign'，与前端 '/assign/index' 不符（2026-09-13 修正；前端保留了历史 index 段）。
+(5, 0, '任务安排', '/assign/index', 'UserFilled', 2, NULL, 5, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (51, 5, '安排确认', NULL, NULL, 3, 'assign:confirm',  1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (52, 5, '人工改派', NULL, NULL, 3, 'assign:reassign', 2, 1, 'seed', NOW(), 'seed', NOW(), 0),
 -- 结果录入（T-601）
 (6, 0, '结果录入', '/result/entry', 'EditPen', 2, NULL, 6, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (61, 6, '数据录入',   NULL, NULL, 3, 'result:entry',        1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (62, 6, '结果导出',   NULL, NULL, 3, 'result:export-excel', 2, 1, 'seed', NOW(), 'seed', NOW(), 0),
+-- 我的检验任务（T-603）：页面已存在但此前无菜单项，导致动态路由上线后该页「只能靠代码跳转」
+-- 2026-09-13 补登；权限沿用 result:entry（能录入结果的人才有自己的待办）
+(63, 6, '我的检验任务', '/result/my-tasks', NULL, 2, NULL, 3, 1, 'seed', NOW(), 'seed', NOW(), 0),
+(631, 63, '我的检验任务', NULL, NULL, 3, 'result:entry', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 -- 报告管理（T-701/T-702）
 (7, 0, '报告管理', '/report', 'Notebook', 1, NULL, 7, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (71, 7, '审核签发', '/report/audit', NULL, 2, NULL, 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
@@ -106,12 +113,15 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `title`, `path`, `icon`, `menu_type`,
 (841, 84, '质量分析', NULL, NULL, 3, 'stat:view', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 -- 基础数据（T-103）
 (9, 0, '基础数据', '/base', 'Coin', 1, NULL, 9, 1, 'seed', NOW(), 'seed', NOW(), 0),
-(91, 9, '判定依据', '/base/basis', NULL, 2, NULL, 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
+-- ⚠️ 以下 91/92 两条菜单的前端页面**尚未开发**（判定依据、客户管理）。
+--    visible 置 0 隐藏，避免动态路由上线后侧栏出现「点了 404」的死链。
+--    页面完成后把 visible 改回 1 即可（无需改代码，路由注册表登记后自动生效）。
+(91, 9, '判定依据', '/base/basis', NULL, 2, NULL, 1, 0, 'seed', NOW(), 'seed', NOW(), 0),
 (911, 91, '依据查询', NULL, NULL, 3, 'base:basis:list',   1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (912, 91, '依据新建', NULL, NULL, 3, 'base:basis:add',    2, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (913, 91, '依据编辑', NULL, NULL, 3, 'base:basis:edit',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (914, 91, '依据删除', NULL, NULL, 3, 'base:basis:remove', 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
-(92, 9, '客户管理', '/base/customer', NULL, 2, NULL, 2, 1, 'seed', NOW(), 'seed', NOW(), 0),
+(92, 9, '客户管理', '/base/customer', NULL, 2, NULL, 2, 0, 'seed', NOW(), 'seed', NOW(), 0),
 (921, 92, '客户查询', NULL, NULL, 3, 'base:customer:list',   1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (922, 92, '客户新建', NULL, NULL, 3, 'base:customer:add',    2, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (923, 92, '客户编辑', NULL, NULL, 3, 'base:customer:edit',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
@@ -121,6 +131,13 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `title`, `path`, `icon`, `menu_type`,
 (932, 93, '资质新建', NULL, NULL, 3, 'base:tester-method:add',    2, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (933, 93, '资质编辑', NULL, NULL, 3, 'base:tester-method:edit',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (934, 93, '资质删除', NULL, NULL, 3, 'base:tester-method:remove', 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
+-- 项目标准库（T-106）：页面已存在（views/base/product-lib.vue）但此前无独立菜单项，
+-- 2026-09-13 补登。与 83「项目库查询」是<b>不同页面</b>：
+--   83 /query/lib        只读查询（业务人员看标准库内容）
+--   94 /base/product-lib 维护入口（新增/编辑产品与明细/导入）
+-- 权限沿用 base:lib:* 前缀，与 83 下的按钮权限共用（同一资源，不同入口）。
+(94, 9, '项目标准库', '/base/product-lib', 'Files', 2, NULL, 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
+(941, 94, '标准库查询', NULL, NULL, 3, 'base:lib:list', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 -- 省平台上报（T-802）
 (10, 0, '省平台上报', '/export/province', 'Upload', 2, NULL, 10, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (101, 10, '上报导出', NULL, NULL, 3, 'export:province', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
@@ -146,7 +163,9 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `title`, `path`, `icon`, `menu_type`,
 (1142, 114, '部门新建', NULL, NULL, 3, 'sys:dept:add',    2, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (1143, 114, '部门编辑', NULL, NULL, 3, 'sys:dept:edit',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (1144, 114, '部门删除', NULL, NULL, 3, 'sys:dept:remove', 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
-(115, 11, '日志查看', '/sys/log', NULL, 2, NULL, 5, 1, 'seed', NOW(), 'seed', NOW(), 0),
+-- ⚠️ 日志查看页**尚未开发**（后端亦无 log 查询接口）。visible 置 0 隐藏，
+--    避免动态路由上线后出现死链；页面完成并登记进路由注册表后改回 1 即可。
+(115, 11, '日志查看', '/sys/log', NULL, 2, NULL, 5, 0, 'seed', NOW(), 'seed', NOW(), 0),
 (1151, 115, '日志查看', NULL, NULL, 3, 'log:view', 1, 1, 'seed', NOW(), 'seed', NOW(), 0);
 
 -- -----------------------------------------------------------------------------
@@ -161,16 +180,18 @@ SELECT 1, m.`id` FROM `sys_menu` m;
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
 (2, 1), (2, 3), (2, 31), (2, 32), (2, 33);
 -- R2 任务管理员（2026-09-13 补 8/82/821/84/841：查询域与质量分析归属管理者；
---   2026-09-13 补 83/831 项目库查询：分解人员才是项目库的主要使用者）
+--   2026-09-13 补 83/831 项目库查询：分解人员才是项目库的主要使用者；
+--   2026-09-13 补 94/941 项目标准库维护入口：同属 base:lib 资源，与 83 同权）
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
 (3, 1), (3, 2), (3, 21), (3, 22), (3, 23), (3, 24),
 (3, 4), (3, 41), (3, 5), (3, 51), (3, 52),
 (3, 9), (3, 93), (3, 931), (3, 932), (3, 933), (3, 934),
 (3, 8), (3, 82), (3, 821), (3, 83), (3, 831), (3, 832), (3, 833), (3, 834),
+(3, 94), (3, 941),
 (3, 84), (3, 841);
--- R3 检验员
+-- R3 检验员（2026-09-13 补 63/631 我的检验任务：检验员查看本人待办的入口）
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
-(4, 1), (4, 6), (4, 61), (4, 62);
+(4, 1), (4, 6), (4, 61), (4, 62), (4, 63), (4, 631);
 
 -- -----------------------------------------------------------------------------
 -- 6. 用户-角色分配

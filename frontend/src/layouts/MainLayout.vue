@@ -1,20 +1,21 @@
 <script setup lang="ts">
 /**
- * MainLayout — 应用外壳（UI 升级 2026-09-12 GLM）
+ * MainLayout — 应用外壳（动态路由版，2026-09-13 GLM）
  * ----------------------------------------------------------------------------
  * 结构：
  *   Sidebar (224px / collapse 68px)  +  Main(Header 60px + Breadcrumb + <router-view>)
  * 设计：
- *   - 侧栏分组：工作台 / 业务管理 / 实验室业务（提示词 §七）
- *   - 顶部 Header：面包屑移动到此处的搜索栏之前 → 提示词 §八
- *   - 全局搜索 ⌘K、通知、帮助、用户菜单（个人资料/修改密码/操作日志/退出）
+ *   - 侧栏菜单由 `/api/auth/me` 菜单树驱动（authStore.navMenus），与动态路由同源；
+ *     不再使用本地静态分组——静态菜单与动态路由并存必然漂移。
+ *   - 顶部 Header：面包屑 + 全局搜索 ⌘K + 通知 + 帮助 + 用户菜单 → 提示词 §八
  *   - 极光玻璃品牌区（保留 Aurora Glass 华丽质感）
  */
-import { computed, markRaw, ref } from 'vue'
+import { computed, markRaw, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   ArrowDown,
+  ArrowRight,
   Bell,
   Coin,
   DataAnalysis,
@@ -49,70 +50,72 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
-interface MenuGroup {
-  title: string
-  items: { path: string; title: string; icon: ReturnType<typeof markRaw> }[]
+/**
+ * 后端图标名 → Element Plus 组件。
+ *
+ * 为什么用「白名单映射」而不是 `(ElIcons as any)[name]` 动态取？
+ *   · 动态取会把整个图标库（400+）拉进产物，且 Vite 无法 tree-shake；
+ *   · 后端 icon 是自由文本，拼错的名字动态取会渲染空白且无任何提示。
+ * 白名单 + 兜底图标让「不认识的图标」退化为通用图标，界面不会出现空洞。
+ * 本项目 sys_menu 实际用到的图标名已全部覆盖（见 db/seed 的 icon 列）。
+ */
+const ICON_MAP: Record<string, Component> = {
+  Monitor: markRaw(Monitor),
+  List: markRaw(List),
+  Document: markRaw(Document),
+  Files: markRaw(Files),
+  User: markRaw(User),
+  EditPen: markRaw(EditPen),
+  Notebook: markRaw(Notebook),
+  Search: markRaw(Search),
+  Coin: markRaw(Coin),
+  Setting: markRaw(Operation),
+  Upload: markRaw(Download),
+  Download: markRaw(Download),
+  Tickets: markRaw(Tickets),
+  Histogram: markRaw(Histogram),
+  TrendCharts: markRaw(TrendCharts),
+  DataAnalysis: markRaw(DataAnalysis),
+  Medal: markRaw(Medal),
+  OfficeBuilding: markRaw(OfficeBuilding),
+  Operation: markRaw(Operation),
+  UserFilled: markRaw(UserFilled),
+  Menu: markRaw(Menu),
 }
+/** 兜底图标：后端新增了未登记图标时用它，避免渲染空洞 */
+const FALLBACK_ICON = markRaw(Files)
 
-/** 侧栏分组（提示词 §七：业务管理 / 实验室业务 / 数据中心 / 系统管理）。
- *  分组按「用户要干什么」而非「后端模块」划分——实验室人员的心智模型是流程（业务管理→实验室业务），
- *  管理者的是结果（数据中心），两者混在一列会让人找不到入口。 */
-const menuGroups: MenuGroup[] = [
-  {
-    title: '工作台',
-    items: [{ path: '/dashboard', title: '概览', icon: markRaw(Monitor) }],
-  },
-  {
-    title: '业务管理',
-    items: [
-      { path: '/task', title: '监抽任务', icon: markRaw(List) },
-      { path: '/sample', title: '样品登记', icon: markRaw(Document) },
-      { path: '/item/decompose', title: '项目分解', icon: markRaw(Operation) },
-      { path: '/assign/index', title: '任务安排', icon: markRaw(UserFilled) },
-    ],
-  },
-  {
-    title: '实验室业务',
-    items: [
-      { path: '/result/my-tasks', title: '我的检验任务', icon: markRaw(Tickets) },
-      { path: '/result/entry', title: '结果录入', icon: markRaw(EditPen) },
-      { path: '/report/audit', title: '报告审核', icon: markRaw(Notebook) },
-      { path: '/report/generate', title: '报告生成', icon: markRaw(Histogram) },
-    ],
-  },
-  {
-    title: '数据中心',
-    items: [
-      { path: '/query/testing', title: '在检样品', icon: markRaw(Search) },
-      { path: '/query/history', title: '历史样品', icon: markRaw(Histogram) },
-      { path: '/query/lib', title: '项目库', icon: markRaw(TrendCharts) },
-      { path: '/query/analysis', title: '质量分析', icon: markRaw(DataAnalysis) },
-    ],
-  },
-  {
-    title: '基础数据',
-    items: [
-      { path: '/base/product-lib', title: '项目标准库', icon: markRaw(Files) },
-      { path: '/base/tester-method', title: '方法资质', icon: markRaw(Medal) },
-    ],
-  },
-  {
-    title: '数据导出',
-    items: [{ path: '/export/province', title: '省平台上报', icon: markRaw(Download) }],
-  },
-  {
-    title: '系统管理',
-    items: [
-      { path: '/sys/user', title: '用户管理', icon: markRaw(User) },
-      { path: '/sys/role', title: '角色管理', icon: markRaw(Coin) },
-      { path: '/sys/menu', title: '菜单管理', icon: markRaw(Menu) },
-      { path: '/sys/dept', title: '部门管理', icon: markRaw(OfficeBuilding) },
-    ],
-  },
-]
+function resolveIcon(name?: string): Component {
+  if (name && ICON_MAP[name]) return ICON_MAP[name]
+  return FALLBACK_ICON
+}
 
 /** 侧栏折叠 */
 const collapsed = ref(false)
+
+/** 侧栏菜单树：来自 /me，与动态路由同源（由 router 注册时回填，杜绝两套配置漂移） */
+const navMenus = computed(() => authStore.navMenus)
+
+/** 展开的目录 id 集合（LIMS 菜单仅两级，默认全部展开比反复点开更省事） */
+const expandedIds = ref<Set<number>>(new Set())
+watch(
+  navMenus,
+  (tree) => {
+    const next = new Set<number>()
+    for (const node of tree) {
+      if (node.children.length > 0) next.add(node.id)
+    }
+    expandedIds.value = next
+  },
+  { immediate: true },
+)
+
+function toggleExpand(id: number): void {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedIds.value = next
+}
 
 const displayName = computed(
   () => authStore.userInfo?.nickname ?? authStore.userInfo?.username ?? '未登录',
@@ -120,23 +123,27 @@ const displayName = computed(
 
 const avatarText = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'L')
 
-function isActive(path: string): boolean {
+function isActive(path?: string): boolean {
+  if (!path) return false
   return route.path === path || route.path.startsWith(`${path}/`)
 }
 
-async function go(path: string): Promise<void> {
+async function go(path?: string): Promise<void> {
+  if (!path) return
   if (route.path !== path) await router.push(path)
 }
 
-/** 面包屑：从路由 meta.breadcrumb 或自动按分组路径生成。 */
+/** 面包屑：按当前路由在菜单树中的位置生成（分组名取自后端，比本地映射更准）。 */
 const breadcrumbItems = computed(() => {
   const title = (route.meta?.title as string | undefined) ?? ''
   const segments = route.path.split('/').filter(Boolean)
   const items: { title: string; to?: string }[] = [{ title: 'LIMS' }]
-  // 找到当前路径所属分组
-  for (const g of menuGroups) {
-    if (g.items.some((i) => isActive(i.path))) {
-      items.push({ title: g.title })
+  // 在菜单树中定位当前 path，取其顶层祖先作为分组名
+  for (const group of navMenus.value) {
+    const hitSelf = group.path === route.path
+    const hitChild = group.children.some((c) => c.path === route.path)
+    if (hitSelf || hitChild) {
+      items.push({ title: group.title })
       break
     }
   }
@@ -154,9 +161,36 @@ const breadcrumbItems = computed(() => {
   return items
 })
 
-/** 顶部全局搜索（仅展示 UI，未实现搜索逻辑） */
+/** 顶部全局搜索：仅在已登记的导航页中检索（不编造业务数据） */
 const searchKeyword = ref('')
 const searchDialogOpen = ref(false)
+
+interface SearchHit {
+  title: string
+  path: string
+  group: string
+}
+
+/** 把菜单树摊平成可搜索列表 */
+const searchablePages = computed<SearchHit[]>(() => {
+  const out: SearchHit[] = []
+  for (const g of navMenus.value) {
+    if (g.path) out.push({ title: g.title, path: g.path, group: g.title })
+    for (const c of g.children) {
+      if (c.path) out.push({ title: c.title, path: c.path, group: g.title })
+    }
+  }
+  return out
+})
+
+const searchHits = computed<SearchHit[]>(() => {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) return searchablePages.value
+  return searchablePages.value.filter(
+    (p) => p.title.toLowerCase().includes(kw) || p.path.toLowerCase().includes(kw),
+  )
+})
+
 function handleSearchKey(e: KeyboardEvent): void {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
@@ -164,6 +198,12 @@ function handleSearchKey(e: KeyboardEvent): void {
   }
 }
 if (typeof window !== 'undefined') window.addEventListener('keydown', handleSearchKey)
+
+async function gotoSearchHit(hit: SearchHit): Promise<void> {
+  searchDialogOpen.value = false
+  searchKeyword.value = ''
+  await go(hit.path)
+}
 
 /** 通知（静态示例；真实通知待后端接口实现后接入） */
 interface NotificationItem {
@@ -234,38 +274,78 @@ function handleUserCommand(command: string): void {
         >LIMS 实验室</span>
       </div>
 
-      <!-- 分组导航 -->
+      <!-- 分组导航：由 /me 菜单树驱动（与动态路由同源） -->
       <nav class="nav">
         <div
-          v-for="group in menuGroups"
-          :key="group.title"
+          v-for="group in navMenus"
+          :key="group.id"
           class="nav-group"
         >
+          <!-- 目录节点：有子菜单时渲染为可展开的分组标题；无子菜单时作为普通项 -->
           <div
-            v-if="!collapsed"
-            class="nav-group__title"
+            v-if="group.children.length > 0"
+            class="nav-sub"
           >
-            {{ group.title }}
+            <button
+              type="button"
+              class="nav-group__title nav-group__title--btn"
+              :class="{ 'is-expanded': expandedIds.has(group.id) }"
+              :title="collapsed ? group.title : undefined"
+              @click="toggleExpand(group.id)"
+            >
+              <el-icon
+                v-if="collapsed"
+                class="nav-icon"
+                :size="18"
+              >
+                <component :is="resolveIcon(group.icon)" />
+              </el-icon>
+              <span v-show="!collapsed">{{ group.title }}</span>
+              <el-icon
+                v-show="!collapsed"
+                class="nav-caret"
+                :size="12"
+              >
+                <component :is="expandedIds.has(group.id) ? ArrowDown : ArrowRight" />
+              </el-icon>
+            </button>
+            <div
+              v-show="!collapsed && expandedIds.has(group.id)"
+              class="nav-children"
+            >
+              <button
+                v-for="child in group.children"
+                :key="child.id"
+                type="button"
+                class="nav-item nav-item--child"
+                :class="{ 'is-active': isActive(child.path) }"
+                @click="go(child.path)"
+              >
+                <span class="nav-dot" />
+                <span class="nav-text">{{ child.title }}</span>
+              </button>
+            </div>
           </div>
+
+          <!-- 叶子节点（顶层直接是页面） -->
           <button
-            v-for="item in group.items"
-            :key="item.path"
+            v-else
             type="button"
             class="nav-item"
-            :class="{ 'is-active': isActive(item.path) }"
-            :title="collapsed ? `${group.title} · ${item.title}` : undefined"
-            @click="go(item.path)"
+            :class="{ 'is-active': isActive(group.path) }"
+            :title="collapsed ? group.title : undefined"
+            @click="go(group.path)"
           >
             <el-icon
               class="nav-icon"
               :size="18"
             >
-              <component :is="item.icon" />
+              <component :is="resolveIcon(group.icon)" />
             </el-icon>
             <span
               v-show="!collapsed"
               class="nav-text"
-            >{{ item.title }}</span>
+            >{{ group.title }}</span>
           </button>
         </div>
       </nav>
@@ -451,7 +531,7 @@ function handleUserCommand(command: string): void {
       </main>
     </div>
 
-    <!-- 全局搜索弹窗（占位 UI，待接真实搜索） -->
+    <!-- 全局搜索弹窗：在已登记导航页中检索并跳转（不做假数据业务搜索） -->
     <el-dialog
       v-model="searchDialogOpen"
       width="640px"
@@ -463,21 +543,36 @@ function handleUserCommand(command: string): void {
       <div class="search-dialog">
         <el-input
           v-model="searchKeyword"
-          placeholder="搜索样品 / 任务 / 报告 / 用户…"
+          placeholder="搜索页面（如：报告审核、质量分析）…"
           size="large"
           :prefix-icon="Search"
           autofocus
         />
         <ul class="search-dialog__hint">
-          <li><kbd>↑</kbd><kbd>↓</kbd> 切换</li>
-          <li><kbd>↵</kbd> 打开</li>
           <li><kbd>Esc</kbd> 关闭</li>
           <li class="search-dialog__hint--right">
             ⌘K 全局唤起
           </li>
         </ul>
-        <p class="search-dialog__placeholder">
-          搜索功能为前端占位，对接真实接口后可按业务对象跳转（样品 / 任务 / 报告 / 用户）。
+        <ul
+          v-if="searchHits.length > 0"
+          class="search-dialog__list"
+        >
+          <li
+            v-for="hit in searchHits"
+            :key="hit.path"
+            class="search-dialog__item"
+            @click="gotoSearchHit(hit)"
+          >
+            <span class="search-dialog__item-title">{{ hit.title }}</span>
+            <span class="search-dialog__item-path">{{ hit.path }}</span>
+          </li>
+        </ul>
+        <p
+          v-else
+          class="search-dialog__placeholder"
+        >
+          没有匹配的页面。跨业务对象（样品 / 任务 / 报告 / 用户）的全文检索需后端提供接口后接入。
         </p>
       </div>
     </el-dialog>
@@ -622,6 +717,73 @@ function handleUserCommand(command: string): void {
 .nav-text {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ---------- 二级菜单（目录节点） ---------- */
+.nav-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 目录标题在展开态下作为可点击按钮出现，需清除 button 默认样式 */
+.nav-group__title--btn {
+  display: flex;
+  align-items: center;
+  gap: var(--lims-sp-3);
+  width: 100%;
+  padding: 8px var(--lims-sp-3);
+  border: none;
+  border-radius: var(--lims-r-sm);
+  background: transparent;
+  color: var(--lims-faint);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--lims-dur-fast) var(--lims-ease-out);
+}
+
+.nav-group__title--btn:hover {
+  color: var(--lims-muted);
+}
+
+.nav-caret {
+  margin-left: auto;
+  transition: transform var(--lims-dur-fast) var(--lims-ease-out);
+}
+
+.nav-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* 子项缩进靠左内边距，而非嵌套 margin，保证折叠态下对齐不错位 */
+  padding-left: var(--lims-sp-6);
+}
+
+/* 子项比父项矮一档，形成清晰层级但不过度留白 */
+.nav-item--child {
+  padding: 8px var(--lims-sp-3);
+  font-size: var(--lims-fs-sm, 13px);
+}
+
+.nav-dot {
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.nav-item--child.is-active .nav-dot {
+  opacity: 1;
+  box-shadow: 0 0 8px rgba(var(--lims-accent-rgb), 0.9);
+  background: var(--lims-accent);
 }
 
 .aside-foot {
@@ -949,5 +1111,44 @@ function handleUserCommand(command: string): void {
   font-size: var(--lims-fs-sm);
   text-align: center;
   border-top: 1px solid var(--lims-hair);
+}
+
+/* ---------- 搜索命中列表 ---------- */
+.search-dialog__list {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border-top: 1px solid var(--lims-hair);
+}
+
+.search-dialog__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lims-sp-4);
+  padding: 10px 12px;
+  border-radius: var(--lims-r-xs);
+  cursor: pointer;
+  transition: background var(--lims-dur-fast) var(--lims-ease-out);
+}
+
+.search-dialog__item:hover {
+  background: rgba(var(--lims-accent-rgb), 0.08);
+}
+
+.search-dialog__item-title {
+  color: var(--lims-ink);
+  font-size: var(--lims-fs-base);
+}
+
+.search-dialog__item-path {
+  flex: none;
+  color: var(--lims-faint);
+  font-family: var(--lims-font-mono);
+  font-size: 11px;
 }
 </style>

@@ -200,7 +200,13 @@
 - ✅ **T-301 全链路完成并自测通过**（2026-09-11 GLM）：后端 9 项单测 + 前端 build/lint + 运行期实测；api-spec 样品域契约 Copilot 终审通过。
 - ✅ 数据库实测：`db/init/01→02→03→04→05→06` → 导入 lims.sql（customer/dept 改名 legacy）→ `V1` → `V2` → `V3` → `seed 01→02`。
 - ⚠️ **权限标识以 `sample:query` 为准**（非交接留言中的 `sample:list`）：seed `sys_menu` 31/32/33 与 AGENTS 8.2 均为 `sample:import/sample:confirm/sample:query`。
-- ⚠️ 前端动态路由（按 /me 菜单树生成）仍未接入，当前静态路由 + 静态菜单；建议随 T-801 一起做（**A 级，现归 GLM**）。
+- ✅ **前端动态路由已落地**（2026-09-13 GLM，选型=**路径注册表 + 中间件转换**，DECISIONS 已落档）：
+  - `router/routeRegistry.ts` **21 条显式登记**（path → 组件 + 权限 + title），**刻意不用 `import.meta.glob`**（`/sample` vs `/assign/index` 约定互相矛盾，glob 无法收敛）；`PATH_ALIAS` 兼容层做旧路径规范化。
+  - `router/dynamicRoutes.ts` `buildNavigation()` **一次产出「路由 + 侧栏菜单树」二者同源**，杜绝菜单与路由漂移。
+  - 菜单树只提供结构（title/path/icon/层级/排序），**组件路径不落库**（构建期概念 / Vite 静态分析 / 安全三条理由）。
+  - **踩坑（高价值）**：vue-router 4 catch-all 按注册顺序匹配且 `addRoute` 恒追加 → catch-all 若先注册，动态路由永远匹配不到，表现为**「菜单点击正常、F5 刷新变 404」**；故 `registerNotFound()` 必须「移除后重加」。
+  - 验证：`vue-tsc` 0 错误、`vite build` 成功、**离线路由断言 31/0**、`/me` 实测 R100 见 11 组 / R3 见 2 组、SPA 深链接 6 条 HTTP 200。
+  - 无页面菜单（`/base/basis`、`/base/customer`、`/sys/log`）按用户决策设 `visible=0` 隐藏（保留数据，DB 结构零改动）。
 - ⚠️ git 沙箱：`.git/refs/heads/agent/*` 引用会被 git.exe 静默丢弃（每次 git 操作后必须 shell 回填）；push 需 `git -c http.sslVerify=false`。
 - ℹ️ 本机 MySQL 实际密码 123456（非 AGENTS 约定 11111111），在 gitignore 的 application-dev.yml。
 
@@ -211,9 +217,10 @@
     五（T-501） / 六（T-601 + T-603 检验员任务查询） / 七（T-701 审核签发 + T-702 报告生成） /
     八（T-801 查询） / 九（T-802 省平台上报 + T-803 统计看板）
   - ⬜ 剩余：无主线缺口。仅剩**动态路由**（按 /me 菜单树生成，当前为静态路由 + 静态菜单，A 级）
-- **前端：约 14.5/15**——**15 个页面齐备**（8 业务页 + 6 管理页 + 1 质量分析页）+ 7 个公共组件
-  （本轮新增 `LimsChart`）+ 3 个工具（request/download/confirm/状态映射/chartOptions）；
-  shell（侧栏分组 + Header + 面包屑）已升级；动态路由未接入。
+- **前端：约 15/15**——**15 个页面齐备**（8 业务页 + 6 管理页 + 1 质量分析页）+ 7 个公共组件
+  （含 `LimsChart`）+ 3 个工具（request/download/confirm/状态映射/chartOptions）；
+  **shell（侧栏分组 + Header + 面包屑）已改为菜单树驱动**；**动态路由已接入并与菜单同源**。
+  （页面数量与功能齐备度满分；视觉统一度另计，待 UI 重构阶段提升）
 - **数据：约 9.5/10**——01→08 建表齐备，V1~V6 迁移齐备（V3/V6 为可重跑口径校验器），seed 齐备
   （本轮补齐 `base:lib:add/edit/remove` 3 个缺失权限种子 + `stat:view` 授权 R2）。
 - **质量：约 9.0/10**——后端 **107 项单测全过**；本轮以**接口级端到端实测**为主：
@@ -236,9 +243,11 @@
      被 R100 硬编码权限掩盖，普通角色一测即 403。
   ④ **数据纪律**：测试期间对 `product_lib_item` 的覆盖式替换已完整还原（原 4 条明细恢复，
      测试行物理删除），实例数据零残留。
-- **剩余任务**：仅 **动态路由**（A 级，GLM）+ 提交推送（`agent/glm → develop → main`）。
-- **可复现资产**：`.agents/skills/` 8 技能 + `docs/knowledge/` 8 篇 + `docs/journal/` 9 篇；
-  本轮新增的「ECharts 集成」「RBAC 维护界面防护」「统计接口模式」三篇知识可直接支撑同类项目复现。
+  ⑤ **动态路由（本轮）**：选型「路径注册表 + 中间件转换」，**未改任何 DB 表结构、未改任何 API 契约**，
+     以 21 条显式登记 + 别名单向映射收敛全部历史路径；菜单与路由**同源产出**杜绝漂移。
+- **剩余任务**：**UI/UX 全面重构**（约 17 页统一升级，用户指定后续主线）+ 提交推送（`agent/glm → develop → main`）。
+- **可复现资产**：`.agents/skills/` 9 技能 + `docs/knowledge/` 9 篇 + `docs/journal/` 10 篇；
+  本轮新增的「ECharts 集成」「RBAC 维护界面防护」「统计接口模式」「**Vue3 动态路由注册表**」四篇知识可直接支撑同类项目复现。
 
 ## 本轮新增可复用资产（2026-09-13 T-105/106/107/603/803）
 
@@ -250,4 +259,9 @@
 | 图表封装组件 | `frontend/src/components/common/LimsChart.vue` | 可复用图表容器（空态优先 + 主题跟随） |
 | 图表配置工厂 | `frontend/src/utils/chartOptions.ts` | 取数/布局/图形三层分离 |
 | 工作日记 | `docs/journal/2026-09-13-glm-t105-107-603-803.md` | 本轮全部判断与踩坑 |
+| **动态路由知识** | `docs/knowledge/2026-09-13-dynamic-routing-registry.md` | 三层分离 + 为何不用 glob + catch-all 陷阱 + 落地五步 |
+| **动态路由技能** | `.agents/skills/vue3-dynamic-routing/SKILL.md` | 可操作流程（含完整代码与验证 Checklist） |
+| **动态路由日记** | `docs/journal/2026-09-13-glm-dynamic-routing.md` | 选型判断 / 4 条踩坑 / 裁决点 |
+| 路由注册表 | `frontend/src/router/routeRegistry.ts` | 21 条 path→组件显式登记 + 路径别名兼容层 |
+| 导航构建器 | `frontend/src/router/dynamicRoutes.ts` | 菜单树 → 路由 + 侧栏菜单（同源产出） |
 
