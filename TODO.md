@@ -41,19 +41,19 @@
 ## 阶段六延伸：检验员任务查询与导出
 | 任务ID | 任务 | 级别 | Owner | 状态 |
 |---|---|---|---|---|
-| T-603 | 检验员查询自己的检验任务 + 下载任务 Excel（说明书第七节；当前仅预留 `result:export-excel` 标识，接口未实现） | A | **GLM** | ⬜待办 |
+| T-603 | 检验员查询自己的检验任务 + 下载任务 Excel（说明书第七节；当前仅预留 `result:export-excel` 标识，接口未实现） | A | **GLM** | ✅完成 2026-09-13（**查明导出链路上一轮已完成**，本轮补的是「屏幕查询」缺口：契约第 13 章 `GET /api/query/my-tasks/page`，权限 `result:entry`；`MyTaskVO` 含 `entered`/`conclusionSource`；**数据范围服务层强制收敛**（`resolveTesterScope()`：普通用户附加 `tester_no=本人工号`，R100 不过滤；`MyTaskQueryDTO.testerScope` 无请求绑定→前端伪造无效，已实测）；「已录入」强制复用 `ResultEntryPolicy`，未录入时 conclusion 三字段置 null；查询下界 `status>=40`；前端 `views/result/my-tasks.vue`（只看未录入开关 + 跳录入 + 导出）+ 路由菜单） |
 
 ## 阶段一延伸：基础数据维护界面（说明书二(2)(3)；当前有表有数据、无管理页）
 | 任务ID | 任务 | 级别 | Owner | 状态 |
 |---|---|---|---|---|
-| T-105 | 方法-检验员资质设置（`tester_method` CRUD + 导入；说明书原文「添加检验员-检验方法」） | A | **GLM** | ⬜待办 |
-| T-106 | 项目标准库维护 + 「导入新的项目库」Excel 批量导入（`product_lib`/`product_lib_item`） | A | **GLM** | ⬜待办 |
-| T-107 | 系统管理 4 页：用户（含角色分配/启停/重置密码）、角色（含菜单权限树）、菜单、部门 | A | **GLM** | ⬜待办 |
+| T-105 | 方法-检验员资质设置（`tester_method` CRUD + 导入；说明书原文「添加检验员-检验方法」） | A | **GLM** | ✅完成 2026-09-13（契约第 11.1 章 `/api/base/tester-method` 5 接口 + `QualStatus` 枚举 + VO 反查 `testerName/deptName/qualStatusLabel`（批量 IN 免 N+1）+ Excel 导入（5 列，幂等键 `(methodName, testerNo)` 命中则更新，监听器**顶层类**避 Lombok 坑）+ 权限 `base:tester-method:list/add/edit/remove`；前端 `views/base/tester-method.vue`（含导入结果三计数弹窗 + 前端生成 CSV 模板）；端到端写路径实测通过） |
+| T-106 | 项目标准库维护 + 「导入新的项目库」Excel 批量导入（`product_lib`/`product_lib_item`） | A | **GLM** | ✅完成 2026-09-13（契约第 11.2 章 `/api/base/lib` 11 接口；**明细覆盖式替换**（C10，不做差异比对）+ 判定字段一致性**硬校验**（jt1 必填 stdValue / jt2 须「不得检出」类 / judgeType 越界 400，实测原子失败不脏库）+ 删除含明细产品拒绝 + 导入 13 列**一对多覆盖式**；**补齐缺失权限种子** `base:lib:add/edit/remove`（sys_menu 832/833/834 + R2 授权——此前仅 `base:lib:list`，非 R100 用户必 403）；前端 `views/base/product-lib.vue`（明细抽屉整表内联编辑）；端到端实测通过含 400 拒绝路径） |
+| T-107 | 系统管理 4 页：用户（含角色分配/启停/重置密码）、角色（含菜单权限树）、菜单、部门 | A | **GLM** | ✅完成 2026-09-13（契约第 12 章 `/api/sys` 21 接口；**失效模式防护全落地**：①用户自锁保护（不能删/停用自己、不能动最后一个启用 R100，实测 409）②`SysUserVO` 类型层面无 password/salt ③重置密码**独立接口 + 独立 DTO** ④`username` 创建后不可改 ⑤R100 三重保护（编码不可改/跳过权限绑定/不可删，实测 409）⑥有用户绑定拒绝删角色（返回人数）⑦菜单成环检测 `guard<64` + permission 唯一性前置拦截 + 形态语义校验（实测 400）⑧删除菜单级联清理 `sys_role_menu` ⑨部门环检测 + 有子部门/用户拒绝删除（实测 409）；4 前端页面 + 路由菜单；端到端实测通过） |
 
 ## 查询与省平台上报
 | T-801 | 在检/历史/项目库查询 | A | **GLM** | ✅完成 2026-09-13（契约第 9 章 `/api/query` 3 接口：testing/history/lib + 分页 current/size + 停留时长**近似推导**（不新建流水表，按 createdAt/confirmedAt/updatedAt/MAX(assigned_at)/MAX(sample_result.updated_at)/auditAt 拼）+ `itemTotal/enteredCount/pendingCount/abnormalCount` 强制复用 `ResultEntryPolicy`（T-912 唯一口径）+ 权限 `query:testing/query:history/query:lib`；前端 `views/query/{testing,history,lib}.vue` 三个查询页 + 路由菜单；端到端 54/54 + 视觉回归全过） |
 | T-802 | 省平台上报 Excel 导出 | B | 豆包 | ✅完成 2026-09-13（豆包：格式定稿+样例已交付 2026-09-12；GLM：契约第 10 章 `/api/export/province` + **EasyExcel 3.3.4 流式**禁用 POI 裸 API + 阈值 `status>=80`（已签发即可上报，含 S90 已出报告）+ **严格 10 列不插空隔列** + 参考项不加 `*` 前缀 + 支持 `?taskNo=` 筛选 + 权限 `export:province`；前端 `views/export/province.vue` + `utils/download.ts` + 路由菜单；端到端 54/54 含 njsa000 越权真 HTTP 403） |
-| T-803 | 可视化看板：工作台图表 + 质量分析 + 统计报表（须基于真实统计接口，**禁 mock 假数据**） | A | **GLM** | ⬜待办 |
+| T-803 | 可视化看板：工作台图表 + 质量分析 + 统计报表（须基于真实统计接口，**禁 mock 假数据**） | A | **GLM** | ✅完成 2026-09-13（契约第 14 章 `/api/stat` 9 接口，权限 `stat:view`（新增，seed id=841，已授权 R100+R2）；**图表库选型裁决 = ECharts 5.5.1 按需引入**（落档 DECISIONS，含选型四问 + 反例排除），**路由级分包实测 `analysis-*.js` 542.83 kB/gzip 183.12 kB 且主包零增长**；`StatOverviewVO.qualifiedRate` 分母**排除待判定**、无有效结论返回 `null`（≠0%）；`statMapper.xml` 单 SQL 多列聚合 + 显式 `deleted=0` + 避 `generated` 保留字；月度趋势**补零月**（实测 6 月其中 5 月为 0）；前端 `LimsChart.vue`（ResizeObserver + CSS 变量取色 + 空态优先 + notMerge）+ `utils/chartOptions.ts` + `api/stat.ts` + `views/query/analysis.vue`（6 KPI + 7 图）+ 路由菜单；**9 接口全部实测通过**） |
 
 ## 治理维护
 | 任务ID | 任务 | 级别 | Owner | 状态 |

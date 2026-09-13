@@ -95,6 +95,12 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `title`, `path`, `icon`, `menu_type`,
 (821, 82, '历史查询', NULL, NULL, 3, 'query:history', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (83, 8, '项目库查询', '/query/lib', NULL, 2, NULL, 3, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (831, 83, '项目库查询', NULL, NULL, 3, 'base:lib:list', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
+-- 项目标准库维护（T-106）：833~835 挂 93「方法资质」同级的基础数据下更合业务直觉，
+-- 但「项目库查询」已在 83 下挂了 list，为保持同一 permission 前缀的可见性一致，
+-- 写权限统一放在 83（查询页 + 维护入口同页），避免管理员在两个页面找同一个权限点。
+(832, 83, '项目库新建', NULL, NULL, 3, 'base:lib:add',    2, 1, 'seed', NOW(), 'seed', NOW(), 0),
+(833, 83, '项目库编辑', NULL, NULL, 3, 'base:lib:edit',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
+(834, 83, '项目库删除', NULL, NULL, 3, 'base:lib:remove', 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
 -- 质量分析（T-803 可视化看板；权限标识 stat:view 为 T-803 新增，已同步 AGENTS 8.2）
 (84, 8, '质量分析', '/query/analysis', NULL, 2, NULL, 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (841, 84, '质量分析', NULL, NULL, 3, 'stat:view', 1, 1, 'seed', NOW(), 'seed', NOW(), 0),
@@ -160,7 +166,8 @@ INSERT INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
 (3, 1), (3, 2), (3, 21), (3, 22), (3, 23), (3, 24),
 (3, 4), (3, 41), (3, 5), (3, 51), (3, 52),
 (3, 9), (3, 93), (3, 931), (3, 932), (3, 933), (3, 934),
-(3, 8), (3, 82), (3, 821), (3, 83), (3, 831), (3, 84), (3, 841);
+(3, 8), (3, 82), (3, 821), (3, 83), (3, 831), (3, 832), (3, 833), (3, 834),
+(3, 84), (3, 841);
 -- R3 检验员
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
 (4, 1), (4, 6), (4, 61), (4, 62);

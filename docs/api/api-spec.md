@@ -1030,20 +1030,294 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ---
 
-## 11. 待落地域（占位，按七阶段顺序补充）
+## 11. 基础数据域 `/api/base`（T-105 方法-检验员资质 + T-106 项目标准库）
 
-| 域 | 前缀 | 对应任务 | 状态 |
+> 业务依据：说明书「二(2) 方法-检验员设置」——「在任务安排时，系统可以将检验任务根据
+> 检验方法自动分配给合适的检验员」；「二(3) 项目标准库设置」——「项目检测单项分解时系统
+> 根据项目标准库自动加载相关产品需要检测的检测单项，包括检测依据、检验方法、判定标准」。
+>
+> 两域共用一个 Controller 前缀家族（`/base`），但资源路径分开，便于按权限粒度授权。
+
+### 11.1 方法-检验员资质 `/api/base/tester-method`
+
+字段模型（`tester_method`）：`methodName`（检验方法名）/ `methodNo`（方法编号，可空）/
+`testerNo`（检验员工号）/ `qualStatus`（1 有效 / 0 失效）/ `remark`。
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| B1 | GET | `/api/base/tester-method/page` | `base:tester-method:list` | 分页；参数 `current`/`size`/`methodName`/`testerNo`/`qualStatus` |
+| B2 | POST | `/api/base/tester-method` | `base:tester-method:add` | 新增；校验 `testerNo` 在 `sys_user` 存在 |
+| B3 | PUT | `/api/base/tester-method` | `base:tester-method:edit` | 按 `id` 更新 |
+| B4 | DELETE | `/api/base/tester-method/{id}` | `base:tester-method:remove` | 逻辑删除 |
+| B5 | POST | `/api/base/tester-method/import` | `base:tester-method:add` | Excel 导入（`multipart/form-data`，字段名 `file`） |
+
+**导入约定（B5）**：模板 5 列 A-E = `检验方法名称 | 检验方法编号 | 检验员工号 | 资质状态 | 备注`；
+`资质状态` 接受「有效/失效」或「1/0」，空视为有效。幂等键 = `(methodName, testerNo)`，
+命中则更新（`updateCount`），否则新增（`successCount`）。
+响应体 `R<TesterMethodImportResult>`：`{ successCount, updateCount, failCount, errors[] }`，
+`errors` 为「第 N 行：原因」纯文本列表（上限 200 条，超出仅记总数）。
+
+**VO 反查字段**：`testerName` / `deptName` / `qualStatusLabel`（列表接口批量 IN 反查，避免 N+1）。
+
+### 11.2 项目标准库 `/api/base/lib`
+
+两级模型：`product_lib`（产品库头）1 → N `product_lib_item`（检测单项）。
+
+`product_lib`：`productName` / `productNo`（产品编号）/ `categoryName`（产品大类）/ `remark`
+`product_lib_item`：`itemOrder`（项次）/ `itemName`（检验项目）/ `methodName`（检验方法）/
+`basisCode`（检测依据编号）/ `basisName`（检测依据）/ `stdValue`（标准值/技术要求）/ `unit`（单位）/
+`detectLimit`（最低检出限）/ `judgeType`（1 限量比较 / 2 不得检出 / 3 文本感官人工）/
+`isReference`（0 主检 / 1 参考项）
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| C1 | GET | `/api/base/lib/page` | `base:lib:list` | 分页；参数 `current`/`size`/`productName`/`productNo`/`categoryName` |
+| C2 | GET | `/api/base/lib/{id}` | `base:lib:list` | 详情（含 `items`） |
+| C3 | POST | `/api/base/lib` | `base:lib:add` | 新增产品头 |
+| C4 | PUT | `/api/base/lib` | `base:lib:edit` | 更新产品头 |
+| C5 | DELETE | `/api/base/lib/{id}` | `base:lib:remove` | 逻辑删除；**含明细时拒绝**（须先清空明细） |
+| C6 | GET | `/api/base/lib/{productLibId}/items` | `base:lib:list` | 明细列表（按 `itemOrder` 升序） |
+| C7 | POST | `/api/base/lib/item` | `base:lib:edit` | 新增单个明细 |
+| C8 | PUT | `/api/base/lib/item` | `base:lib:edit` | 更新单个明细 |
+| C9 | DELETE | `/api/base/lib/item/{id}` | `base:lib:edit` | 删除单个明细 |
+| C10 | PUT | `/api/base/lib/{productLibId}/items` | `base:lib:edit` | **覆盖式替换**整份明细（见下） |
+| C11 | POST | `/api/base/lib/import` | `base:lib:add` | Excel 导入（`multipart/form-data`，字段名 `file`） |
+
+**C10 覆盖式替换语义（关键）**：请求体为明细数组，后端**先按 `productLibId` 逻辑删除全部旧明细，
+再按数组顺序重建**。调用方（前端抽屉）提交的是整表当前状态，因此同一份数据里
+`itemOrder` 由前端保证不重复（客户端预检 + 后端 `checkJudgeConsistency` 兜底）。
+> 为何不做差异比对：明细无业务唯一键，且体量小（单产品通常 < 50 项），
+> 覆盖式实现更简单且天然幂等（同样输入重复提交结果一致）。
+
+**判定字段一致性校验**（`validateJudgeConsistency`，C3~C4/C7~C8/C10 均走）：
+- `judgeType=1`（限量比较）→ `stdValue` 必填
+- `judgeType=2`（不得检出）→ `stdValue` 可空，但若填了须为「不得检出」类文本
+- `judgeType=3`（文本感官人工）→ `stdValue` 可空（结论由检验员人工判定）
+- 不在闭集（1/2/3）内 → 直接 400 拒绝，不静默落库
+
+**导入约定（C11）**：模板 13 列 A-M =
+`产品名称 | 产品编号 | 产品大类 | 项次 | 检验项目 | 检验方法 | 检测依据编号 | 检测依据 | 标准值 | 单位 | 最低检出限 | 判定方式 | 是否参考项`；
+**同一产品编号的多行组成一个产品库**（一对多覆盖式导入：按产品编号分组 → 旧明细全删 → 重建）。
+判定方式接受「限量比较/不得检出/文本感官人工」或「1/2/3」。整行全空白跳过（容忍 Excel 尾部空行）。
+响应体 `R<ProductLibImportResult>`：`{ productCount, productUpdated, itemCount, failCount, errors[] }`。
+
+### 11.3 权限种子（`db/seed/01_rbac_seed.sql`）
+
+```
+base:tester-method:list / add / edit / remove     （菜单 82x）
+base:lib:list                                      （菜单 83，已存在）
+base:lib:add / edit / remove                       （菜单 832 / 833 / 834，本轮补齐）
+```
+
+---
+
+## 12. 系统管理域 `/api/sys`（T-107）
+
+> 四个子资源：用户 / 角色 / 菜单 / 部门。全部为 RBAC 维护界面专用接口。
+> 权限标识前缀 `sys:*`，与登录导航树（`/api/auth/menus`）区分——后者只含目录/菜单行，
+> 本域 `/api/sys/menu/tree` 返回**含按钮权限行**的完整树，供权限分配界面使用。
+
+### 12.1 用户 `/api/sys/user`
+
+字段模型（`sys_user`）：`username`（登录名，**创建后不可改**）/ `password`（仅写入）/
+`nickname` / `deptId` / `email` / `phone` / `signatureUrl` / `status`（1 启用 / 0 停用）/ `remark`。
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| D1 | GET | `/api/sys/user/page` | `sys:user:list` | 分页；参数 `current`/`size`/`username`/`nickname`/`deptId`/`status` |
+| D2 | GET | `/api/sys/user/{id}` | `sys:user:list` | 详情（含 `roleIds`，供编辑回填） |
+| D3 | POST | `/api/sys/user` | `sys:user:add` | 新增；`password` 必填 6~32 位 |
+| D4 | PUT | `/api/sys/user` | `sys:user:edit` | 更新；**`username` 与 `password` 忽略** |
+| D5 | PUT | `/api/sys/user/{id}/password` | `sys:user:reset` | 重置密码（独立接口，见下） |
+| D6 | DELETE | `/api/sys/user/{id}` | `sys:user:remove` | 逻辑删除 |
+
+- **D5 重置密码为何独立**：密码是单向写入（BCrypt），不能与普通字段混在同一个 update 里，
+  否则「编辑资料」的请求体一旦缺 `password` 就会把密码清空或误改。独立接口 + 独立 DTO
+  （`ResetPasswordDTO`）在类型层面杜绝这种误用。
+- **VO 安全**：`SysUserVO` **不含 `password` / `salt` 字段**——不是靠 `@JsonIgnore` 过滤，
+  而是类型里根本没有该字段，泄露在编译期即不可能（AGENTS §1「VO 禁止出现 password/salt」）。
+- **自锁保护（fail-loud）**：
+  - 不允许将自己停用 / 删除自己（`guardLastAdminStatusChange`）
+  - 不允许停用或删除**最后一个启用中的 R100 用户**（`countActiveAdmins`，用子查询统计）
+  - 触发时返回业务错误并提示原因，不静默放行
+- **角色绑定**：`roleIds` 为**全量覆盖式**（`rebindRoles`：先清 `sys_user_role` 再重建），
+  前端提交「当前勾选的全部角色」，而非增量。
+
+### 12.2 角色 `/api/sys/role`
+
+字段模型（`sys_role`）：`roleCode` / `roleName` / `description`。
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| E1 | GET | `/api/sys/role/page` | `sys:role:list` | 分页（含 `userCount`） |
+| E2 | GET | `/api/sys/role/list` | `sys:role:list` | 全量下拉用（不分页） |
+| E3 | GET | `/api/sys/role/{id}` | `sys:role:list` | 详情（含 `menuIds`，供权限树回填） |
+| E4 | POST | `/api/sys/role` | `sys:role:add` | 新增 |
+| E5 | PUT | `/api/sys/role` | `sys:role:edit` | 更新（含 `menuIds` 覆盖式重绑） |
+| E6 | DELETE | `/api/sys/role/{id}` | `sys:role:remove` | 逻辑删除 |
+
+**R100（综合管理）三重保护**——该角色是「无需 `sys_role_menu` 即拥有全部权限」的特权角色
+（`SysRole.ADMIN_ROLE_CODE`），因此：
+1. `roleCode` 不可修改（防止提权/降权后遗留已授权数据）
+2. 权限绑定请求直接跳过（它本来就不依赖 `sys_role_menu`，写了也不生效——显式忽略比静默写入更诚实）
+3. 不可删除
+
+另有：**任一用户仍绑定该角色时拒绝删除**（返回剩余绑定人数），防止产生「无角色用户」。
+
+### 12.3 菜单 `/api/sys/menu`
+
+字段模型（`sys_menu`）：`parentId` / `title` / `path` / `icon` / `menuType`（1 目录 / 2 菜单 / 3 按钮）/
+`permission` / `sortOrder` / `visible`。
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| F1 | GET | `/api/sys/menu/tree` | `sys:menu:list` | 完整树（**含按钮权限行**） |
+| F2 | GET | `/api/sys/menu/{id}` | `sys:menu:list` | 详情 |
+| F3 | POST | `/api/sys/menu` | `sys:menu:add` | 新增 |
+| F4 | PUT | `/api/sys/menu` | `sys:menu:edit` | 更新 |
+| F5 | DELETE | `/api/sys/menu/{id}` | `sys:menu:remove` | 逻辑删除 + **级联清理 `sys_role_menu`** |
+
+**三项硬校验（全部 fail-loud，返回具体原因）**：
+1. `validateParent` —— 沿 `parent_id` 上溯成环检测（迭代 `guard < 64` 次，超过即判定成环）；
+   同时禁止 `parentId == id`（自己作父）
+2. `validatePermission` —— `permission` 唯一性**前置拦截**（DB 有 UNIQUE 索引，
+   提前拦截是为了给出可读错误而非抛 SQL 异常）；正则 `^$|^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$`
+3. `validateTypeShape` —— 形态语义：
+   - `menuType=3`（按钮）**必须**有 `permission`
+   - `menuType=1/2`（目录/菜单）**不应**有 `permission`
+   - `menuType=2`（菜单）**必须**有 `path`
+
+> F5 的级联清理是必要的：`sys_role_menu` 是关联表无逻辑删除，
+> 若不清理由菜单删除产生的孤儿行，R100 之外的角色的权限树会出现指向不存在菜单的勾选态。
+
+### 12.4 部门 `/api/sys/dept`
+
+字段模型（`dept`，注意表名非 `sys_dept`）：`parentId` / `deptName` / `deptCode` / `sortOrder` / `leader` / `phone`。
+
+| # | 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|---|
+| G1 | GET | `/api/sys/dept/tree` | `sys:dept:list` | 树 |
+| G2 | GET | `/api/sys/dept/list` | `sys:dept:list` | 平铺列表（下拉用） |
+| G3 | GET | `/api/sys/dept/{id}` | `sys:dept:list` | 详情 |
+| G4 | POST | `/api/sys/dept` | `sys:dept:add` | 新增 |
+| G5 | PUT | `/api/sys/dept` | `sys:dept:edit` | 更新 |
+| G6 | DELETE | `/api/sys/dept/{id}` | `sys:dept:remove` | 逻辑删除 |
+
+- `validateUniqueCode` —— `deptCode` 唯一性前置拦截
+- `validateParent` —— 同样的成环检测
+- 删除拒绝条件：**存在子部门** 或 **存在关联用户**（`countUsersByDept`），
+  提示具体数量，引导先迁移再删
+
+---
+
+## 13. 检验员任务查询 `/api/query/my-tasks/page`（T-603）
+
+> 业务依据：说明书「七、检验员检验任务查询」——「检验员查询到安排给自己的全部检验任务，
+> 可下载该任务的 Excel 文档」。Excel 导出见 §10.2（早已落地），本章补的是**屏幕上的查询**。
+
+`GET /api/query/my-tasks/page`　权限：`result:entry`
+
+| 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| 认证 | /api/auth/* | T-102 | ✅（第 1 章） |
-| 监抽任务 | /api/task/* | T-201 | ✅（第 2 章） |
-| 系统管理（用户/角色/菜单/部门） | /api/sys/* | T-107 | ⬜ |
-| 基础数据（lib/basis/tester-method/customer） | /api/base/* | T-105/T-106 | ⬜ |
-| 样品登记（Excel 导入） | /api/sample/* | T-301 | ✅（第 3 章） |
-| 项目分解 | /api/item/* | T-401 | ✅（第 4 章） |
-| 任务安排 | /api/assign/* | T-501 | ✅（第 5 章） |
-| 结果录入（自动判定） | /api/result/* | T-601 | ✅（第 6 章） |
-| 报告审核签发 | /api/report/* | T-701 | ✅（第 7 章） |
-| 报告生成与打印 | /api/report/* | T-702 | ✅（第 8 章） |
-| 查询（在检/历史/项目库） | /api/query/* | T-801 | ✅（第 9 章） |
-| 导出（省平台/任务） | /api/export/* | T-802/T-603 | ✅（第 10 章） |
-| 统计看板（工作台/质量分析/统计报表） | /api/stat/* | T-803 | ⬜ |
+| `current` | int | 否 | 页码，默认 1 |
+| `size` | int | 否 | 每页条数，默认 10 |
+| `sampleNo` | string | 否 | 样品编号（模糊） |
+| `sampleName` | string | 否 | 样品名称（模糊） |
+| `clientName` | string | 否 | 受检单位（模糊） |
+| `taskNo` | string | 否 | 任务编号（模糊） |
+| `onlyUnentered` | boolean | 否 | 仅看「未录入」（驱动「待办」视角） |
+
+**响应行 `MyTaskVO`**：
+`itemId / sampleId / sampleNo / sampleName / clientName / taskNo / itemOrder / itemName /
+methodName / basisCode / basisName / stdValue / unit / detectLimit / judgeType /
+sampleStatus / sampleStatusLabel / entered / conclusion / conclusionSource / conclusionLabel / testValue`
+
+**两条关键口径**：
+
+1. **数据范围在服务层强制收敛**（`resolveTesterScope()`）：
+   - 普通用户 → 自动附加 `tester_no = 当前登录人工号`
+   - R100（综合管理）→ 不附加过滤，可见全部
+   - ⚠️ `testerScope` 是**服务层注入的内部字段**，**不是前端可传参数**。
+     `MyTaskQueryDTO` 上的该字段无对应请求绑定，因此前端伪造无效——数据权限不可被客户端绕过。
+2. **「已录入」判定直接复用唯一口径** `ResultEntryPolicy.isEntered(judgeType, sampleResult)`，
+   不在查询层另写一套。未录入时 `conclusion` / `conclusionSource` / `conclusionLabel`
+   一并置 `null`（而不是返回 DB 里的 `PENDING`），避免前端把「没录」误显示成「待判定」。
+
+`status >= 40` 为查询下界（即已进入「任务安排完成」之后的状态才构成检验员的待办）。
+
+---
+
+## 14. 统计看板域 `/api/stat`（T-803）
+
+> 业务依据：说明书对管理层视图的要求（掌握检验业务整体运行情况、识别质量风险点）。
+>
+> **三条硬约束（DECISIONS 2026-09-13 裁决）**：
+> 1. **禁 mock 假数据** —— 所有接口均为业务表真实聚合；无数据返回 `0` / `null` / `[]`。
+> 2. **后端不加缓存** —— 聚合走索引，开销可控；需要缓存由前端自行决定。
+> 3. **图表库选型落档** —— ECharts 5.5.1（按需引入，见 DECISIONS）。
+
+权限：全部接口统一 `stat:view`（新增权限标识）。
+
+| # | 方法 | 路径 | 关键参数 | 说明 |
+|---|---|---|---|---|
+| H1 | GET | `/api/stat/overview` | — | 总览 KPI |
+| H2 | GET | `/api/stat/sample-status` | — | 样品状态分布（中文阶段名） |
+| H3 | GET | `/api/stat/inspect-type` | — | 检验类别分布 |
+| H4 | GET | `/api/stat/top-clients` | `limit`(≤50,默认10) | 送检单位 Top N |
+| H5 | GET | `/api/stat/category` | `limit`(≤50,默认10) | 样品大类构成（按单项数） |
+| H6 | GET | `/api/stat/tester-workload` | `limit`(≤50,默认10) | 检验员工作量（按单项数） |
+| H7 | GET | `/api/stat/dept` | — | 部门工作量 |
+| H8 | GET | `/api/stat/unqualified-items` | `limit`(≤50,默认10) | 不合格项目 Top N |
+| H9 | GET | `/api/stat/monthly-trend` | `months`(1~24,默认6) | 月度趋势（**补零月**） |
+
+### 14.1 `StatOverviewVO`（H1）
+
+```
+totalSamples       样品总数
+testingSamples     在检中（已安排、未完成检验）
+completedSamples   已完成检验
+totalItems         检测单项总数
+reportCount        已生成报告数
+judgedSamples      已有有效结论的样品数
+qualifiedSamples   合格样品数
+unqualifiedSamples 不合格样品数
+qualifiedRate      合格率% —— 无有效结论时为 null（≠ 0%）
+pendingSamples     待判定样品数
+```
+
+**合格率口径（关键）**：分母 = `qualifiedSamples + unqualifiedSamples`，
+**刻意排除「待判定」**。理由：待判定是**数据缺口**（检验员还没录值 / 值不足以判定），
+不是质量结论；把它算进分母会虚低合格率，且会让「尚未开工」与「质量差」在数字上无法区分。
+无有效结论时返回 `null` 而非 `0`——前端据此显示「暂无」，两者语义不同。
+
+### 14.2 `StatNameValueVO`（H2~H8 通用）
+
+```json
+{ "name": "已签发", "value": 12, "percent": 34.3 }
+```
+
+`percent` 为占比（保留 1 位小数）；H4/H6/H8 这类「排名榜」不计算占比，`percent` 为 `null`。
+
+### 14.3 `StatTrendVO`（H9）
+
+```json
+{ "month": "2026-09", "sampleCount": 2, "completedCount": 1 }
+```
+
+**补零月**：请求 `months=6` 但 DB 中只有 2 个月有数据时，中间无记录的月份仍返回
+`sampleCount=0` 的行。理由：折线图缺月会出现「断点或错误连线」，
+补零后 x 轴时间间隔均匀，趋势判断不失真。
+
+### 14.4 SQL 实现约定（`StatMapper.xml`）
+
+- **单条 SQL 取回多列**：H1 用 `selectOverview` 一条 SQL 带多个 `SUM(CASE WHEN ...)`，
+  而非 10 次独立 `count(*)` 往返
+- **每条 SQL 显式 `deleted = 0`**：逻辑删除表必须显式过滤，不依赖全局插件注入
+  （统计 SQL 多为聚合 + 子查询，插件改写不可靠，显式写更安全）
+- **MySQL 8 保留字**：`generated` 是保留字，作为列别名时必须写成 `cnt_generated`
+- **无中文硬编码**：SQL 只返回 code / 原始名，中文翻译一律在 Java 层做
+  （状态码→中文由 `SampleStatus.ofNullable(code).getLabel()`；检验员工号→姓名由
+  `resolveNicknames` 批量 IN 反查，工号无对应用户时标注「账号已不存在」，
+  **未指派**则保留原样——三种情况在图表上语义不同，不做合并）
+
+---

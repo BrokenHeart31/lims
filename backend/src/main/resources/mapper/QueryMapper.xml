@@ -168,5 +168,60 @@
         </if>
         ORDER BY s.id, i.item_order
     </select>
+    <!--
+      检验员任务查询分页（T-603，与 listMyTasks 同源但带 sampleId/itemId 供前端跳转）。
+      范围 status >= 40（已安排任务之后才有检验员归属）；testerScope 为空时不按检验员过滤（R100）。
+      conclusion / test_value 取结果表；是否「已录入」由 Service 用 ResultEntryPolicy 判定，
+      SQL 不重复实现该口径（T-912 唯一口径）。
+    -->
+    <select id="pageMyTasks" resultType="com.lims.vo.MyTaskVO">
+        SELECT i.id          AS item_id,
+               s.id          AS sample_id,
+               s.sample_no,
+               s.sample_name,
+               s.client_name,
+               s.task_no,
+               i.item_order,
+               i.item_name,
+               i.methods,
+               i.basis_code,
+               i.std_value,
+               i.unit,
+               i.lower_limit,
+               i.judge_type,
+               s.sample_state,
+               s.status      AS sample_status,
+               r.conclusion,
+               r.conclusion_source,
+               r.test_value
+        FROM sample_item i
+                 JOIN sample_info s ON s.id = i.sample_id AND s.deleted = 0
+                 LEFT JOIN sample_result r ON r.sample_item_id = i.id AND r.deleted = 0
+        WHERE i.deleted = 0
+          AND s.status &gt;= 40
+        <if test="q.testerScope != null and q.testerScope != ''">
+            AND i.tester_no = #{q.testerScope}
+        </if>
+        <if test="q.sampleNo != null and q.sampleNo != ''">
+            AND s.sample_no LIKE CONCAT(#{q.sampleNo}, '%')
+        </if>
+        <if test="q.sampleName != null and q.sampleName != ''">
+            AND s.sample_name LIKE CONCAT('%', #{q.sampleName}, '%')
+        </if>
+        <if test="q.clientName != null and q.clientName != ''">
+            AND s.client_name LIKE CONCAT('%', #{q.clientName}, '%')
+        </if>
+        <if test="q.taskNo != null and q.taskNo != ''">
+            AND s.task_no = #{q.taskNo}
+        </if>
+        <!-- 只看未录入：test_value 为空且（非文本感官项 或 未人工定结论） -->
+        <if test="q.onlyUnentered != null and q.onlyUnentered">
+            AND (
+                r.id IS NULL
+                OR (COALESCE(r.test_value, '') = '' AND (i.judge_type &lt;&gt; 3 OR r.conclusion IS NULL OR r.conclusion = 3))
+            )
+        </if>
+        ORDER BY s.id, i.item_order
+    </select>
 
 </mapper>

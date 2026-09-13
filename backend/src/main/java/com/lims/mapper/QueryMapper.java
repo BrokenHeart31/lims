@@ -1,12 +1,14 @@
 package com.lims.mapper;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.lims.dto.MyTaskQueryDTO;
 import com.lims.dto.QueryLibraryDTO;
 import com.lims.dto.QuerySampleDTO;
 import com.lims.dto.excel.MyTaskExportRow;
 import com.lims.dto.excel.ProvinceExportRow;
 import com.lims.vo.HistoryQueryVO;
 import com.lims.vo.LibraryQueryVO;
+import com.lims.vo.MyTaskVO;
 import com.lims.vo.TestingQueryVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -50,4 +52,13 @@ public interface QueryMapper {
      * @param testerNo 检验员工号；为 {@code null} 时不按检验员过滤（R100 综合管理导出全部）
      */
     List<MyTaskExportRow> listMyTasks(@Param("testerNo") String testerNo);
+
+    /**
+     * 检验员任务查询分页（T-603，与 {@link #listMyTasks} 同范围 status>=40，
+     * 但额外带 sampleId/itemId/conclusion/testValue 供前端跳转与状态展示）。
+     *
+     * @param q 查询条件；其中 {@code testerScope} 由 Service 依登录人身份注入
+     *          （null=不过滤即 R100 全量，非空=仅该工号），不来自前端
+     */
+    IPage<MyTaskVO> pageMyTasks(IPage<MyTaskVO> page, @Param("q") MyTaskQueryDTO q);
 }

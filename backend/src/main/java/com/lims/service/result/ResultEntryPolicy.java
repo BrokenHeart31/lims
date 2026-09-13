@@ -35,7 +35,26 @@ public final class ResultEntryPolicy {
             JudgeEngine.JT_NOT_DETECTED, "不得检出/不得使用",
             JudgeEngine.JT_MANUAL, "文本/感官人工");
 
+    /** 判定类型 1=限量比较（别名转发 JudgeEngine，供标准库维护域引用而不必依赖引擎包） */
+    public static final int JUDGE_TYPE_LIMIT = JudgeEngine.JT_LIMIT;
+
+    /** 判定类型 2=不得检出/不得使用 */
+    public static final int JUDGE_TYPE_NOT_DETECTED = JudgeEngine.JT_NOT_DETECTED;
+
+    /** 判定类型 3=文本/感官人工 */
+    public static final int JUDGE_TYPE_TEXT = JudgeEngine.JT_MANUAL;
+
     private ResultEntryPolicy() {
+    }
+
+    /**
+     * 判定类型是否为闭集内的合法值（1/2/3）。
+     *
+     * <p>T-106 标准库维护与 T-401 分解均须校验：越界值一旦落库，
+     * 判定引擎会走「闭集外一律待判定」分支，样品静默停在待判定而无人知道原因。</p>
+     */
+    public static boolean isValidJudgeType(Integer judgeType) {
+        return judgeType != null && JUDGE_TYPE_LABELS.containsKey(judgeType);
     }
 
     /**

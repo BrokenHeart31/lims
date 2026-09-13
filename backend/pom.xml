@@ -23,6 +23,9 @@
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <jjwt.version>0.12.6</jjwt.version>
         <easyexcel.version>3.3.4</easyexcel.version>
+        <!-- Lombok 版本：必须与 annotationProcessorPaths 显式引用的版本一致
+             （Spring Boot BOM 管理的版本在 annotationProcessorPaths 中不生效） -->
+        <lombok.version>1.18.34</lombok.version>
     </properties>
 
     <dependencies>
@@ -124,11 +127,15 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <!-- 显式声明注解处理器，保证高版本 JDK 下 Lombok 稳定生效 -->
+                    <!-- 显式声明注解处理器，保证高版本 JDK 下 Lombok 稳定生效。
+                         ⚠️ annotationProcessorPaths 不继承 dependencies 的版本管理（BOM/managed version
+                         在此处不生效），必须显式写 <version>——否则离线构建时该路径无法解析，
+                         Lombok 静默不参与编译，表现为「找不到符号: 方法 getXxx()」大规模报错。 -->
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

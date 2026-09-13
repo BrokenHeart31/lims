@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  StatMapper.xml —— T-803 质量分析只读聚合 SQL
+  ============================================================================
+  约定：
+    1. 自定义 XML 不受 MyBatis-Plus 逻辑删除自动追加，故每条 SQL 均显式 `deleted = 0`。
+    2. map-underscore-to-camel-case = true，`sample_count` 自动映射 `sampleCount`。
+    3. ⚠️ `generated` 是 MySQL 8 保留字，别名一律用 `cnt_generated`（已踩坑）。
+    4. 中文标签不在 SQL 里拼——状态/类别由 Service 用枚举翻译，避免硬编码。
+-->
+<mapper namespace="com.lims.mapper.StatMapper">
+
+    <!-- 总览：单行多列，一条 SQL 取回（避免 8 次往返） -->
+    <select id="selectOverview" resultType="com.lims.vo.StatOverviewVO">
+        SELECT COUNT(*)                                                        AS total_samples,
+               SUM(CASE WHEN status BETWEEN 10 AND 70 THEN 1 ELSE 0 END)       AS testing_samples,
+               SUM(CASE WHEN status &gt;= 80 THEN 1 ELSE 0 END)                  AS completed_samples,
+               SUM(CASE WHEN conclusion IS NOT NULL THEN 1 ELSE 0 END)         AS judged_samples,
+               SUM(CASE WHEN conclusion = 1 THEN 1 ELSE 0 END)                 AS qualified_samples,
+               SUM(CASE WHEN conclusion = 2 THEN 1 ELSE 0 END)                 AS unqualified_samples,
+               SUM(CASE WHEN conclusion = 3 THEN 1 ELSE 0 END)                 AS pending_samples,
+               SUM(CASE WHEN report_generated_at IS NOT NULL THEN 1 ELSE 0 END) AS report_count
+        FROM sample_info
+        WHERE deleted = 0
+    </select>
+
+    <!-- 样品状态分布 -->
+    <select id="countByStatus" resultType="com.lims.vo.StatNameValueVO">
+        SELECT CAST(status AS CHAR) AS name,
+               COUNT(*)             AS value
+        FROM sample_info
+        WHERE deleted = 0
+        GROUP BY status
+        ORDER BY status
+    </select>
+
+    <!-- 检验类别分布（inspect_type，如「监督抽检」） -->
+    <select id="countByInspectType" resultType="com.lims.vo.StatNameValueVO">
+        SELECT COALESCE(NULLIF(TRIM(inspect_type), ''), '未分类') AS name,
+               COUNT(*)                                           AS value
+        FROM sample_info
+        WHERE deleted = 0
+        GROUP BY COALESCE(NULLIF(TRIM(inspect_type), ''), '未分类')
+        ORDER BY value DESC
+    </select>
+
+    <!-- 受检单位样品量 Top N（客户集中度） -->
+    <select id="countByClient" resultType="com.lims.vo.StatNameValueVO">
+        SELECT COALESCE(NULLIF(TRIM(client_name), ''), '未填写') AS name,
+               COUNT(*)                                          AS value
+        FROM sample_info
+        WHERE deleted = 0
+        GROUP BY COALESCE(NULLIF(TRIM(client_name), ''), '未填写')
+        ORDER BY value DESC, name
+        LIMIT #{limit}
+    </select>
+
+    <!-- 食品大类检测量（一个检测单项计 1；大类经 product_lib_item -> product_lib 反查） -->
+    <select id="countByCategory" resultType="com.lims.vo.StatNameValueVO">
+        SELECT COALESCE(NULLIF(TRIM(p.category), ''), '未分类') AS name,
+               COUNT(*)                                         AS value
+        FROM sample_item i
+                 JOIN sample_info s ON s.id = i.sample_id AND s.deleted = 0
+                 LEFT JOIN product_lib_item li ON li.id = i.lib_item_id AND li.deleted = 0
+                 LEFT JOIN product_lib p ON p.id = li.product_lib_id AND p.deleted = 0
+        WHERE i.deleted = 0
+        GROUP BY COALESCE(NULLIF(TRIM(p.category), ''), '未分类')
+        ORDER BY value DESC, name
+        LIMIT #{limit}
+    </select>
+
+    <!-- 检验员任务量 Top N（一个检测单项计 1） -->
+    <select id="countByTester" resultType="com.lims.vo.StatNameValueVO">
+        SELECT COALESCE(NULLIF(TRIM(i.tester_no), ''), '未指派') AS name,
+               COUNT(*)                                          AS value
+        FROM sample_item i
+                 JOIN sample_info s ON s.id = i.sample_id AND s.deleted = 0
+        WHERE i.deleted = 0
+          AND s.status &gt;= 40
+        GROUP BY COALESCE(NULLIF(TRIM(i.tester_no), ''), '未指派')
+        ORDER BY value DESC, name
+        LIMIT #{limit}
+    </select>
+
+    <!-- 部门样品量（用户部门，样品本身不存部门） -->
+    <select id="countByDept" resultType="com.lims.vo.StatNameValueVO">
+        SELECT COALESCE(NULLIF(TRIM(d.dept_name), ''), '未分配') AS name,
+               COUNT(DISTINCT s.id)                              AS value
+        FROM sample_info s
+                 LEFT JOIN sys_user u ON u.username = s.created_by AND u.deleted = 0
+                 LEFT JOIN dept d ON d.id = u.dept_id AND d.deleted = 0
+        WHERE s.deleted = 0
+        GROUP BY COALESCE(NULLIF(TRIM(d.dept_name), ''), '未分配')
+        ORDER BY value DESC, name
+    </select>
+
+    <!-- 不合格项目 Top N（只统计非参考项的单项结论=2） -->
+    <select id="countUnqualifiedItems" resultType="com.lims.vo.StatNameValueVO">
+        SELECT i.item_name AS name,
+               COUNT(*)    AS value
+        FROM sample_result r
+                 JOIN sample_item i ON i.id = r.sample_item_id AND i.deleted = 0
+                 JOIN sample_info s ON s.id = i.sample_id AND s.deleted = 0
+        WHERE r.deleted = 0
+          AND r.conclusion = 2
+          AND i.is_reference = 0
+        GROUP BY i.item_name
+        ORDER BY value DESC, name
+        LIMIT #{limit}
+    </select>
+
+    <!--
+      月度趋势：近 N 个月（含本月）。
+      只返回有数据的月份，Service 负责补零月——SQL 里造日历表需递归 CTE，
+      不如在 Java 侧补零直观且易测。
+    -->
+    <select id="selectMonthlyTrend" resultType="com.lims.vo.StatTrendVO">
+        SELECT DATE_FORMAT(created_at, '%Y-%m')                            AS month,
+               COUNT(*)                                                    AS sample_count,
+               SUM(CASE WHEN status &gt;= 80 THEN 1 ELSE 0 END)               AS completed_count
+        FROM sample_info
+        WHERE deleted = 0
+          AND created_at &gt;= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL (#{months} - 1) MONTH)
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+        ORDER BY month
+    </select>
+
+</mapper>

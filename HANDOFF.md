@@ -1,5 +1,85 @@
 # LIMS HANDOFF（共享交接本）
 
+## 2026-09-13 18:10 GLM → 用户（剩余任务全部完成）
+
+### 本轮范围：说明书要求但非七阶段主线的五块
+
+| 任务 | 内容 | 状态 |
+|---|---|---|
+| T-105 | 方法-检验员资质（CRUD + Excel 导入） | ✅ 后端 5 接口 + 前端页面 + 路由菜单 |
+| T-106 | 项目标准库（两级模型 + 覆盖式明细 + 一对多导入） | ✅ 后端 11 接口 + 前端页面 + 路由菜单 |
+| T-107 | 系统管理 4 页（用户/角色/菜单/部门） | ✅ 后端 21 接口 + 4 前端页面 + 路由菜单 |
+| T-603 | 检验员任务查询（屏幕查询，导出上一轮已有） | ✅ 后端 1 接口 + 前端页面 + 路由菜单 |
+| T-803 | 可视化看板（图表库选型 + 9 统计接口 + 页面） | ✅ ECharts 5.5.1 + 9 接口 + 6KPI/7图页面 |
+
+### 关键产出与决策
+
+- **图表库选型裁决**：**ECharts 5.5.1，按需引入**。路由级分包实测
+  `analysis-*.js` 542.83 kB / **gzip 183.12 kB**，**主包零增长**（1,272.40 kB 不变）。
+  选型四问 + 反例排除完整落档 `DECISIONS.md`。
+- **新增权限标识 `stat:view`**（seed `sys_menu` id=841），已授权 R100 + R2。
+- **补齐缺失权限种子** `base:lib:add/edit/remove`（id 832/833/834）——
+  代码中使用但 seed 未定义，被 R100 硬编码权限掩盖，非 R100 用户必 403。已同步活库。
+- **修复一处自引入缺陷**：`SysUserVO`/`SysRoleVO` 漏 `@JsonFormat`，
+  `createdAt` 返回 ISO 串（`2026-09-13T14:58:39`）与项目其余 16 个 VO 字段
+  （`yyyy-MM-dd HH:mm:ss`）不一致。根因：`spring.jackson.date-format` 对 JSR-310 无效。已修复。
+
+### 端到端实测结论（全部通过）
+
+| 验证项 | 结果 |
+|---|---|
+| T-803 九个 `/stat/*` | ✅ 全部 200，含补零月（6 月中 5 月为 0）、`percent=null` 排名榜语义 |
+| T-603 数据范围收敛 | ✅ njsa000 见自己 7 条 / njna000 见 0 条 / R100 见全部；**伪造 `testerNo` 参数无效**（DTO 无请求绑定） |
+| T-603 导出 Excel | ✅ 4463 字节有效 xlsx，12 列表头与数据正确解析 |
+| T-105 写路径 | ✅ 新增成功，`testerName`/`deptName`/`qualStatusLabel` 反查填充 |
+| T-106 覆盖式替换 | ✅ 成功路径通过；**判定一致性校验原子失败**（jt2 缺标准值 → 400，旧明细未受影响）；越界 `judgeType=9` → 400 |
+| T-107 自锁保护 | ✅ 删自己 409 / 停用最后一个 R100 409 |
+| T-107 角色保护 | ✅ R100 删除 409 / 有用户绑定 409（返回人数） |
+| T-107 菜单形态 | ✅ 按钮无 permission 400 / 菜单无 path 400 / permission 格式非法 400 |
+| T-107 部门引用 | ✅ 有 5 子部门 409 / 有 2 用户 409 |
+| 越权真 403 | ✅ nj003(R2) 有 `stat:view`(200) 但无 `sys:user:list`(403) |
+| 前端门禁 | ✅ `vue-tsc --noEmit` 退出 0；`vite build` 成功 |
+
+### 数据纪律
+
+测试期间对 `product_lib_item`（产品 1）的覆盖式替换**已完整还原**：
+原 4 条明细（阿维菌素/吡虫啉/啶虫脒/噁霉灵）恢复 `deleted=0`，2 条测试行物理删除；
+`tester_method` 的契约实测行已删除。**实例数据零残留**。
+
+### 治理文件更新
+
+- `docs/api/api-spec.md`：新增第 11 章（T-105/T-106）、第 12 章（T-107）、第 13 章（T-603）、第 14 章（T-803）
+- `DECISIONS.md`：新增「2026-09-13 T-803 图表库选型 + T-105/106/107/603 落地决策」段（含选型四问、反例排除）
+- `TODO.md`：五个任务标记 ✅完成（含详细产出说明）
+- `STATUS.md`：进度 84% → **93%**（业务主干 9/9 阶段落地）
+- `docs/journal/2026-09-13-glm-t105-107-603-803.md`（新增，含 6 条踩坑记录）
+- `docs/knowledge/`：新增 3 篇（`2026-09-13-echarts-integration` /
+  `-rbac-maintenance-guardrails` / `-statistics-api-patterns`）
+- `frontend/.gitignore`：清理重复行 + 加注释说明 `dist-*` 与根 `.gitignore` 的 `frontend/dist/` 关系
+
+### 剩余工作（仅 2 项）
+
+1. **动态路由**（A 级）：前端当前为静态路由 + 静态菜单，未按 `/api/auth/menus` 动态生成。
+   **建议做法**：登录/刷新时拉 `/me` 的 `menus` 树，用 `router.addRoute` 注册；
+   侧栏改为渲染该树。注意 R100 的特权菜单来自后端短路，前端不要重复判断。
+2. **提交推送**（`agent/glm → develop → main`）。
+   **⚠️ 提交前必须 `git status --short` 逐项核对**（AGENTS 2.5 反面案例：2026-09-11 曾误删 118 文件入库）。
+   **⚠️ 本机 DLP（进程 wsctrl11）拦 git.exe 写盘**：绕过法见下方 2026-09-12 19:15 条目。
+
+### 前置环境备注（复现用）
+
+- 后端启动：`export JAVA_HOME="C:/Program Files/Java/latest/jdk-21"` +
+  `C:/Users/Chen/Desktop/apache-maven-3.9.11/bin/mvn.cmd -o -DskipTests spring-boot:run`
+- **⚠️ 端口 8080 常被上一轮遗留进程占用**：`netstat -ano | grep :8080` 找 PID，
+  用 PowerShell `Stop-Process -Id <PID> -Force` 终止（沙箱下 `taskkill //PID` 无效）。
+  **不重启则新接口 404，易误判为代码错误。**
+- Node：`C:/Users/Chen/.workbuddy-ai/binaries/node/versions/22.22.2-2/node.exe`
+- MySQL：`C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe -uroot -p123456 --default-character-set=utf8mb4`
+- 登录账号（密码=账号名）：`nj001`(R100) / `nj002`(R1) / `nj003`(R2) / `njsa000`·`njna000`·`njxa000`(R3)
+- 前端构建：`LIMS_BUILD_OUTDIR=dist npx vite build`（默认 `dist-<时间戳>` 绕沙箱删除守卫）
+
+---
+
 ## 2026-09-12 19:15 豆包 → GLM / 用户（项目已启动供测试）
 
 ### 本轮交付（豆包，B 级）

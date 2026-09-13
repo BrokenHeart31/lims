@@ -205,17 +205,49 @@
 - ℹ️ 本机 MySQL 实际密码 123456（非 AGENTS 约定 11111111），在 gitignore 的 application-dev.yml。
 
 ## 进度评估（距整个项目圆满完成）
-**总进度：约 84%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
-- **业务主干：7/9 阶段落地（55% × 7/9 ≈ 42.8%）** — 本轮 UI 重整不增减阶段。
-  - ✅ 阶段一 / 二 / 三 / 四（T-401） / 五（T-501） / 六（T-601） / 七上半（T-701 审核签发）
-  - ⬜ 剩余：**T-702**（CMA/CMA-CATL 报告生成 S80→S90，S，阶段七下半）、**T-801**（在检/历史/项目库查询，A，阶段九）、**T-802**（省平台上报导出，B，阶段九）
-- **前端：约 14.5/15（+1.0）**——**八个业务页齐备 + 全量 UI 重整**：6 个公共组件（PageHeader/AppCard/StatusBadge/AppEmpty/StatCard/AppBreadcrumb）+ 1 个 confirm 工具 + 1 个状态映射；shell（侧栏分组 + Header + 面包屑）、Dashboard（hero+4 KPI+8 阶段+最近任务）已升级；动态路由未接入、系统管理 7 页待统一下一轮。
-- **数据：约 9/10**——01→08 建表齐备，V1~V5 迁移齐备（V3 为可重跑口径校验器），seed 齐备。
-- **质量：约 9.6/10（+0.1）**——后端 **107 项单测全过**（判定矩阵全格 + 退回白名单不变式 + T-912 口径 + 放行红线）；前端 `lint 0/0`、`vue-tsc --noEmit` 通过、`vite build` 成功；端到端 54 断言（可重复）保留；T-702 报告单测待补。
-- **工程化：约 9.0/10（+0.5）**——治理齐备 + 三件套制度化 + 自裁机制 + **技能库 8 个**（本轮新增 `lims-ui-overhaul`）+ 知识库 6 篇（+`2026-09-12-ui-component-library`）。
-- **本轮亮点**：保留 mine radio 暗色玻璃氛围，仅在结构空间 / 一致性双维度补齐；不引入新依赖；前端 dist +6KB（gzip 后）。
-- **剩余任务全部由 GLM 承担**（S+A 归一）：T-702（S）+ T-801 + 动态路由（A）+ 系统管理 7 页统一下一轮（A）；B 级 T-802 归豆包。**Copilot 为把关方（可选复核），非产能方**。
-- **剩余工作量分布**：报告模板合成（CMA/CMA-CATL，含 docx 版式还原）约占**剩余 45%**；查询/上报/动态路由/系统管理页/基础数据页/UI 统一收尾约占 55%。
-- **数据与流水已就绪**：`sample_result` + `sample_audit_log` + `sample_info.conclusion/audit_by/sign_by` 全部到位；
-  本机样品 1 已跑完整链路至 **S80**（3 条审核流水），**T-702 可直接开工**。
-- **可复现资产**：`.agents/skills/` 8 技能 + `docs/knowledge/` 6 篇 + `docs/journal/` 6 篇；S 级任务可直接按 `lims-stage-delivery`、前端 UI 可按 `lims-ui-overhaul` 全链路复现。
+**总进度：约 93%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
+- **业务主干：9/9 阶段落地（55%）** — 七阶段主线 + 两个延伸域（基础数据维护 / 统计看板）全部实现。
+  - ✅ 阶段一（含 T-105 方法资质 / T-106 项目标准库 / T-107 系统管理 4 页） / 二 / 三 / 四（T-401） /
+    五（T-501） / 六（T-601 + T-603 检验员任务查询） / 七（T-701 审核签发 + T-702 报告生成） /
+    八（T-801 查询） / 九（T-802 省平台上报 + T-803 统计看板）
+  - ⬜ 剩余：无主线缺口。仅剩**动态路由**（按 /me 菜单树生成，当前为静态路由 + 静态菜单，A 级）
+- **前端：约 14.5/15**——**15 个页面齐备**（8 业务页 + 6 管理页 + 1 质量分析页）+ 7 个公共组件
+  （本轮新增 `LimsChart`）+ 3 个工具（request/download/confirm/状态映射/chartOptions）；
+  shell（侧栏分组 + Header + 面包屑）已升级；动态路由未接入。
+- **数据：约 9.5/10**——01→08 建表齐备，V1~V6 迁移齐备（V3/V6 为可重跑口径校验器），seed 齐备
+  （本轮补齐 `base:lib:add/edit/remove` 3 个缺失权限种子 + `stat:view` 授权 R2）。
+- **质量：约 9.0/10**——后端 **107 项单测全过**；本轮以**接口级端到端实测**为主：
+  T-803 的 9 个 `/stat/*` 全部实测通过（含补零月、`percent=null`）、T-603 数据范围收敛实测
+  （njsa000 见 7 条 / njna000 见 0 条 / R100 见全部，伪造 `testerNo` 参数无效）、
+  T-105/106/107 **全部写路径 + 全部拒绝路径**实测（自锁 409 ×2、R100 保护 409、
+  角色绑定保护 409、菜单形态 400 ×3、部门引用 409 ×2、判定一致性 400、越界 judgeType 400）、
+  越权真 HTTP 403（R2 有 `stat:view` 但无 `sys:user:list`）、导出 Excel 解析校验（12 列正确）。
+  前端 `vue-tsc --noEmit` + `vite build` 通过。
+- **工程化：约 9.5/10**——治理齐备 + 三件套制度化 + 自裁机制 + **技能库 8 个** + 知识库 8 篇
+  （本轮新增 `2026-09-13-echarts-integration` / `-rbac-maintenance-guardrails` / `-statistics-api-patterns`）
+  + **日记 9 篇**。
+- **本轮亮点**：
+  ① **图表库选型** ECharts 5.5.1 按需引入，路由级分包实测 `analysis-*.js` 542.83 kB / gzip 183.12 kB，
+     **主包零增长**（关键可接受前提）；选型四问 + 反例排除完整落档 DECISIONS。
+  ② **修复一处自引入缺陷**：`SysUserVO`/`SysRoleVO` 漏 `@JsonFormat`，导致日期返回 ISO 串
+     （`2026-09-13T14:58:39`）与项目其余 16 个 VO 字段（`yyyy-MM-dd HH:mm:ss`）不一致——
+     根因是 `spring.jackson.date-format` 对 JSR-310 无效。已修复并加注释防复发。
+  ③ **补齐权限种子缺口**：`base:lib:add/edit/remove` 在代码中使用但未定义，
+     被 R100 硬编码权限掩盖，普通角色一测即 403。
+  ④ **数据纪律**：测试期间对 `product_lib_item` 的覆盖式替换已完整还原（原 4 条明细恢复，
+     测试行物理删除），实例数据零残留。
+- **剩余任务**：仅 **动态路由**（A 级，GLM）+ 提交推送（`agent/glm → develop → main`）。
+- **可复现资产**：`.agents/skills/` 8 技能 + `docs/knowledge/` 8 篇 + `docs/journal/` 9 篇；
+  本轮新增的「ECharts 集成」「RBAC 维护界面防护」「统计接口模式」三篇知识可直接支撑同类项目复现。
+
+## 本轮新增可复用资产（2026-09-13 T-105/106/107/603/803）
+
+| 资产 | 位置 | 用途 |
+|---|---|---|
+| ECharts 集成知识 | `docs/knowledge/2026-09-13-echarts-integration.md` | 按需引入最小集 + 路由级体积验证 + CSS 变量取色 + ResizeObserver |
+| RBAC 维护防护知识 | `docs/knowledge/2026-09-13-rbac-maintenance-guardrails.md` | 8 类失效模式与防护（自锁/提权/孤儿引用/成环/形态错配） |
+| 统计接口模式知识 | `docs/knowledge/2026-09-13-statistics-api-patterns.md` | 单 SQL 多列聚合 + 补零月 + `null` vs `0` 第三态语义 |
+| 图表封装组件 | `frontend/src/components/common/LimsChart.vue` | 可复用图表容器（空态优先 + 主题跟随） |
+| 图表配置工厂 | `frontend/src/utils/chartOptions.ts` | 取数/布局/图形三层分离 |
+| 工作日记 | `docs/journal/2026-09-13-glm-t105-107-603-803.md` | 本轮全部判断与踩坑 |
+

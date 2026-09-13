@@ -4,28 +4,36 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lims.common.PageResult;
+import com.lims.common.ResultCode;
+import com.lims.common.enums.ConclusionSource;
 import com.lims.common.enums.ReportType;
 import com.lims.common.enums.ResultConclusion;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.exception.BizException;
+import com.lims.dto.MyTaskQueryDTO;
 import com.lims.dto.QueryLibraryDTO;
 import com.lims.dto.QuerySampleDTO;
 import com.lims.entity.ProductLib;
 import com.lims.entity.ProductLibItem;
 import com.lims.entity.SampleItem;
 import com.lims.entity.SampleResult;
+import com.lims.entity.SysRole;
 import com.lims.entity.SysUser;
 import com.lims.mapper.ProductLibItemMapper;
 import com.lims.mapper.ProductLibMapper;
 import com.lims.mapper.QueryMapper;
 import com.lims.mapper.SampleItemMapper;
 import com.lims.mapper.SampleResultMapper;
+import com.lims.mapper.SysRoleMapper;
 import com.lims.mapper.SysUserMapper;
+import com.lims.security.LoginUser;
+import com.lims.security.SecurityUtils;
 import com.lims.service.QueryService;
 import com.lims.service.result.ResultEntryPolicy;
 import com.lims.vo.HistoryQueryVO;
 import com.lims.vo.LibraryItemVO;
 import com.lims.vo.LibraryQueryVO;
+import com.lims.vo.MyTaskVO;
 import com.lims.vo.TestingQueryVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -65,6 +73,7 @@ public class QueryServiceImpl implements QueryService {
     private final SampleItemMapper sampleItemMapper;
     private final SampleResultMapper sampleResultMapper;
     private final SysUserMapper sysUserMapper;
+    private final SysRoleMapper sysRoleMapper;
     private final ProductLibMapper productLibMapper;
     private final ProductLibItemMapper productLibItemMapper;
 
@@ -276,6 +285,73 @@ public class QueryServiceImpl implements QueryService {
         vo.setLowerLimit(src.getLowerLimit());
         vo.setUnit(src.getUnit());
         return vo;
+    }
+
+    // =========================================================================
+    // T-603 检验员任务查询
+    // =========================================================================
+
+    /**
+     * 检验员任务分页（说明书第七节「检验员查询到安排给自己的全部检验任务」）。
+     *
+     * <p><b>数据范围强制收敛在服务层</b>：R100 综合管理不加过滤（可查全部），
+     * 其余角色一律只看本人任务。这是刻意的设计——前端即便伪造 {@code testerNo} 也无效，
+     * 因为 DTO 里根本没有这个字段（只有服务层注入的 {@code testerScope}）。</p>
+     *
+     * <p>中文标签（样品状态 / 结论）与「已录入」派生均由本层用枚举与
+     * {@link ResultEntryPolicy} 填充，SQL 只负责取原始字段——避免口径两处实现。</p>
+     */
+    @Override
+    public PageResult<MyTaskVO> pageMyTasks(long current, long size, MyTaskQueryDTO q) {
+        MyTaskQueryDTO query = q == null ? new MyTaskQueryDTO() : q;
+        query.setTesterScope(resolveTesterScope());
+
+        IPage<MyTaskVO> page = queryMapper.pageMyTasks(new Page<>(current, size), query);
+        for (MyTaskVO row : page.getRecords()) {
+            // 「已录入」唯一口径（ResultEntryPolicy）：testValue 非空 ∥ jt3 已人工定结论
+            SampleResult probe = null;
+            if (row.getTestValue() != null
+                    || row.getConclusion() != null
+                    || row.getConclusionSource() != null) {
+                probe = new SampleResult();
+                probe.setTestValue(row.getTestValue());
+                if (row.getConclusion() != null) {
+                    probe.setConclusion(ResultConclusion.of(row.getConclusion()));
+                }
+                if (row.getConclusionSource() != null) {
+                    probe.setConclusionSource(ConclusionSource.of(row.getConclusionSource()));
+                }
+            }
+            row.setEntered(ResultEntryPolicy.isEntered(row.getJudgeType(), probe));
+            row.setSampleStatusLabel(labelOfStatus(row.getSampleStatus()));
+            // 未录入时结论不出网（与 T-912「未录入 ≠ 待判定」一致，避免前端显示成「待判定」）
+            if (Boolean.TRUE.equals(row.getEntered())) {
+                row.setConclusionLabel(labelOfConclusion(row.getConclusion()));
+            } else {
+                row.setConclusion(null);
+                row.setConclusionSource(null);
+                row.setConclusionLabel(null);
+            }
+        }
+        return PageResult.of(page);
+    }
+
+    /**
+     * 解析当前登录人的检验员范围。
+     *
+     * @return {@code null} = 不过滤（R100 综合管理，可查全部）；非空 = 该登录人工号
+     */
+    private String resolveTesterScope() {
+        LoginUser loginUser = SecurityUtils.getLoginUser()
+                .orElseThrow(() -> new BizException(ResultCode.UNAUTHORIZED));
+        String username = loginUser.getUsername();
+        if (!StringUtils.hasText(username)) {
+            throw new BizException(ResultCode.UNAUTHORIZED);
+        }
+        List<String> roleCodes = loginUser.getId() == null
+                ? List.of()
+                : sysRoleMapper.selectRoleCodesByUserId(loginUser.getId());
+        return roleCodes.contains(SysRole.ADMIN_ROLE_CODE) ? null : username;
     }
 
     // =========================================================================

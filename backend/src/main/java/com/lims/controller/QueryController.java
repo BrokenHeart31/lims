@@ -2,12 +2,14 @@ package com.lims.controller;
 
 import com.lims.common.PageResult;
 import com.lims.common.R;
+import com.lims.dto.MyTaskQueryDTO;
 import com.lims.dto.QueryLibraryDTO;
 import com.lims.dto.QuerySampleDTO;
 import com.lims.service.QueryService;
 import com.lims.vo.HistoryQueryVO;
 import com.lims.vo.LibraryItemVO;
 import com.lims.vo.LibraryQueryVO;
+import com.lims.vo.MyTaskVO;
 import com.lims.vo.TestingQueryVO;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -73,5 +75,21 @@ public class QueryController {
     @PreAuthorize("hasAuthority('base:lib:list')")
     public R<List<LibraryItemVO>> libraryItems(@PathVariable Long productLibId) {
         return R.ok(queryService.listLibraryItems(productLibId));
+    }
+
+    /**
+     * A4 检验员任务分页（T-603，说明书第七节「检验员查询到安排给自己的全部检验任务」）。
+     *
+     * <p>权限沿用 {@code result:entry}：查自己的任务与录自己的数据是同一操作闭环——
+     * 检验员必然先看清单再进去录入。R100 综合管理持有该权限时可查看全部任务，
+     * 数据范围由 Service 按角色强制收敛（不信任前端参数）。</p>
+     */
+    @GetMapping("/my-tasks/page")
+    @PreAuthorize("hasAuthority('result:entry')")
+    public R<PageResult<MyTaskVO>> pageMyTasks(
+            @RequestParam(defaultValue = "1") @Min(1) long current,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(500) long size,
+            MyTaskQueryDTO q) {
+        return R.ok(queryService.pageMyTasks(current, size, q));
     }
 }

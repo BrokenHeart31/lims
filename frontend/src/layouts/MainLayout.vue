@@ -16,17 +16,23 @@ import { ElMessage } from 'element-plus'
 import {
   ArrowDown,
   Bell,
+  Coin,
+  DataAnalysis,
   Document,
   Download,
   EditPen,
   Expand,
+  Files,
   Fold,
   Help,
   Histogram,
   List,
   Lock,
+  Medal,
+  Menu,
   Monitor,
   Notebook,
+  OfficeBuilding,
   Operation,
   Search,
   SwitchButton,
@@ -68,9 +74,10 @@ const menuGroups: MenuGroup[] = [
   {
     title: '实验室业务',
     items: [
+      { path: '/result/my-tasks', title: '我的检验任务', icon: markRaw(Tickets) },
       { path: '/result/entry', title: '结果录入', icon: markRaw(EditPen) },
       { path: '/report/audit', title: '报告审核', icon: markRaw(Notebook) },
-      { path: '/report/generate', title: '报告生成', icon: markRaw(Tickets) },
+      { path: '/report/generate', title: '报告生成', icon: markRaw(Histogram) },
     ],
   },
   {
@@ -79,11 +86,28 @@ const menuGroups: MenuGroup[] = [
       { path: '/query/testing', title: '在检样品', icon: markRaw(Search) },
       { path: '/query/history', title: '历史样品', icon: markRaw(Histogram) },
       { path: '/query/lib', title: '项目库', icon: markRaw(TrendCharts) },
+      { path: '/query/analysis', title: '质量分析', icon: markRaw(DataAnalysis) },
+    ],
+  },
+  {
+    title: '基础数据',
+    items: [
+      { path: '/base/product-lib', title: '项目标准库', icon: markRaw(Files) },
+      { path: '/base/tester-method', title: '方法资质', icon: markRaw(Medal) },
     ],
   },
   {
     title: '数据导出',
     items: [{ path: '/export/province', title: '省平台上报', icon: markRaw(Download) }],
+  },
+  {
+    title: '系统管理',
+    items: [
+      { path: '/sys/user', title: '用户管理', icon: markRaw(User) },
+      { path: '/sys/role', title: '角色管理', icon: markRaw(Coin) },
+      { path: '/sys/menu', title: '菜单管理', icon: markRaw(Menu) },
+      { path: '/sys/dept', title: '部门管理', icon: markRaw(OfficeBuilding) },
+    ],
   },
 ]
 

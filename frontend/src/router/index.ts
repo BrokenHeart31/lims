@@ -61,6 +61,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '结果录入', permissions: ['result:entry'] },
       },
       {
+        path: 'result/my-tasks',
+        name: 'result-my-tasks',
+        component: () => import('@/views/result/my-tasks.vue'),
+        meta: { title: '我的检验任务', permissions: ['result:entry'] },
+      },
+      {
         path: 'report/audit',
         name: 'report-audit',
         component: () => import('@/views/report/audit.vue'),
@@ -90,11 +96,56 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/query/library.vue'),
         meta: { title: '项目库查询', permissions: ['base:lib:list'] },
       },
+      // 质量分析看板（T-803）
+      {
+        path: 'query/analysis',
+        name: 'query-analysis',
+        component: () => import('@/views/query/analysis.vue'),
+        meta: { title: '质量分析', permissions: ['stat:view'] },
+      },
       {
         path: 'export/province',
         name: 'export-province',
         component: () => import('@/views/export/province.vue'),
         meta: { title: '数据导出', permissions: ['export:province'] },
+      },
+      // 基础数据（T-105 / T-106）
+      {
+        path: 'base/tester-method',
+        name: 'base-tester-method',
+        component: () => import('@/views/base/tester-method.vue'),
+        meta: { title: '方法-检验员资质', permissions: ['base:tester-method:list'] },
+      },
+      {
+        path: 'base/product-lib',
+        name: 'base-product-lib',
+        component: () => import('@/views/base/product-lib.vue'),
+        meta: { title: '项目标准库', permissions: ['base:lib:list'] },
+      },
+      // 系统管理（T-107）
+      {
+        path: 'sys/user',
+        name: 'sys-user',
+        component: () => import('@/views/system/user.vue'),
+        meta: { title: '用户管理', permissions: ['sys:user:list'] },
+      },
+      {
+        path: 'sys/role',
+        name: 'sys-role',
+        component: () => import('@/views/system/role.vue'),
+        meta: { title: '角色管理', permissions: ['sys:role:list'] },
+      },
+      {
+        path: 'sys/menu',
+        name: 'sys-menu',
+        component: () => import('@/views/system/menu.vue'),
+        meta: { title: '菜单管理', permissions: ['sys:menu:list'] },
+      },
+      {
+        path: 'sys/dept',
+        name: 'sys-dept',
+        component: () => import('@/views/system/dept.vue'),
+        meta: { title: '部门管理', permissions: ['sys:dept:list'] },
       },
       {
         path: '403',

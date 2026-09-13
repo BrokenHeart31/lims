@@ -25,6 +25,7 @@
 | 2026-09-11 | GLM | **T-501 检验任务安排域** | T-501 | 三级分配规则（分类/资质/兜底）+ 候选资质过滤 + 沙箱坑深化（commit hash 末位被错写；bash heredoc 中文括号 syntax error） |
 | 2026-09-11 | GLM | **T-501 检验任务安排域** | T-501 | 三级分配规则（分类/资质/兜底）+ 候选资质过滤 + 沙箱坑深化（commit hash 末位被错写；bash heredoc 中文括号 syntax error） |
 | 2026-09-11 | GLM | **UI「Aurora Glass」主题 + V3 fail-loud + 治理二次调整** | T-906/T-907/T-908 | **视觉回归发现 el-tag 过渡卡死（opacity:0）真实缺陷**；`SIGNAL` 三要点；参考第三方 UI 的**许可合规红线**；「华丽 ≠ 堆装饰」的适配判断 |
+| 2026-09-13 | GLM | **T-105/106/107/603/803 全链路交付** | T-105~107/T-603/T-803 | **ECharts 选型四问与路由级体积验证**；「零依赖」要读上下文；数据权限落点是服务层闭环；**同名字段不同格式（漏 `@JsonFormat`）是最隐蔽的前端坑**；统计指标必须有「无数据」第三态；端口占用导致新接口 404 的误判风险 |
 
 ## 配套技能库
 
@@ -33,8 +34,18 @@
 | 技能 | 用途 |
 |---|---|
 | `lims-stage-delivery` | **业务阶段全链路交付标准流程**（验证前提 → 契约 → 建表 → 后端 → 单测 → 前端 → 门禁 → 收工三件套 → 推送） |
-| `sandbox-git-push` | 沙箱内 git 提交/合并/推送的坑与规避 |
-| `rbac-backend` / `mybatisplus-crud` / `vue3-crud-page` / `excel-import` | 分层实现模板 |
+| `sandbox-git-push` | 沙箱内 git 提交/合并/推送的坑与规避（含**递归删除用 .NET `Directory.Delete`**、端口占用排查） |
+| `rbac-backend` / `mybatisplus-crud` / `vue3-crud-page` / `excel-import` | 分层实现模板（`rbac-backend` 已补「维护界面失效模式防护清单」） |
+
+## 配套知识库（docs/knowledge/）
+
+| 文件 | 主题 |
+|---|---|
+| `2026-09-11-*`（5 篇） | 判定依据裁决 / Excel 导入选型 / 判定引擎白名单 / 样品状态机 / UI 设计调研 |
+| `2026-09-12-*`（3 篇） | 判定引擎研究 / 省平台导出格式 / UI 组件库 |
+| `2026-09-13-echarts-integration` | **ECharts 按需引入 + 主题跟随 + 路由级体积验证** |
+| `2026-09-13-rbac-maintenance-guardrails` | **RBAC 维护界面 8 类失效模式与防护** |
+| `2026-09-13-statistics-api-patterns` | **统计接口模式（聚合 SQL / 第三态语义 / 补零月 / 保留字）** |
 
 ## 阅读建议
 

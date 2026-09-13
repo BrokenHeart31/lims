@@ -1,11 +1,13 @@
 package com.lims.service;
 
 import com.lims.common.PageResult;
+import com.lims.dto.MyTaskQueryDTO;
 import com.lims.dto.QueryLibraryDTO;
 import com.lims.dto.QuerySampleDTO;
 import com.lims.vo.HistoryQueryVO;
 import com.lims.vo.LibraryItemVO;
 import com.lims.vo.LibraryQueryVO;
+import com.lims.vo.MyTaskVO;
 import com.lims.vo.TestingQueryVO;
 
 import java.util.List;
@@ -30,4 +32,15 @@ public interface QueryService {
 
     /** 某产品的检测单项列表（按项次升序） */
     List<LibraryItemVO> listLibraryItems(Long productLibId);
+
+    /**
+     * 检验员任务查询分页（T-603）。
+     *
+     * <p><b>数据范围由本层强制收敛</b>：R100 综合管理可查全部；其余角色一律只看本人任务——
+     * 拒绝依据来自当前登录人身份，不信任任何前端传入的工号参数。</p>
+     *
+     * <p>{@code entered} / {@code conclusionLabel} / {@code sampleStatusLabel} 由本层填充，
+     * 「已录入」口径唯一复用 {@code ResultEntryPolicy}。</p>
+     */
+    PageResult<MyTaskVO> pageMyTasks(long current, long size, MyTaskQueryDTO q);
 }

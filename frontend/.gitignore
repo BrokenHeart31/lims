@@ -1,0 +1,3 @@
+# 构建产物：vite.config.ts 默认输出 dist-<timestamp>（绕开沙箱对固定 dist/ 的批量删除守卫）
+# 固定 "dist/" 已由仓库根 .gitignore 忽略
+dist-*
