@@ -1,6 +1,7 @@
 package com.lims.controller;
 
 import com.lims.common.R;
+import com.lims.dto.ChangePasswordDTO;
 import com.lims.dto.LoginDTO;
 import com.lims.dto.RefreshTokenDTO;
 import com.lims.service.AuthService;
@@ -46,6 +47,13 @@ public class AuthController {
     @PostMapping("/logout")
     public R<Void> logout() {
         authService.logout();
+        return R.ok();
+    }
+
+    /** 1.5 当前登录用户自助修改密码（需登录，无需 sys:user:edit） */
+    @PostMapping("/change-password")
+    public R<Void> changePassword(@Valid @RequestBody ChangePasswordDTO dto) {
+        authService.changePassword(dto);
         return R.ok();
     }
 }

@@ -147,16 +147,19 @@ export function resetDynamicRoutes(): void {
  * 全局路由守卫。
  *
  * 顺序（每一步都有必要，不可调换）：
- *   ① 公开路由直接放行
+ *   ① 登录页直接放行
  *   ② 未登录 → /login（带 redirect 回跳）
  *   ③ 已登录但导航未就绪 → 先 await fetchMe（拿菜单/权限）
- *   ④ 注册动态路由（刷新后必须重新注册，否则深链接命中 404）
- *   ⑤ 权限不足 → /403
+ *   ④ 注册动态路由，并仅用 fullPath 重新解析当前地址
+ *   ⑤ 其余公开兜底页放行；权限不足 → /403
+ *
+ * 注意：不能在步骤③前按 `to.meta.public` 放行。业务深链接首次解析时会先命中
+ * 公开的 catch-all 404；若提前放行，就永远没有机会注册动态路由。
  */
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
 
-  if (to.meta.public) return true
+  if (to.name === 'login') return true
 
   if (!authStore.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
@@ -168,14 +171,17 @@ router.beforeEach(async (to) => {
       await authStore.fetchMe()
       registerDynamicRoutes()
       authStore.navReady = true
-      // 动态路由刚注册完，当前这次导航是「未注册前」解析的（很可能命中 404），
-      // 必须用 replace 重新解析一次，否则刷新深链接会看到 404 闪一下。
-      return { ...to, replace: true }
+      // 当前导航可能是在动态路由注册前按 catch-all 解析出的 not-found。
+      // 不能扩展 `to`：扩展会保留 name='not-found'，导致 replace 仍锁定 404；
+      // 也不能把 fullPath 塞进 path，否则查询串会丢失。必须显式保留 path/query/hash。
+      return { path: to.path, query: to.query, hash: to.hash, replace: true }
     } catch {
       // /me 失败（如 token 过期）：请求层已统一处理 401 跳转，这里放行走兜底
       return true
     }
   }
+
+  if (to.meta.public) return true
 
   // ⑤ 路由级权限校验（与动态路由构建时的过滤口径一致）
   const required = to.meta.permissions

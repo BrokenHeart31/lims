@@ -35,6 +35,11 @@ body {
 /* ---------------------------------------------------------------------------
  * 极光背景层：固定定位 + 低透明度光斑，营造纵深而不干扰阅读
  * 用 body::before 而非 body 自身背景，避免与 Element Plus 的 overlay 冲突
+ *
+ * ⚠️ STEP 2 调整（规范 §二十九 / 第三十五条）：
+ *   规范禁止「复杂背景动画 / 满屏渐变发光」，故本层**已整体降饱和**（见 tokens
+ *   的 --lims-aurora 取值）。它现在只提供「几乎察觉不到」的冷暖差，避免纯色底发死，
+ *   而**不再承担层级表达职责**（层级改由 5 层实色阶梯承担）。
  * ------------------------------------------------------------------------- */
 body::before {
   position: fixed;
@@ -45,11 +50,13 @@ body::before {
   pointer-events: none;
 }
 
-/* 极细网格纹理：让纯色底不「空」，透明度必须极低（≤3%），否则显脏 */
+/* 极细网格纹理：让纯色底不「空」，透明度必须极低（≤3%），否则显脏
+ * ⚠️ STEP 2：opacity 由 0.5 降至 0.35 —— 规范要求「克制/专业」，
+ *    网格是氛围噪点，过强会被感知为「廉价的纹理贴图」。 */
 body::after {
   position: fixed;
   z-index: var(--lims-z-bg);
-  opacity: 0.5;
+  opacity: 0.35;
   background-image:
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.016) 0 1px, transparent 1px 64px),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 64px);
@@ -127,24 +134,61 @@ html.lims-glass-svg-ok .lims-glass-refract {
  * .lims-panel —— 数据面板（高对比，弱化模糊）
  * ⚠️ 表格/表单所在区域必须用这个，而不是 .lims-glass。
  *    理由：强模糊 + 位移扭曲会降低小字号数字的可读性，长时间录入极易疲劳。
+ *
+ * ⚠️ STEP 2：改为**实色**（layer-card）+ hair 边框，去掉 backdrop-filter。
+ *    依据规范 §三十一「普通 Card：背景 + Border 即可」+ §三十五 禁止过度玻璃拟态。
+ *    （去掉 blur 同时有性能收益：数据密集页滚动时不再每帧重算背景模糊。）
  */
 .lims-panel {
   border: 1px solid var(--lims-hair);
-  border-radius: var(--lims-r-md);
-  background: var(--lims-surface);
-  box-shadow: var(--lims-inner-hair);
-  backdrop-filter: blur(10px) saturate(1.1);
-  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  border-radius: var(--lims-r-card);
+  background: var(--lims-layer-card);
 }
 
-/** 强调光晕（激活项、关键数值） */
+/* ===========================================================================
+ * 2.1 表面层级工具类（STEP 2 新增，规范 §五 的 5 层实色阶梯）
+ * ---------------------------------------------------------------------------
+ * 用途分配（不要交叉使用，否则层级会失效）：
+ *   .lims-layer-sidebar  侧边栏
+ *   .lims-layer-header   顶栏
+ *   .lims-layer-card     卡片 / 面板（默认内容容器）
+ *   .lims-layer-elevated 浮层：下拉 / 弹窗 / 抽屉 / Popover
+ * =========================================================================== */
+.lims-layer-sidebar {
+  background: var(--lims-layer-sidebar);
+}
+
+.lims-layer-header {
+  background: var(--lims-layer-header);
+}
+
+.lims-layer-card {
+  border: 1px solid var(--lims-hair);
+  border-radius: var(--lims-r-card);
+  background: var(--lims-layer-card);
+}
+
+.lims-layer-elevated {
+  border: 1px solid var(--lims-hair-2);
+  border-radius: var(--lims-r-card);
+  background: var(--lims-layer-elevated);
+  box-shadow: var(--lims-shadow-pop);
+}
+
+/**
+ * 强调光晕（激活项、关键数值）
+ * ⚠️ STEP 2：光晕强度整体下调（规范 §三十五 禁止「大量发光效果」）。
+ *    只保留 1px 描边感知 + 极轻的外扩，够用于「当前激活」的表达即可。
+ */
 .lims-glow {
-  box-shadow: 0 0 0 1px rgba(var(--lims-accent-rgb), 0.22), 0 0 24px rgba(var(--lims-accent-rgb), 0.16);
+  box-shadow:
+    0 0 0 1px rgba(var(--lims-accent-rgb), 0.22),
+    0 0 18px rgba(var(--lims-accent-rgb), 0.1);
 }
 
-/** 渐变色文字（用于品牌标题） */
+/** 渐变色文字（用于品牌标题；STEP 2：改为规范品牌青系，降低彩虹感） */
 .lims-text-gradient {
-  background: linear-gradient(96deg, #ffffff 0%, #9ffff0 42%, #8fb4ff 100%);
+  background: linear-gradient(96deg, #f5f7fa 0%, #7ce8dc 48%, #9cc6ff 100%);
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }

@@ -12,9 +12,8 @@
  *   - 组件卸载即移除，切回其他页面时暗色主题完全不受影响。
  *   - 版式全部在 report-print.css（作用域限于 .report-print-root）。
  */
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { getReportDetailApi, type ReportTypeCode } from '@/api/report'
 import type { ReportVO } from '@/types/report'
 import ReportCover from '@/components/report/ReportCover.vue'
@@ -27,6 +26,8 @@ const router = useRouter()
 
 const report = ref<ReportVO | null>(null)
 const loading = ref(false)
+const loadError = ref('')
+let loadRequest = 0
 
 /** 从 query 取单值字符串（query 值可能是 string | string[] | null） */
 function queryString(raw: unknown): string {
@@ -42,22 +43,28 @@ function queryReportType(raw: unknown): ReportTypeCode | undefined {
 }
 
 async function load(): Promise<void> {
+  const request = ++loadRequest
+  report.value = null
+  loadError.value = ''
   const sampleNo = queryString(route.query.sampleNo)
   if (!sampleNo) {
-    ElMessage.error('缺少样品编号，无法加载报告')
+    loadError.value = '缺少样品编号，请返回报告列表选择样品。'
+    loading.value = false
     return
   }
   loading.value = true
   try {
-    report.value = await getReportDetailApi(sampleNo, queryReportType(route.query.reportType))
+    const result = await getReportDetailApi(sampleNo, queryReportType(route.query.reportType))
+    if (request === loadRequest) report.value = result
   } catch {
-    // 请求层已统一提示
+    if (request === loadRequest) loadError.value = '报告加载失败，请检查网络或权限后重试。'
   } finally {
-    loading.value = false
+    if (request === loadRequest) loading.value = false
   }
 }
 
 function handlePrint(): void {
+  if (!report.value || loading.value || loadError.value) return
   window.print()
 }
 
@@ -65,9 +72,12 @@ function handleBack(): void {
   router.back()
 }
 
-onMounted(() => {
-  void load()
+onMounted(() => document.body.classList.add('lims-report-printing'))
+onBeforeUnmount(() => {
+  ++loadRequest
+  document.body.classList.remove('lims-report-printing')
 })
+watch(() => [route.query.sampleNo, route.query.reportType], load, { immediate: true })
 </script>
 
 <template>
@@ -79,7 +89,7 @@ onMounted(() => {
         </el-button>
         <el-button
           type="primary"
-          :disabled="!report"
+          :disabled="!report || loading || !!loadError"
           @click="handlePrint"
         >
           打印
@@ -101,9 +111,16 @@ onMounted(() => {
 
       <div
         v-else
-        class="report-loading"
+        class="report-loading no-print"
+        role="alert"
       >
-        未获取到报告数据
+        <p>{{ loadError || '未获取到报告数据' }}</p>
+        <el-button
+          :loading="loading"
+          @click="load"
+        >
+          重新加载
+        </el-button>
       </div>
     </div>
   </Teleport>

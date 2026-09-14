@@ -3,9 +3,9 @@
  * AppCard — 统一卡片容器
  * ----------------------------------------------------------------------------
  * 三种 variant：
- *   - glass      : 玻璃质感（默认，用于氛围卡 / 标题卡）
- *   - panel      : 数据密集区（表格 / 表单 / 详情，弱化模糊）
- *   - flat       : 平面容器（无边框阴影，仅底色差异，用于分组容器）
+ *   - panel      : 默认数据卡（表格 / 表单 / 详情，实色层级）
+ *   - glass      : 限定氛围卡（hero / 登录等少量场景）
+ *   - flat       : 平面容器（无额外视觉重量，用于分组容器）
  * 可选 padding（默认 20px）；可附带 hoverable / accent 等。
  */
 withDefaults(
@@ -15,7 +15,7 @@ withDefaults(
     hoverable?: boolean
     accent?: boolean
   }>(),
-  { variant: 'glass', padding: '20px', hoverable: false, accent: false },
+  { variant: 'panel', padding: '20px', hoverable: false, accent: false },
 )
 </script>
 
@@ -52,11 +52,11 @@ withDefaults(
   -webkit-backdrop-filter: var(--lims-glass-blur);
 }
 
-/* panel —— 数据密集区（表格 / 表单 / 详情） */
+/* panel —— 默认数据区（规范 §三十一：Card 用背景 + Border，不用阴影） */
 .app-card--panel {
   border: 1px solid var(--lims-hair);
-  background: var(--lims-surface);
-  box-shadow: var(--lims-shadow-card);
+  background: var(--lims-layer-card);
+  box-shadow: none;
 }
 
 /* flat —— 平面容器（次级容器，无视觉重量） */
@@ -65,10 +65,10 @@ withDefaults(
   background: transparent;
 }
 
-/* hoverable —— 鼠标悬浮时提亮 */
+/* hoverable —— 鼠标悬浮时提亮；Card 不使用大面积光晕 */
 .app-card--hoverable:hover {
-  border-color: var(--lims-glass-border);
-  box-shadow: var(--lims-glass-shadow-focus);
+  border-color: var(--lims-hair-strong);
+  background: var(--lims-layer-card-hover);
   transform: translateY(-2px);
 }
 

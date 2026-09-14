@@ -25,6 +25,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import DataTable from '@/components/common/DataTable.vue'
 import { askConfirm } from '@/utils/confirm'
 import { sampleStatusInfo, type SampleTone } from '@/utils/sampleStatus'
 
@@ -55,7 +57,12 @@ function rowItem(row: unknown): ReportPendingRow {
   return row as ReportPendingRow
 }
 
+const listError = ref('')
+let listRequest = 0
+
 async function load(): Promise<void> {
+  const request = ++listRequest
+  listError.value = ''
   loading.value = true
   try {
     const res = await pageReportPendingApi({
@@ -65,12 +72,13 @@ async function load(): Promise<void> {
       sampleName: query.sampleName || undefined,
       taskNo: query.taskNo || undefined,
     })
+    if (request !== listRequest) return
     tableData.value = res.records
     total.value = res.total
   } catch {
-    // 请求层已统一提示
+    if (request === listRequest) listError.value = '未能读取列表，请检查网络或权限后重试。'
   } finally {
-    loading.value = false
+    if (request === listRequest) loading.value = false
   }
 }
 
@@ -115,7 +123,7 @@ function openGenerate(row: ReportPendingRow): void {
 
 async function submitGenerate(): Promise<void> {
   const row = genRow.value
-  if (!row) return
+  if (!row || acting.value) return
   const ok = await askConfirm(
     `确认为样品「${row.sampleNo}」生成「${typeLabel(genType.value)}」？生成后样品将流转为「已出报告」。`,
     '生成报告',
@@ -182,195 +190,200 @@ onMounted(() => {
         inline
         class="filter-form"
       >
-        <el-form-item label="样品编号">
-          <el-input
-            v-model="query.sampleNo"
-            placeholder="支持模糊查询"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="样品名称">
-          <el-input
-            v-model="query.sampleName"
-            placeholder="支持模糊查询"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="任务编号">
-          <el-input
-            v-model="query.taskNo"
-            placeholder="精确匹配"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            :icon="Search"
-            @click="handleSearch"
-          >
-            查询
-          </el-button>
-          <el-button
-            :icon="Refresh"
-            @click="handleReset"
-          >
-            重置
-          </el-button>
-        </el-form-item>
+        <DataFilter>
+          <el-form-item label="样品编号">
+            <el-input
+              v-model="query.sampleNo"
+              placeholder="支持模糊查询"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="样品名称">
+            <el-input
+              v-model="query.sampleName"
+              placeholder="支持模糊查询"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="任务编号">
+            <el-input
+              v-model="query.taskNo"
+              placeholder="精确匹配"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <template #actions>
+            <el-button
+              type="primary"
+              :icon="Search"
+              :disabled="loading"
+              @click="handleSearch"
+            >
+              查询
+            </el-button>
+            <el-button
+              :icon="Refresh"
+              :disabled="loading"
+              @click="handleReset"
+            >
+              重置
+            </el-button>
+          </template>
+        </DataFilter>
       </el-form>
 
-      <el-table
-        v-loading="loading"
-        :data="tableData"
-        stripe
-        border
-      >
-        <el-table-column
-          prop="sampleNo"
-          label="样品编号"
-          min-width="150"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="sampleName"
-          label="样品名称"
-          min-width="120"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="clientName"
-          label="受检单位"
-          min-width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="taskNo"
-          label="任务编号"
-          min-width="130"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="inspectType"
-          label="检验类别"
-          width="110"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="samplingDate"
-          label="采样日期"
-          width="110"
-          align="center"
-        >
-          <template #default="{ row }">
-            {{ row.samplingDate ?? '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="检测单项"
-          width="90"
-          align="center"
-        >
-          <template #default="{ row }">
-            {{ row.itemTotal }} 项
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="整体结论"
-          width="110"
-          align="center"
-        >
-          <template #default="{ row }">
-            <StatusBadge
-              :tone="conclusionTone(row.conclusion)"
-              size="sm"
-            >
-              {{ row.conclusionLabel ?? '—' }}
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="状态"
-          width="110"
-          align="center"
-        >
-          <template #default="{ row }">
-            <StatusBadge
-              :tone="statusTone(rowItem(row))"
-              size="sm"
-            >
-              {{ row.statusLabel }}
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="报告类型"
-          width="130"
-          align="center"
-        >
-          <template #default="{ row }">
-            {{ row.reportTypeLabel ?? '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="reportGeneratedAt"
-          label="生成时间"
-          width="170"
-        >
-          <template #default="{ row }">
-            {{ row.reportGeneratedAt ?? '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="操作"
-          width="130"
-          fixed="right"
-          align="center"
-        >
-          <template #default="{ row }">
-            <el-button
-              v-if="row.reportGeneratedAt"
-              type="primary"
-              link
-              :icon="Printer"
-              @click="handleReprint(rowItem(row))"
-            >
-              重打印
-            </el-button>
-            <el-button
-              v-else
-              type="primary"
-              link
-              @click="openGenerate(rowItem(row))"
-            >
-              生成报告
-            </el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <AppEmpty
-            title="暂无可生成报告的样品"
-            hint="需先在「报告审核签发」完成签发（S80），样品才会出现在此列表"
-          />
-        </template>
-      </el-table>
-
-      <el-pagination
-        v-model:current-page="current"
-        v-model:page-size="size"
+      <DataTable
+        :rows="tableData"
+        :loading="loading"
+        :error="listError"
+        :current="current"
+        :page-size="size"
         :total="total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
-        class="pager"
+        keep-mounted
+        @retry="load"
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
-      />
+      >
+        <el-table
+          :data="tableData"
+          stripe
+          border
+        >
+          <el-table-column
+            prop="sampleNo"
+            label="样品编号"
+            min-width="150"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="sampleName"
+            label="样品名称"
+            min-width="120"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="clientName"
+            label="受检单位"
+            min-width="160"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="taskNo"
+            label="任务编号"
+            min-width="130"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="inspectType"
+            label="检验类别"
+            width="110"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="samplingDate"
+            label="采样日期"
+            width="110"
+            align="center"
+          >
+            <template #default="{ row }">
+              {{ row.samplingDate ?? '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="检测单项"
+            width="90"
+            align="center"
+          >
+            <template #default="{ row }">
+              {{ row.itemTotal }} 项
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="整体结论"
+            width="110"
+            align="center"
+          >
+            <template #default="{ row }">
+              <StatusBadge
+                :tone="conclusionTone(row.conclusion)"
+                size="sm"
+              >
+                {{ row.conclusionLabel ?? '—' }}
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="状态"
+            width="110"
+            align="center"
+          >
+            <template #default="{ row }">
+              <StatusBadge
+                :tone="statusTone(rowItem(row))"
+                size="sm"
+              >
+                {{ row.statusLabel }}
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="报告类型"
+            width="130"
+            align="center"
+          >
+            <template #default="{ row }">
+              {{ row.reportTypeLabel ?? '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="reportGeneratedAt"
+            label="生成时间"
+            width="170"
+          >
+            <template #default="{ row }">
+              {{ row.reportGeneratedAt ?? '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="操作"
+            width="130"
+            fixed="right"
+            align="center"
+          >
+            <template #default="{ row }">
+              <el-button
+                v-if="row.reportGeneratedAt"
+                type="primary"
+                link
+                :icon="Printer"
+                @click="handleReprint(rowItem(row))"
+              >
+                重打印
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                link
+                @click="openGenerate(rowItem(row))"
+              >
+                生成报告
+              </el-button>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <AppEmpty
+              title="暂无可生成报告的样品"
+              hint="需先在「报告审核签发」完成签发（S80），样品才会出现在此列表"
+            />
+          </template>
+        </el-table>
+      </DataTable>
     </AppCard>
 
     <!-- 生成报告：选择报告类型 -->
@@ -422,7 +435,7 @@ onMounted(() => {
   gap: var(--lims-r-md);
 }
 .filter-form {
-  margin-top: var(--lims-r-sm);
+  margin-bottom: var(--lims-sp-4);
 }
 .filter-form :deep(.el-form-item) {
   margin-bottom: 0;

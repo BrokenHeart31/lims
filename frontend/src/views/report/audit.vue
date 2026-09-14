@@ -16,8 +16,8 @@
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, Refresh, Search, Stamp, Warning } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { Check, CircleCheck, DataAnalysis, Refresh, Search, Stamp, Timer, Warning } from '@element-plus/icons-vue'
 import {
   ABNORMAL_TYPE_PENDING,
   approveAuditApi,
@@ -33,7 +33,10 @@ import {
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
+import StatCard from '@/components/common/StatCard.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import { askConfirm } from '@/utils/confirm'
 
 function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
   if (!label) return 'neutral'
@@ -147,6 +150,44 @@ const approveEnabled = computed(() => {
   return true
 })
 
+/**
+ * 审核台 KPI 只统计当前筛选结果，避免把分页接口的局部数据误包装成全库指标。
+ * 待处理样品数使用服务端 total，其余为当前页的异常分布，均标注统计范围。
+ */
+const auditKpis = computed(() => {
+  const rows = tableData.value
+  return [
+    {
+      label: isAuditTab.value ? '待审核样品' : '待签发样品',
+      value: total.value,
+      icon: DataAnalysis,
+      iconTone: 'accent' as const,
+      hint: '当前筛选结果',
+    },
+    {
+      label: '本页异常样品',
+      value: rows.filter((row) => row.abnormalCount > 0).length,
+      icon: Warning,
+      iconTone: 'warning' as const,
+      hint: '未录入或待判定',
+    },
+    {
+      label: '本页异常项',
+      value: rows.reduce((sum, row) => sum + row.abnormalCount, 0),
+      icon: Timer,
+      iconTone: 'warning' as const,
+      hint: '需逐项确认',
+    },
+    {
+      label: '本页不合格',
+      value: rows.filter((row) => row.conclusion === 2).length,
+      icon: CircleCheck,
+      iconTone: 'danger' as const,
+      hint: '整体结论为不合格',
+    },
+  ]
+})
+
 async function openDrawer(row: AuditPendingRow): Promise<void> {
   drawerVisible.value = true
   drawerLoading.value = true
@@ -207,15 +248,7 @@ async function handleApprove(): Promise<void> {
   const tip = hasAbnormal.value
     ? `该样品存在 ${detail.value.abnormalCount} 个异常项（未录入/待判定），确认后仍要放行吗？`
     : '确认审核通过？样品将流转为「已审核」。'
-  try {
-    await ElMessageBox.confirm(tip, '审核通过', {
-      confirmButtonText: '确认通过',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
+  if (!(await askConfirm(tip, '审核通过', { type: 'warning' }))) return
   acting.value = true
   try {
     const res = await approveAuditApi(detail.value.sampleId, approveForm.opinion || null, approveForm.abnormalConfirmed)
@@ -236,15 +269,11 @@ async function handleReturn(): Promise<void> {
     ElMessage.warning('请填写退回原因（检验员需要知道要改什么）')
     return
   }
-  try {
-    await ElMessageBox.confirm(
-      `退回后样品将回到「检验中」，重新出现在检验员的结果录入待办中。确认退回？`,
-      '审核退回',
-      { confirmButtonText: '确认退回', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(
+    '退回后样品将回到「检验中」，重新出现在检验员的结果录入待办中。确认退回？',
+    '审核退回',
+    { type: 'warning' },
+  ))) return
   acting.value = true
   try {
     const res = await returnAuditApi(detail.value.sampleId, reason)
@@ -260,15 +289,11 @@ async function handleReturn(): Promise<void> {
 
 async function handleSign(): Promise<void> {
   if (!detail.value) return
-  try {
-    await ElMessageBox.confirm(
-      '确认签发？签发后该样品将进入「已签发」，可生成检验报告。',
-      '报告签发',
-      { confirmButtonText: '确认签发', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(
+    '确认签发？签发后该样品将进入「已签发」，可生成检验报告。',
+    '报告签发',
+    { type: 'warning' },
+  ))) return
   acting.value = true
   try {
     const res = await signReportApi(detail.value.sampleId, signForm.opinion || null)
@@ -325,6 +350,18 @@ onMounted(() => {
       </el-button>
     </PageHeader>
 
+    <section class="kpi-row">
+      <StatCard
+        v-for="k in auditKpis"
+        :key="k.label"
+        :label="k.label"
+        :value="k.value"
+        :icon="k.icon"
+        :icon-tone="k.iconTone"
+        :hint="k.hint"
+      />
+    </section>
+
     <AppCard
       variant="panel"
       :padding="16"
@@ -343,10 +380,7 @@ onMounted(() => {
         />
       </el-tabs>
 
-      <el-form
-        inline
-        class="filter-form"
-      >
+      <DataFilter compact>
         <el-form-item label="样品编号">
           <el-input
             v-model="query.sampleNo"
@@ -365,7 +399,7 @@ onMounted(() => {
             @keyup.enter="handleSearch"
           />
         </el-form-item>
-        <el-form-item>
+        <template #actions>
           <el-button
             type="primary"
             :icon="Search"
@@ -379,8 +413,8 @@ onMounted(() => {
           >
             重置
           </el-button>
-        </el-form-item>
-      </el-form>
+        </template>
+      </DataFilter>
 
       <el-table
         v-loading="loading"
@@ -951,12 +985,15 @@ onMounted(() => {
   flex-direction: column;
   gap: var(--lims-r-md);
 }
-.filter-form {
-  margin-top: var(--lims-r-sm);
-}
-.filter-form :deep(.el-form-item) {
+.data-filter :deep(.el-form-item) {
   margin-bottom: 0;
 }
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--lims-r-md);
+}
+
 .pager {
   display: flex;
   justify-content: flex-end;
@@ -1082,5 +1119,17 @@ onMounted(() => {
 }
 .muted {
   color: var(--lims-text-secondary);
+}
+
+@media (max-width: 1100px) {
+  .kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .kpi-row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

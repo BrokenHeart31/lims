@@ -36,6 +36,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
 import { askConfirm } from '@/utils/confirm'
 
 function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
@@ -212,6 +213,19 @@ function rowItem(row: unknown): ResultDetailItem {
   return row as ResultDetailItem
 }
 
+/**
+ * 明细行只根据后端已经产出的结论做视觉提示，不在前端重算业务结论。
+ * 未录入=紫色、待判定=橙色、不合格=红色，便于检验员在密集表格中快速定位。
+ */
+function resultRowClassName({ row }: { row: unknown }): string {
+  const item = rowItem(row)
+  const conclusion = conclusionOf(item)
+  if (conclusion === 2) return 'result-row--fail'
+  if (conclusion === 3) return 'result-row--pending'
+  if (conclusion == null) return 'result-row--blank'
+  return ''
+}
+
 function basisOf(item: ResultDetailItem): string {
   const live = judged.value[item.id]
   if (live) return live.judgeBasis
@@ -366,46 +380,41 @@ onMounted(() => {
     </PageHeader>
 
     <!-- 查询条件 -->
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
-      <el-form inline>
-        <el-form-item label="样品编号">
-          <el-input
-            v-model="query.sampleNo"
-            placeholder="支持模糊查询"
-            clearable
-            style="width: 200px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="样品名称">
-          <el-input
-            v-model="query.sampleName"
-            placeholder="支持模糊查询"
-            clearable
-            style="width: 200px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            :icon="Search"
-            @click="handleSearch"
-          >
-            查询
-          </el-button>
-          <el-button
-            :icon="Refresh"
-            @click="handleReset"
-          >
-            重置
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </AppCard>
+    <DataFilter>
+      <el-form-item label="样品编号">
+        <el-input
+          v-model="query.sampleNo"
+          placeholder="支持模糊查询"
+          clearable
+          style="width: 200px"
+          @keyup.enter="handleSearch"
+        />
+      </el-form-item>
+      <el-form-item label="样品名称">
+        <el-input
+          v-model="query.sampleName"
+          placeholder="支持模糊查询"
+          clearable
+          style="width: 200px"
+          @keyup.enter="handleSearch"
+        />
+      </el-form-item>
+      <template #actions>
+        <el-button
+          type="primary"
+          :icon="Search"
+          @click="handleSearch"
+        >
+          查询
+        </el-button>
+        <el-button
+          :icon="Refresh"
+          @click="handleReset"
+        >
+          重置
+        </el-button>
+      </template>
+    </DataFilter>
 
     <!-- 待录入样品列表 -->
     <AppCard
@@ -609,6 +618,7 @@ onMounted(() => {
             <el-table
               :data="detail.items"
               stripe
+              :row-class-name="resultRowClassName"
             >
               <el-table-column
                 prop="itemOrder"
@@ -873,5 +883,33 @@ onMounted(() => {
 }
 .muted {
   color: var(--lims-text-secondary);
+}
+
+/* 结果录入异常行：比单元格徽章更早建立整行视觉优先级。 */
+:deep(.el-table__body tr.result-row--blank > td) {
+  background: var(--lims-purple-soft) !important;
+  border-bottom-color: var(--lims-purple-line);
+}
+
+:deep(.el-table__body tr.result-row--pending > td) {
+  background: var(--lims-warning-soft) !important;
+  border-bottom-color: var(--lims-warning-line);
+}
+
+:deep(.el-table__body tr.result-row--fail > td) {
+  background: var(--lims-danger-row) !important;
+  border-bottom-color: var(--lims-danger);
+}
+
+:deep(.el-table__body tr.result-row--blank:hover > td) {
+  background: var(--lims-purple-soft) !important;
+}
+
+:deep(.el-table__body tr.result-row--pending:hover > td) {
+  background: var(--lims-warning-soft) !important;
+}
+
+:deep(.el-table__body tr.result-row--fail:hover > td) {
+  background: var(--lims-danger-row-hover) !important;
 }
 </style>

@@ -1321,3 +1321,110 @@ pendingSamples     待判定样品数
   **未指派**则保留原样——三种情况在图表上语义不同，不做合并）
 
 ---
+
+## 15. 系统操作日志 `/api/sys/log`（T-918）
+
+> 背景：顶部用户菜单的「操作日志」此前是空壳（对话框只写「待后端接入」）。
+> 本轮补齐存储 + 自动写入 + 查询链路，使其成为**真实可用的审计视图**。
+
+### 15.0 三条设计口径
+
+1. **写入方式是 MVC 拦截器，不是 AOP 切面** —— 本机离线 Maven 仓库无
+   `spring-boot-starter-aop` / `aspectjweaver`，无法在不联网的前提下引入依赖；
+   `HandlerInterceptor`（spring-webmvc 自带）能达到同样「集中记录、零业务侵入」的效果。
+   代价是记录粒度到**接口**而非 Service 方法，对本系统（接口与业务动作近乎一一对应）不构成信息损失。
+2. **只记录写请求**（POST / PUT / DELETE）。GET 不入表——否则日志会被翻页查询瞬间淹没。
+3. **绝不记录请求体**。请求体可能含密码（登录 / 改密 / 重置密码），
+   本设计从根上杜绝凭据落库；只记录「方法 + 路径 + 结果 + 耗时 + 操作人」。
+   此为硬约束，后续维护不得为「更详细」而添加 body 记录。
+
+**失败同样留痕**：400/403/500 一律入库并置 `result=0`。审计的价值恰恰在于记录「尝试」。
+**写入失败不得影响业务**：落库整体 try/catch，仅打 WARN。
+
+### 15.1 分页查询操作日志
+
+```
+GET /api/sys/log/page?current=1&size=20&module=&operator=&startTime=&endTime=
+```
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `current` | 否 | 页码，默认 1 |
+| `size` | 否 | 每页条数，默认 20，最大 200 |
+| `module` | 否 | 模块精确匹配（如「结果录入」） |
+| `operator` | 否 | 操作人工号；**仅对拥有 `log:view` 的用户生效** |
+| `startTime` / `endTime` | 否 | `yyyy-MM-dd HH:mm:ss`，闭区间 |
+
+**权限与数据范围（关键）**：接口本身**只要求登录**，不使用 `@PreAuthorize`。
+
+- 拥有 `log:view`（seed `sys_menu` id=1151）→ 可查全部日志，`operator` 参数有效；
+- 其余登录用户 → **服务层强制附加 `operator = 本人工号`**，传参无法绕过。
+
+> 为什么不做成「无权限即 403」：日志入口是用户菜单里的「我的操作日志」，
+> 每个用户都应当能查自己做过什么（个人可追溯性，ALCOA+ 要求）；
+> 「跨用户查看」才是需要 `log:view` 的特权。范围收在服务端，客户端不可绕过
+> （与 13 章 `MyTaskQueryDTO.testerScope` 同一原则）。
+
+响应 `data`：
+
+```json
+{
+  "records": [
+    {
+      "id": 12,
+      "module": "结果录入",
+      "summary": "结果录入 · 提交 /result/submit",
+      "httpMethod": "POST",
+      "uri": "/result/submit",
+      "operator": "njsa000",
+      "operatorName": "水产检验员",
+      "ip": "127.0.0.1",
+      "result": 1,
+      "resultLabel": "成功",
+      "statusCode": 200,
+      "durationMs": 37,
+      "createdAt": "2026-09-14 15:20:11"
+    }
+  ],
+  "total": 128,
+  "current": 1,
+  "size": 20
+}
+```
+
+### 15.2 模块识别与动作标签
+
+`module` 由**有序前缀表**推导（`OperationLogInterceptor.MODULE_PREFIXES`），
+顺序敏感：`/sys/user` 排在 `/sys` 之前、`/report/audit` 排在 `/report` 之前。
+未识别的路径归入「其他」，**不硬造模块名**。
+
+| 前缀 | 模块 | 前缀 | 模块 |
+|---|---|---|---|
+| `/sys/user` | 用户管理 | `/sample` | 样品登记 |
+| `/sys/role` | 角色管理 | `/item` | 项目分解 |
+| `/sys/menu` | 菜单管理 | `/assign` | 任务安排 |
+| `/sys/dept` | 部门管理 | `/result` | 结果录入 |
+| `/sys/log` | 操作日志 | `/task` | 监抽任务 |
+| `/base/lib` | 项目标准库 | `/export` | 数据导出 |
+| `/base/tester-method` | 方法资质 | `/report/audit` | 报告审核 |
+| `/auth` | 认证 | `/report/sign` | 报告签发 |
+| | | `/report/generate` | 报告生成 |
+
+`summary` 中的动作词由路径关键词派生（`/import`→导入、`/confirm`→确认、
+`/generate`→生成、`/approve`→审核通过、`/return`→审核退回、`/sign`→签发、
+`/submit`→提交、`/judge`→判定预览、`/reassign`→人工改派、`/auto`→自动分配、
+`/change-password`→修改密码、`/password`→重置密码），匹配不到时退回 HTTP 方法的通用说法
+（DELETE→删除、PUT→修改、其余→新增）。**这是派生标签，不猜测语义。**
+
+### 15.3 不提供的接口
+
+- **无新增 / 修改 / 删除日志接口**。审计流水由拦截器追加，业务代码不得手工制造，
+  也不提供任何改写入口（表结构保留 `deleted` 仅为符合 AGENTS 6.1 新表规范）。
+
+---
+
+## 附：`sys_operation_log` 表
+
+见 `db/init/09_operation_log.sql`（全新部署）与 `db/migrations/V7__add_operation_log.sql`（存量库升级，幂等）。
+
+---

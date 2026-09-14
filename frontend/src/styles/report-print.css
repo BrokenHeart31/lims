@@ -339,7 +339,7 @@
   }
 
   /* 隐藏除打印根之外的一切（含暗色外壳）；打印根已 Teleport 到 body 直下 */
-  body > *:not(.report-print-root) {
+  body.lims-report-printing > *:not(.report-print-root) {
     display: none !important;
   }
 
@@ -374,5 +374,29 @@
 
   .report-print-root .cover-page {
     min-height: auto;
+  }
+
+  .report-print-root .info-table tr,
+  .report-print-root .result-table tr,
+  .report-print-root .sign-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .report-print-root .result-table thead {
+    display: table-header-group;
+  }
+}
+
+@media screen and (max-width: 760px) {
+  .report-print-root .report-page {
+    width: 100%;
+    min-width: 680px;
+    margin: 8px 0;
+    padding: 16px 18px;
+  }
+
+  .report-print-root .report-toolbar {
+    justify-content: space-between;
   }
 }

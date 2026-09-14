@@ -13,7 +13,7 @@
  * （后端先清后建），这是权限系统里最容易被做错的一点。</p>
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
   createSysRoleApi,
@@ -33,6 +33,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import { askConfirm } from '@/utils/confirm'
 
 /** 综合管理特权角色编码（与后端 SysRole.ADMIN_ROLE_CODE 一致） */
 const ADMIN_ROLE_CODE = 'R100'
@@ -203,15 +205,11 @@ async function submitForm(): Promise<void> {
 }
 
 async function handleRemove(row: SysRoleRow): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确认删除角色「${row.roleName}（${row.roleCode}）」？若该角色下仍绑定用户，系统会拒绝删除。`,
-      '删除确认',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(
+    `确认删除角色「${row.roleName}（${row.roleCode}）」？若该角色下仍绑定用户，系统会拒绝删除。`,
+    '删除确认',
+    { type: 'warning' },
+  ))) return
   try {
     await removeSysRoleApi(row.id)
     ElMessage.success('已删除')
@@ -259,10 +257,7 @@ onMounted(() => {
       </el-button>
     </PageHeader>
 
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
+    <DataFilter>
       <el-form inline>
         <el-form-item label="角色编码">
           <el-input
@@ -298,7 +293,7 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </AppCard>
+    </DataFilter>
 
     <AppCard
       variant="panel"
@@ -536,8 +531,8 @@ onMounted(() => {
   color: var(--lims-text-secondary);
 }
 .tree-type.t-3 {
-  color: var(--lims-warning, #d97706);
-  border-color: var(--lims-warning-line, #fcd34d);
+  color: var(--lims-warning);
+  border-color: var(--lims-warning-line);
 }
 .tree-perm {
   font-size: 11px;

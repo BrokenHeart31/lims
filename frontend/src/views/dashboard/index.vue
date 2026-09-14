@@ -6,24 +6,73 @@
  *   ① Hero 欢迎区（保留 Aurora Glass 华丽质感）
  *   ② KPI 行（4 个 StatCard）
  *   ③ 八阶段业务进度网格
- *   ④ 最近任务时间轴（mock；真实数据需 T-801 任务查询接口落地）
+ *   ④ 最近任务列表（取真实的「我的检验任务」接口，不使用 mock）
  */
-import { computed, onMounted } from 'vue'
-import { Bell, Document, EditPen, Histogram, Notebook } from '@element-plus/icons-vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { Document, EditPen, Histogram, Notebook, Refresh } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { getStatOverviewApi, type StatOverview } from '@/api/stat'
+import { get } from '@/utils/request'
+import type { PageResult } from '@/types/api'
 import AppCard from '@/components/common/AppCard.vue'
 import StatCard from '@/components/common/StatCard.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import AppSkeleton from '@/components/common/AppSkeleton.vue'
+import AppLoading from '@/components/common/AppLoading.vue'
 
 const authStore = useAuthStore()
+const router = useRouter()
+const overview = ref<StatOverview | null>(null)
+const dashboardLoading = ref(false)
+const overviewError = ref(false)
+const tasksError = ref(false)
+
+interface MyTaskRow {
+  sampleId: number
+  sampleNo: string
+  sampleName?: string | null
+  itemName: string
+  entered?: boolean | null
+  sampleStatusLabel?: string | null
+  sampleStatus: number
+}
+
+const myTasks = ref<MyTaskRow[]>([])
+const myTasksTotal = ref<number | null>(null)
+
+async function loadDashboard(): Promise<void> {
+  if (dashboardLoading.value) return
+  dashboardLoading.value = true
+  overviewError.value = false
+  tasksError.value = false
+  overview.value = null
+  myTasks.value = []
+  myTasksTotal.value = null
+  const [overviewResult, taskResult] = await Promise.allSettled([
+    getStatOverviewApi(),
+    get<PageResult<MyTaskRow>>('/query/my-tasks/page', { current: 1, size: 5 }),
+  ])
+  if (overviewResult.status === 'fulfilled') overview.value = overviewResult.value
+  else overviewError.value = true
+  if (taskResult.status === 'fulfilled') {
+    myTasks.value = taskResult.value.records
+    myTasksTotal.value = taskResult.value.total
+  } else {
+    tasksError.value = true
+  }
+  dashboardLoading.value = false
+}
 
 onMounted(async () => {
   if (authStore.isLoggedIn && !authStore.me) {
     try {
       await authStore.fetchMe()
     } catch {
-      // 请求层已提示错误；工作台仍可展示骨架内容
+      // 请求层已提示错误；统计请求仍会按权限返回真实错误
     }
   }
+  await loadDashboard()
 })
 
 const welcomeName = computed(() => authStore.userInfo?.nickname ?? authStore.userInfo?.username ?? '')
@@ -47,16 +96,44 @@ const stages: { title: string; desc: string; status: StageStatus }[] = [
   { title: '检验任务安排', desc: '按样品编号与检验方法资质自动分配（S30 → S40）', status: 'done' },
   { title: '检验数据录入', desc: '检验员录入数据，系统自动判定单项结论（S50 → S60）', status: 'done' },
   { title: '报告审核签发', desc: '中心领导审核、签发（S60 → S70 → S80）', status: 'done' },
-  { title: '报告生成打印', desc: 'CMA / CMA-CATL 检验报告合成（S80 → S90）', status: 'todo' },
+  { title: '报告生成打印', desc: 'CMA / CMA-CATL 检验报告合成（S80 → S90）', status: 'done' },
 ]
 
-/** KPI 行（按提示词 §十：待处理任务 / 检测中样品 / 待审核报告 / 异常样品） */
-const kpis = [
-  { label: '待处理任务', value: 12, suffix: '项', trend: '+3', trendTone: 'up' as const, icon: Document, iconTone: 'info' as const, hint: '较昨日' },
-  { label: '检测中样品', value: 38, suffix: '份', trend: '+8', trendTone: 'up' as const, icon: EditPen, iconTone: 'accent' as const, hint: '在检中' },
-  { label: '待审核报告', value: 7, suffix: '份', trend: '-2', trendTone: 'down' as const, icon: Notebook, iconTone: 'warning' as const, hint: '建议 24h 内审' },
-  { label: '异常样品', value: 2, suffix: '份', trend: '+1', trendTone: 'up' as const, icon: Bell, iconTone: 'danger' as const, hint: '需复核' },
-]
+/** KPI 行：全部来自统计接口或当前用户任务分页，不展示猜测数字。 */
+const kpis = computed(() => [
+  {
+    label: '待处理任务',
+    value: myTasksTotal.value ?? '—',
+    suffix: '项',
+    icon: Document,
+    iconTone: 'info' as const,
+    hint: '当前权限范围',
+  },
+  {
+    label: '检测中样品',
+    value: overview.value?.testingSamples ?? '—',
+    suffix: '份',
+    icon: EditPen,
+    iconTone: 'accent' as const,
+    hint: '真实统计',
+  },
+  {
+    label: '已完成样品',
+    value: overview.value?.completedSamples ?? '—',
+    suffix: '份',
+    icon: Notebook,
+    iconTone: 'success' as const,
+    hint: '已签发及以上',
+  },
+  {
+    label: '合格率',
+    value: overview.value?.qualifiedRate == null ? '—' : overview.value.qualifiedRate.toFixed(1),
+    suffix: overview.value?.qualifiedRate == null ? '' : '%',
+    icon: Histogram,
+    iconTone: 'warning' as const,
+    hint: overview.value?.qualifiedRate == null ? '暂无有效结论' : '排除待判定',
+  },
+])
 
 const statusText: Record<StageStatus, string> = {
   done: '已交付',
@@ -64,30 +141,21 @@ const statusText: Record<StageStatus, string> = {
   todo: '待开发',
 }
 
-/** 最近任务（mock：真实接口由 T-801 / T-701 提供） */
 interface RecentTask {
   id: number
   title: string
-  type: 'audit' | 'result' | 'sample' | 'sign'
   status: string
   statusTone: 'success' | 'warning' | 'info' | 'danger' | 'purple'
-  time: string
-  operator: string
+  meta: string
 }
-const recentTasks: RecentTask[] = [
-  { id: 1, title: '样品 JK-2026-013 检测结果录入', type: 'result', status: '检验中', statusTone: 'warning', time: '今天 14:32', operator: 'nj001 系统管理员' },
-  { id: 2, title: '样品 JK-2026-010 报告审核', type: 'audit', status: '已通过', statusTone: 'success', time: '今天 11:18', operator: '审核员' },
-  { id: 3, title: '样品 JK-2026-008 报告签发', type: 'sign', status: '已签发', statusTone: 'success', time: '今天 10:05', operator: '签发员' },
-  { id: 4, title: '采样单 2026-W38 批次导入', type: 'sample', status: '已登记', statusTone: 'info', time: '昨天 16:42', operator: '采样员' },
-  { id: 5, title: '样品 JK-2026-005 检测出铅超标', type: 'result', status: '待判定', statusTone: 'purple', time: '昨天 09:21', operator: 'nj002 检验员' },
-]
 
-const taskTypeLabel: Record<RecentTask['type'], string> = {
-  audit: '审核',
-  result: '录入',
-  sample: '登记',
-  sign: '签发',
-}
+const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
+  id: task.sampleId,
+  title: `${task.sampleNo} · ${task.itemName}`,
+  status: task.entered ? '已录入' : '未录入',
+  statusTone: task.entered ? 'success' : 'warning',
+  meta: `${task.sampleName ?? '未填写样品名'} · ${task.sampleStatusLabel ?? `S${task.sampleStatus}`}`,
+})))
 </script>
 
 <template>
@@ -113,6 +181,7 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
         <button
           type="button"
           class="hero-cta"
+          @click="router.push('/result/entry')"
         >
           <el-icon :size="14">
             <EditPen />
@@ -122,6 +191,7 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
         <button
           type="button"
           class="hero-cta hero-cta--ghost"
+          @click="router.push('/query/analysis')"
         >
           <el-icon :size="14">
             <Histogram />
@@ -131,16 +201,47 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
       </div>
     </section>
 
+    <el-alert
+      v-if="!dashboardLoading && overviewError"
+      type="error"
+      :closable="false"
+      show-icon
+      title="业务概览加载失败"
+      description="KPI 已显示为不可用，不会用 0 或上次数据代替；当前任务仍可独立查看。"
+    >
+      <el-button @click="loadDashboard">
+        重新加载
+      </el-button>
+    </el-alert>
+
     <!-- ================= KPI 行 ================= -->
-    <section class="kpi-row">
+    <!-- 加载中优先用骨架屏（UI 提示词 §二十七：Loading 优先 Skeleton），
+         避免「先闪一排空卡片再填数字」的跳变，也明确区分「正在加载」与「确实为 0」 -->
+    <section
+      v-if="dashboardLoading"
+      class="kpi-row"
+    >
+      <AppCard
+        v-for="n in 4"
+        :key="`kpi-skeleton-${n}`"
+        padding="18px"
+      >
+        <AppSkeleton
+          :rows="3"
+          height="14px"
+        />
+      </AppCard>
+    </section>
+    <section
+      v-else
+      class="kpi-row"
+    >
       <StatCard
         v-for="k in kpis"
         :key="k.label"
         :label="k.label"
         :value="k.value"
         :suffix="k.suffix"
-        :trend="k.trend"
-        :trend-tone="k.trendTone"
         :icon="k.icon"
         :icon-tone="k.iconTone"
         :hint="k.hint"
@@ -186,16 +287,54 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
 
       <AppCard padding="22px">
         <header class="card-head">
-          <h3 class="card-title">
-            最近任务
-          </h3>
-          <span class="card-sub">实时反映样品生命周期动态</span>
+          <div>
+            <h3 class="card-title">
+              当前任务
+            </h3>
+            <span class="card-sub">来自真实任务查询接口 · 最多展示 5 项</span>
+          </div>
+          <button
+            class="card-refresh"
+            type="button"
+            :disabled="dashboardLoading"
+            @click="loadDashboard"
+          >
+            <el-icon :size="14">
+              <Refresh />
+            </el-icon>
+            刷新
+          </button>
         </header>
 
-        <ol class="recent-list">
+        <AppLoading
+          v-if="dashboardLoading"
+          :min-height="180"
+          text="正在读取任务数据…"
+        />
+        <AppEmpty
+          v-else-if="tasksError"
+          title="任务数据暂时不可用"
+          hint="请刷新重试；页面不会用假数据替代真实业务数据。"
+        >
+          <el-button
+            type="primary"
+            @click="loadDashboard"
+          >
+            重新加载
+          </el-button>
+        </AppEmpty>
+        <AppEmpty
+          v-else-if="recentTasks.length === 0"
+          title="当前没有检验任务"
+          hint="当任务安排完成后，任务会显示在这里。"
+        />
+        <ol
+          v-else
+          class="recent-list"
+        >
           <li
             v-for="t in recentTasks"
-            :key="t.id"
+            :key="`${t.id}-${t.title}`"
             class="recent-item"
           >
             <span
@@ -212,18 +351,20 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
                 >{{ t.status }}</span>
               </div>
               <div class="recent-item__meta">
-                <span>{{ t.time }}</span>
-                <span class="recent-item__sep">·</span>
-                <span>{{ t.operator }}</span>
-                <span class="recent-item__sep">·</span>
-                <span class="recent-item__type">{{ taskTypeLabel[t.type] }}</span>
+                <span>{{ t.meta }}</span>
               </div>
             </div>
           </li>
         </ol>
 
         <footer class="recent-foot">
-          <span class="recent-foot__hint">更多任务待 T-801 查询接口接入后展示</span>
+          <button
+            class="recent-foot__link"
+            type="button"
+            @click="router.push('/result/my-tasks')"
+          >
+            查看全部我的检验任务
+          </button>
         </footer>
       </AppCard>
     </div>
@@ -300,7 +441,7 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
   border: none;
   border-radius: var(--lims-r-sm);
   background: var(--lims-brand-gradient);
-  color: #fff;
+  color: var(--lims-on-accent);
   font-family: inherit;
   font-size: var(--lims-fs-sm);
   font-weight: 600;
@@ -364,9 +505,27 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
 }
 
 .card-sub {
+  display: block;
+  margin-top: 4px;
   color: var(--lims-faint);
   font-size: var(--lims-fs-xs);
 }
+
+.card-refresh,
+.recent-foot__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--lims-muted);
+  font: inherit;
+  font-size: var(--lims-fs-xs);
+  cursor: pointer;
+}
+.card-refresh:hover,
+.recent-foot__link:hover { color: var(--lims-accent); }
+.card-refresh:disabled { cursor: wait; opacity: 0.6; }
 
 /* ---------- 八阶段网格 ---------- */
 .stage-grid {
@@ -606,7 +765,7 @@ const taskTypeLabel: Record<RecentTask['type'], string> = {
   text-align: center;
 }
 
-.recent-foot__hint {
+.recent-foot__link {
   color: var(--lims-faint);
   font-size: 11px;
 }

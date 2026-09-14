@@ -92,20 +92,25 @@ withDefaults(
   background: var(--lims-info-soft);
   border-color: var(--lims-info-line);
 }
-.status-badge.is-purple,
-.status-badge.is-pending {
+.status-badge.is-purple {
   color: var(--lims-purple);
   background: var(--lims-purple-soft);
   border-color: var(--lims-purple-line);
 }
+/* 业务语义：待判定=橙色，未录入=紫色；二者不可混淆（T-912） */
+.status-badge.is-pending {
+  color: var(--lims-conclusion-pending);
+  background: var(--lims-warning-soft);
+  border-color: var(--lims-warning-line);
+}
 .status-badge.is-blank {
-  color: var(--lims-muted);
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--lims-hair-2);
+  color: var(--lims-conclusion-blank);
+  background: var(--lims-purple-soft);
+  border-color: var(--lims-purple-line);
 }
 .status-badge.is-neutral {
   color: var(--lims-muted);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--lims-layer-card-hover);
   border-color: var(--lims-hair);
 }
 </style>

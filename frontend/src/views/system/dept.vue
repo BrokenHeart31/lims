@@ -10,7 +10,7 @@
  * 孤儿部门会让权限范围计算静默错位——查不到数据或查到不该看的，都比报错更难排查。</p>
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import {
   createDeptApi,
@@ -24,6 +24,7 @@ import {
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import { askConfirm } from '@/utils/confirm'
 
 const loading = ref(false)
 const treeData = ref<DeptRow[]>([])
@@ -142,15 +143,11 @@ async function submitForm(): Promise<void> {
 }
 
 async function handleRemove(row: DeptRow): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确认删除部门「${row.deptName}」？若其下仍有子部门或用户，系统会拒绝删除。`,
-      '删除确认',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(
+    `确认删除部门「${row.deptName}」？若其下仍有子部门或用户，系统会拒绝删除。`,
+    '删除确认',
+    { type: 'warning' },
+  ))) return
   try {
     await removeDeptApi(row.id)
     ElMessage.success('已删除')

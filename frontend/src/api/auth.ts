@@ -1,13 +1,14 @@
 /**
  * 认证域接口封装
  *
- * ⚠️ 契约说明：api-spec.md 认证域尚未由 Copilot 落地（T-002），
- * 本文件按 AGENTS.md 4.1 / 8.3 已定义的约定实现：
+ * 契约见 api-spec.md 第 1 章（已定稿）：
  *   - 统一响应 { code, msg, data }
- *   - POST /api/auth/login 返回 JWT（access_token + refresh_token）
- *   - GET  /api/auth/me   返回 用户 + 角色 + 权限标识集合 + 菜单树
- * 字段命名（camelCase/snake_case）以 Copilot 终审后的 api-spec.md 为准，
- * 如有出入仅需调整本文件与 stores/auth.ts 中的类型定义。
+ *   - POST /api/auth/login           登录，返回 JWT（accessToken + refreshToken）
+ *   - POST /api/auth/refresh         刷新令牌
+ *   - GET  /api/auth/me              当前登录用户 + 角色 + 权限标识 + 菜单树
+ *   - POST /api/auth/logout          退出（无状态 JWT：服务端不做强制失效）
+ *   - POST /api/auth/change-password 自服务改密（BCrypt 校验旧密码）
+ * 字段命名为 camelCase，与后端 DTO/VO 一致。
  */
 import { get, post } from '@/utils/request'
 
@@ -19,6 +20,11 @@ export interface LoginPayload {
 export interface LoginResult {
   accessToken: string
   refreshToken: string
+}
+
+export interface ChangePasswordPayload {
+  oldPassword: string
+  newPassword: string
 }
 
 export interface UserInfo {
@@ -55,4 +61,9 @@ export function loginApi(payload: LoginPayload): Promise<LoginResult> {
 /** 当前登录用户信息：GET /api/auth/me */
 export function fetchMeApi(): Promise<MeResult> {
   return get<MeResult>('/auth/me')
+}
+
+/** 当前用户自助修改密码：POST /api/auth/change-password */
+export function changePasswordApi(payload: ChangePasswordPayload): Promise<void> {
+  return post<void>('/auth/change-password', payload)
 }

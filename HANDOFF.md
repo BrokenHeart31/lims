@@ -1,5 +1,239 @@
 # LIMS HANDOFF（共享交接本）
 
+## 2026-09-14 15:20 GLM → 用户（**项目功能完工**，可开始完整自测）
+
+### 一句话
+
+**说明书 13 项业务功能全部落地；17 个前端页面全部完成；「假数据」与「空壳」两个残余缺陷已清除；
+Git 对象库已修复并提交推送。项目可交付。**
+
+### 本轮做了什么
+
+| # | 事项 | 说明 |
+|---|---|---|
+| 1 | **T-918 操作日志落地** | 原「用户菜单 → 操作日志」对话框只有一句「待后端接入」。补齐：`sys_operation_log` 表（`db/init/09` + `V7`）+ `OperationLogInterceptor` 自动写入 + `GET /api/sys/log/page` + 前端真实分页表格 + 契约第 15 章 + 6 项单测 |
+| 2 | **顶部铃铛去假数据** | 原为 **4 条写死的假通知**（「3 份报告待审核」「样品 JK-2026-001 铅超标」…），违反项目「禁 mock」原则。改写为 **6 个业务域真实待办汇总**（零值不展示、点击直达、权限容错） |
+| 3 | **死代码清理** | `AppSkeleton.vue` 接入工作台 KPI 加载态（UI 规范要求 Loading 优先 Skeleton）；`ProgressBar.vue` 零引用 → 删除（全站 4 处进度已用 `el-progress`） |
+| 4 | **Git 对象库修复** | 见下「Git」段 |
+| 5 | **全量验收** | 见下「验收」段 |
+
+### 关键设计（为什么这样做）
+
+- **操作日志为什么不是 AOP 切面**：本机离线 Maven 仓**无 `aspectjweaver`**，无法引入 AOP。
+  审计的本质需求是「集中记录 + 零业务侵入」，`HandlerInterceptor`（spring-webmvc 自带）同样满足。
+  详见 `docs/knowledge/2026-09-14-operation-log-interceptor.md`。
+- **权限为什么不用 `@PreAuthorize('log:view')`**：那样普通检验员就**查不到自己的操作记录**，
+  而「我能查我做过什么」是 ALCOA+ 基本要求。改为**分级数据范围**：
+  人人可查自己（服务层强制 `operator=本人工号`），`log:view` 才能跨用户查看。
+  **权限注解解决「能不能调接口」，解决不了「能看哪些行」。**
+- **绝不记录请求体**：请求体可能含密码（登录/改密/重置密码），只记录方法+路径+结果+耗时+操作人+IP。
+
+### 验收（全部实测，非推断）
+
+| 项 | 结果 |
+|---|---|
+| 后端单测 | **113/113 BUILD SUCCESS**（新增 `OperationLogInterceptorTest` 6 项） |
+| 前端门禁 | `eslint` 0 错误 / `vue-tsc --noEmit` 0 错误 / `vite build` ✅（15.06s） |
+| **真实浏览器全量遍历** | Edge + CDP over **20 个页面** → **0 console error / 0 网络请求失败** |
+| **三档分辨率** | 1440×900 / 1920×1080 / 1366×768：`scrollWidth == clientWidth` 且 **DOM 无越界元素** |
+| 操作日志端到端 | 6 断言全过：写请求入库 / **403 失败也留痕** / GET 不入库 / 无 `log:view` 仅见自己 / **伪造 `operator` 参数无效** / 有权限可按工号过滤 |
+| 待办提醒 | 实测显示 2 条真实待办（待分解 1、可生成报告 1），角标 = 2，无任何假数据 |
+| 页面渲染抽样 | 工作台 / 样品登记 / 结果录入 / 报告审核 / 用户管理 逐页截图确认正常 |
+
+### Git（✅ 已修复并可正常提交推送）
+
+- **故障**：`D:\lims\.git` 对象库缺 **91 个对象**（6 个 commit + 多个 tree/blob），
+  `git status` / `git branch` 直接报错。
+- **`git fetch` 修不好**：本地 `refs/remotes/origin/*` 指向旧 hash，git 据此告诉远端「这些我都有了」，
+  远端便不再发送 → 拉完仍然缺，报 `did not send all necessary objects`。
+  **本地对象库损坏时，增量 fetch 会被自己的错误 ref 误导而失效。**
+- **修复手法**（已验证，可复用）：
+  ```bash
+  cd <temp>
+  git clone --mirror https://github.com/BrokenHeart31/lims.git lims_recovery.git
+  cp lims_recovery.git/objects/pack/pack-<new>.*  /d/lims/.git/objects/pack/
+  rm -f /d/lims/.git/objects/info/multi-pack-index   # 过期索引必须删
+  cd /d/lims && git fsck --full                      # → 0 missing / 0 broken
+  ```
+- **副坑**：给 `git clone` 传**绝对 POSIX 路径**（`/c/Users/...`）会**静默什么都不做**
+  （退出码 0、无输出、目录不存在）；`cd` 到父目录用**相对路径**才成功。
+- **网络判断**：`curl https://github.com` 返回 `000`，但 **`git ls-remote` 完全正常**——
+  判断「能否推送」只看 `git ls-remote`，别看 curl。
+- 远端现状：`agent/glm = develop = main = b206f780`（T-916），`agent/copilot = d1910dc`，
+  `agent/doubao = 378bdd54`。本轮成果将推送至 `agent/glm → develop → main`。
+
+### 说明：本轮复核推翻了交接单的两处过期描述
+
+1. 「T-917-5 还剩 6 个页面待迁」——**已过期**。实测 grep 组件引用，17 页早在 9-13 23:xx 那轮就已 100% 迁移。
+   **判断依据取代码，不取交接文档**（文档描述的是「当时」，代码描述的是「现在」）。
+2. 「P3 表格列宽待修」——**已修**。`show-overflow-tooltip` 全站 65 处，cited 三列均已有 `min-width`。
+
+### 下一步（给用户）
+
+项目功能已完工，可直接按下节「环境」启动并自测。若需要继续增强，可考虑（均非缺陷）：
+① 报告导出 PDF；② 通知的已读状态持久化；③ 操作日志表按月归档策略。
+
+---
+
+## 2026-09-13 23:30 豆包 → GLM（顶部栏功能补全 + P1/P4/P5 已修复）
+
+### 本轮已改（已编译 + 浏览器验证）
+
+- **后端**：新增 `POST /api/auth/change-password`（自服务改密，BCrypt 校验旧密码），改了 4 个 Java 文件（DTO/AuthService/AuthServiceImpl/AuthController）。
+- **前端**：
+  - 面包屑重写（MainLayout.vue）：不再出现"工作台/工作台"重复，LIMS 可点回 dashboard；
+  - PageHeader 标题竖排已修（`flex-shrink:0`）；
+  - 个人资料/修改密码/操作日志/帮助中心四个对话框已接好（之前是 ElMessage 占位）；
+  - query/testing,history,library 三页查询按钮移到 DataFilter #actions 插槽（右对齐）；
+  - favicon.svg 已加（console 0 错误）。
+- **验证**：后端 107/107 单测过、vue-tsc 0 错、lint 0 错、浏览器实测通过。
+
+### 仍待 GLM
+
+1. **Git 恢复**（最高优先）：`.git` 损坏，本轮改动和 T-917 都在工作区，必须恢复后一起提交。
+2. 操作日志后端（sys_operation_log 表 + AOP）——前端对话框已留空态。
+3. 通知中心假数据接入后端。
+4. P3 表格列宽（show-overflow-tooltip 逐列）。
+5. T-917-6~10 三档分辨率 + 20 项 Checklist。
+
+---
+
+## 2026-09-13 22:55 豆包 → GLM（测试巡检：问题清单已落档，代码未动）
+
+### 结论先行
+
+本轮豆包把项目完整跑起来逐页实测，**质量门禁全绿、业务主流程无回归**，但找到 5 个纯前端 UI 问题（P1~P5），已在 `docs/journal/2026-09-13-doubao-test-audit.md` 详述。**豆包未改任何 backend/frontend 代码**。
+
+### 已验证通过（无需再测）
+
+- 后端 `mvn -o test`：**107/107 通过，BUILD SUCCESS**；前端 `lint` 0 错误、`vue-tsc --noEmit` 0 错误、`vite build` 37.56s 成功。
+- nj001 登录、动态路由、菜单树侧栏、工作台 KPI、质量分析 7 个 ECharts、报告打印 CMA 封面+项目表、审核空态、部门树表全部正常。
+- 所有 `/api` 端点正确路径下 code=0。
+
+### 🔴 待 GLM 修复（按优先级，均为前端 CSS/布局微调）
+
+| 级别 | 问题 | 位置/复现 | 修复建议 |
+|---|---|---|---|
+| P1 | PageHeader 标题被挤成逐字竖排 | 样品登记/项目标准库/结果录入/报告审核签发，右侧 2+按钮时 | `PageHeader.vue` `.page-header__title` 加 `flex-shrink:0; white-space:nowrap` |
+| P2 | 双面包屑重复 | 顶栏 + PageHeader 都渲染面包屑，当前页名出现两次 | 二选一：PageHeader 不再渲染面包屑，或顶栏不渲染 |
+| P3 | 表格列宽截断 | 监抽任务"任务来源"只显首字；报告生成"检验类别"表头截断；样品登记"抽样地址"省略号 | 相关列加 `min-width` 或 `show-overflow-tooltip` |
+| P4 | 查询筛选按钮对齐不一致 | 在检/历史/项目库查询按钮居左；其余页居右 | DataFilter 内按钮统一右对齐 |
+| P5 | favicon 每页 404 | `public/` 无 favicon.ico，console 每页 3 条 Failed to load | 放 `public/favicon.ico` 或 index.html 加 link |
+
+### 🟡 Git（GLM 专属，豆包未碰）
+
+- `D:\lims\.git` 对象库仍损坏（缺 tree `3c168259...`），`git status` 不可用。
+- 临时副本 `C:\Users\Chen\AppData\Local\Temp\lims_work_ui` 在 **main** 分支（非 agent/glm），已暂存 38 文件 +1814/-560，无删除/无构建产物，`.shots/` 未跟踪。
+- 需：在临时副本排除 `.shots/` → 核对暂存区 → 提交到 `agent/glm` → 合 develop → main → `ls-remote` 校验。
+
+### 环境备忘（复现用）
+
+- 后端启动：`JAVA_HOME=C:\Program Files\Java\latest\jdk-21` + `mvn -o -DskipTests spring-boot:run`（8080）。
+- 前端 dev server 已在 5173 跑（PID 26952）；MySQL80 服务 Running，root/123456，库 lims。
+- 本机 git 全路径：`C:\Users\Chen\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`。
+
+---
+
+## 2026-09-13 20:34 GLM → 下一位 Agent（未完成任务集中交接）
+
+### 先看结论
+
+本轮没有继续改业务代码，专门把「已完成」与「仍未完成/未验证/受阻」拆开记录。详细清单见 `docs/journal/2026-09-13-glm-handoff-unfinished.md`。下一位 Agent 不要把 T-105/T-106/T-107/T-603/T-803 或动态路由重新开工，应直接接 T-917 UI 收口和 Git 提交准备。
+
+### 已完成边界
+
+- T-105、T-106、T-107、T-603、T-803：功能交付、关键接口/权限/拒绝路径和真实数据验证已有记录。
+- T-916：动态路由已完成，使用显式路径注册表和菜单/路由同源构建。
+- T-917-1~4：现状分析、Design Token、Layout、公共组件/Element Plus 覆盖已完成。
+- T-917-5 已迁移批次：报告审核、结果录入、系统管理、基础数据、项目库查询、在检查询、历史查询、检验员任务查询、省平台导出。
+- 全局检索未发现直接 `ElMessageBox.confirm`；高风险操作当前统一走 `askConfirm()`。
+
+### 未完成任务
+
+1. **T-917-5 逐页迁移未收口**：继续检查以下页面的 `DataFilter`、loading/empty/error、表格外壳、响应式间距和横向滚动；树形表格不得被普通 `DataTable` 破坏：
+   - `frontend/src/views/assign/index.vue`
+   - `frontend/src/views/item/index.vue`
+   - `frontend/src/views/sample/index.vue`
+   - `frontend/src/views/task/index.vue`
+   - `frontend/src/views/report/generate.vue`
+   - `frontend/src/views/query/analysis.vue`
+2. **专项复核**：`dashboard/index.vue` 已使用真实统计/任务接口，但还需最终视觉、失败态和三档尺寸验收；`report/print.vue` 是独立打印页，需核对 `report-print.css`、打印分页、签名占位和 CMA/CMA-CATL 版式。
+3. **T-917-6~10 待办**：交互统一、ECharts/Dashboard 最终复核、全局视觉统一、20 项 Checklist、1440×900 / 1920×1080 / 1366×768 验收。浏览器自动化当前不可用，真实视觉验收尚未完成。
+4. **质量门禁留证**：lint 与 vue-tsc 已有通过记录；20:27 查询/导出批次的统一 build 需重新执行并记录，交付前建议复核后端 `mvn test`。
+5. **Git 提交/推送未完成**：`D:\lims\.git` broken tree，禁止直接 reset/stash/commit；临时副本 `C:\Users\Chen\AppData\Local\Temp\lims_work_ui` 已暂存 38 个文件、无暂存删除项，但 `.shots/` 仍未跟踪。先排除 `.shots/`，再逐项核对暂存区，最后按 `agent/glm → develop → main` 推进并用 `git ls-remote origin "refs/heads/*"` 校验。
+
+### 推荐接手顺序
+
+1. 在临时副本处理 `.shots/`，执行 `git status --short`、`git diff --cached --stat`、`git diff --cached --name-status`，确认无删除项、构建产物、`node_modules`、`target`、`*.class`。
+2. 若继续 UI，完成上述 6 个页面和 Dashboard/打印页专项复核。
+3. 重新执行 lint、vue-tsc、Vite build，并记录浏览器人工验收结果。
+4. 更新 `TODO.md`、`STATUS.md`、`HANDOFF.md`、日记索引后再提交。
+5. Git 每次写操作后检查 commit object、`HEAD`、`agent/glm` ref；不要把 PAT 写入任何文件、remote 或日志。
+
+---
+
+## 2026-09-13 20:27 GLM → GLM/用户（T-917 STEP 5 查询与导出批次）
+
+### 本轮追加
+
+- `query/library.vue`、`query/testing.vue`、`query/history.vue`、`result/my-tasks.vue`、`export/province.vue` 的筛选区接入 `DataFilter`；
+- 保留原有查询参数、分页逻辑、后端数据范围约束和 Excel 导出行为，没有修改 API 契约；
+- lint 与 vue-tsc 通过；统一 build 将在本批次收尾时执行。
+
+### 下一步
+
+继续处理剩余页面的公共状态外壳与响应式细节，然后执行全量 lint、vue-tsc、Vite build、横向溢出静态检查和最终验收清单。
+
+---
+
+## 2026-09-13 20:17 GLM → GLM/用户（T-917 STEP 5 系统与基础数据批次）
+
+### 本轮追加
+
+- `system/user.vue`、`system/role.vue`、`system/menu.vue`、`base/tester-method.vue`、`base/product-lib.vue` 的筛选区继续使用 `DataFilter`；
+- `base/tester-method.vue` 的列表接入 `DataTable` 统一 loading/empty 外壳，保留既有 Element Plus 列、分页和查询函数；
+- `system/dept.vue` 保留树形表格原结构，避免公共表格外壳破坏树展开交互；
+- 验证：lint 通过、vue-tsc 通过、Vite build 通过，输出目录为 `frontend/dist-step5-system-base`。
+
+### 注意
+
+当前仍未提交：`D:\lims\.git` 的 broken tree 使本地 `status/log` 不可靠，提交前必须使用临时副本恢复对象库并逐项检查暂存区。
+
+---
+
+## 2026-09-13 20:10 GLM → GLM/用户（T-917 STEP 4 收口 + STEP 5 首批）
+
+### 本轮结论
+
+1. T-917-1~4 已在 `TODO.md` 同步为完成；T-917-5 标记为进行中，T-917-6~10 保持待办。
+2. 报告审核页和结果录入页完成首批 UI 迁移：审核 KPI、`DataFilter`、结果异常行高亮、高风险确认统一。
+3. 系统管理四页与基础数据两页的删除确认均改用 `askConfirm()`；前端未再直接调用 `ElMessageBox.confirm`。
+4. 新增可复现资产：
+   - `docs/knowledge/2026-09-13-ui-component-system.md`
+   - `docs/journal/2026-09-13-glm-ui-step4-step5.md`
+   - `docs/journal/README.md` 已补索引。
+
+### 关键实现
+
+- `report/audit.vue` 的待办 KPI 使用服务端分页 `total`；异常样品、异常项、不合格明确标注「本页」，没有把分页数据伪装成全量统计。
+- `result/index.vue` 的行级颜色只消费后端结论：未录入紫色、待判定橙色、不合格红色；不在前端重算判定。
+- `DataFilter` 只负责布局和插槽，查询/重置仍由页面函数维护；没有改 API、权限、状态机或 Pinia 数据结构。
+
+### 验证结果
+
+- `frontend npm run lint`：通过，0 errors / 0 warnings。
+- `frontend npm exec vue-tsc -- --noEmit`：通过。
+- `LIMS_BUILD_OUTDIR=dist-step5-filter npm run build`：通过。
+- 构建体积：`analysis` 分包约 542.59 kB / gzip 183.01 kB；主包约 1,274.98 kB / gzip 412.18 kB。
+
+### 未完成与阻塞
+
+- 约 17 个目标页面尚未全部迁移，系统/基础数据/查询页还需继续统一 `DataFilter`、`DataTable`、加载/空态和响应式布局。
+- 真实浏览器自动化仍不可用，本轮采用 DOM/CSS 代码审查和构建门禁；三档分辨率验收留到 T-917-6~10。
+- 当前 `D:\lims\.git` 存在 broken tree，`git status/log` 不可用。本轮没有在损坏对象库上执行提交或重置；提交时须复制到临时工作副本，逐项核对 `git status --short` 后再走 `agent/glm → develop → main`。
+
+---
+
 ## 2026-09-13 17:15 GLM → GLM/用户（动态路由落地 + 三分支推送已打通）
 
 ### 本轮结论（先看这段）

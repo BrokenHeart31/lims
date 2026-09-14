@@ -266,3 +266,54 @@ export function updateDeptApi(body: DeptSaveBody): Promise<void> {
 export function removeDeptApi(id: number): Promise<void> {
   return del<void>(`/sys/dept/${id}`)
 }
+
+// ============================================================================
+// 操作日志（api-spec 第 15 章）
+// ============================================================================
+
+/** 操作日志查询参数 */
+export interface OperationLogParams {
+  current: number
+  size: number
+  /** 模块精确筛选 */
+  module?: string
+  /** 操作人工号（仅拥有 log:view 的用户传参有效） */
+  operator?: string
+  /** 起始时间 yyyy-MM-dd HH:mm:ss */
+  startTime?: string
+  /** 结束时间 yyyy-MM-dd HH:mm:ss */
+  endTime?: string
+}
+
+/** 操作日志行 */
+export interface OperationLogRow {
+  id: number
+  module: string
+  summary: string
+  httpMethod: string
+  uri: string
+  operator: string
+  operatorName?: string | null
+  ip?: string | null
+  /** 1=成功 0=失败 */
+  result: number
+  resultLabel: string
+  statusCode: number
+  durationMs: number
+  createdAt: string
+}
+
+/**
+ * 分页查询操作日志：GET /sys/log/page
+ *
+ * 日志由后端拦截器自动写入，前端只读。
+ * 数据范围：无 `log:view` 权限的账号只能看到自己的记录（服务端强制，传参无法绕过）。
+ */
+export function pageOperationLogApi(
+  params: OperationLogParams,
+): Promise<PageResult<OperationLogRow>> {
+  return get<PageResult<OperationLogRow>>(
+    '/sys/log/page',
+    params as unknown as Record<string, unknown>,
+  )
+}

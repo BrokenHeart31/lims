@@ -38,6 +38,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import DataTable from '@/components/common/DataTable.vue'
 import { askConfirm } from '@/utils/confirm'
 
 // status → tone（统一徽章）
@@ -58,7 +60,12 @@ const total = ref(0)
 const current = ref(1)
 const size = ref(10)
 
+const listError = ref('')
+let listRequest = 0
+
 async function loadPending(): Promise<void> {
+  const request = ++listRequest
+  listError.value = ''
   loading.value = true
   try {
     const res = await pagePendingAssignApi({
@@ -67,12 +74,13 @@ async function loadPending(): Promise<void> {
       sampleNo: query.sampleNo || undefined,
       sampleName: query.sampleName || undefined,
     })
+    if (request !== listRequest) return
     tableData.value = res.records
     total.value = res.total
   } catch {
-    // 请求层已统一提示
+    if (request === listRequest) listError.value = '未能读取列表，请检查网络或权限后重试。'
   } finally {
-    loading.value = false
+    if (request === listRequest) loading.value = false
   }
 }
 
@@ -103,6 +111,8 @@ const drawerVisible = ref(false)
 const drawerLoading = ref(false)
 const autoAssigning = ref(false)
 const confirming = ref(false)
+const reassigning = ref(false)
+const drawerBusy = computed(() => autoAssigning.value || confirming.value || reassigning.value || drawerLoading.value)
 const currentSample = ref<AssignPendingRow | null>(null)
 const detail = ref<AssignDetail | null>(null)
 
@@ -120,14 +130,21 @@ async function openDrawer(row: AssignPendingRow): Promise<void> {
   drawerLoading.value = true
   detail.value = null
   await loadDetail(row.id)
-  drawerLoading.value = false
 }
 
+const detailError = ref('')
+let detailRequest = 0
 async function loadDetail(sampleId: number): Promise<void> {
+  const request = ++detailRequest
+  drawerLoading.value = true
+  detailError.value = ''
   try {
-    detail.value = await getAssignDetailApi(sampleId)
+    const result = await getAssignDetailApi(sampleId)
+    if (request === detailRequest) detail.value = result
   } catch {
-    // 请求层已统一提示
+    if (request === detailRequest) detailError.value = '安排明细加载失败，请重新加载后再操作。'
+  } finally {
+    if (request === detailRequest) drawerLoading.value = false
   }
 }
 
@@ -153,7 +170,7 @@ function sourceLabel(src: string): string {
 
 /** 自动分配（5.4） */
 async function handleAutoAssign(): Promise<void> {
-  if (!currentSample.value) return
+  if (!currentSample.value || drawerBusy.value || detailError.value) return
   if (!(await askConfirm('将对该样品所有未人工改派的项按「分类规则」与「方法资质」自动指派，可重跑。', '执行自动分配'))) return
   autoAssigning.value = true
   try {
@@ -163,6 +180,8 @@ async function handleAutoAssign(): Promise<void> {
     ElMessage.success(`自动分配完成：${ok2} 项已指派${pending.length ? `，${pending.length} 项仍待人工指派` : ''}`)
     await loadDetail(currentSample.value!.id)
     await loadPending()
+  } catch {
+    // 请求层已提示，保留抽屉供重试，避免未处理的 Promise rejection。
   } finally {
     autoAssigning.value = false
   }
@@ -170,22 +189,26 @@ async function handleAutoAssign(): Promise<void> {
 
 /** 人工改派（5.5） */
 async function handleReassign(item: AssignItemRow, testerNo: string): Promise<void> {
-  if (!testerNo) return
+  if (!testerNo || drawerBusy.value || detailError.value) return
   if (item.testerNo === testerNo) return
   if (!(await askConfirm(`将「${item.itemName}」指派给 ${testerNo}（标记为人工改派，后续自动分配不再覆盖）。`, '人工改派', { type: 'warning' }))) return
   try {
+    if (drawerBusy.value) return
+    reassigning.value = true
     await reassignApi({ itemId: item.id, testerNo })
     ElMessage.success('改派成功')
     await loadDetail(currentSample.value!.id)
     await loadPending()
   } catch {
     // 请求层已统一提示（含「无资质」拒绝）
+  } finally {
+    reassigning.value = false
   }
 }
 
 /** 安排确认（5.6） */
 async function handleConfirm(): Promise<void> {
-  if (!detail.value || !currentSample.value) return
+  if (!detail.value || !currentSample.value || drawerBusy.value || detailError.value) return
   if (!detail.value.inputPermitted) {
     ElMessage.warning('仍有未指派项，请先指派或自动分配')
     return
@@ -242,37 +265,39 @@ onMounted(() => {
         :inline="true"
         @submit.prevent="handleSearch"
       >
-        <el-form-item label="样品编号">
-          <el-input
-            v-model="query.sampleNo"
-            placeholder="模糊匹配"
-            clearable
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="样品名称">
-          <el-input
-            v-model="query.sampleName"
-            placeholder="模糊匹配"
-            clearable
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            :icon="Search"
-            @click="handleSearch"
-          >
-            查询
-          </el-button>
-          <el-button
-            :icon="Refresh"
-            @click="handleReset"
-          >
-            重置
-          </el-button>
-        </el-form-item>
+        <DataFilter>
+          <el-form-item label="样品编号">
+            <el-input
+              v-model="query.sampleNo"
+              placeholder="模糊匹配"
+              clearable
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="样品名称">
+            <el-input
+              v-model="query.sampleName"
+              placeholder="模糊匹配"
+              clearable
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <template #actions>
+            <el-button
+              type="primary"
+              :icon="Search"
+              @click="handleSearch"
+            >
+              查询
+            </el-button>
+            <el-button
+              :icon="Refresh"
+              @click="handleReset"
+            >
+              重置
+            </el-button>
+          </template>
+        </DataFilter>
       </el-form>
     </AppCard>
 
@@ -281,85 +306,86 @@ onMounted(() => {
       variant="panel"
       :padding="16"
     >
-      <el-table
-        v-loading="loading"
-        :data="tableData"
-        stripe
-      >
-        <el-table-column
-          prop="sampleNo"
-          label="样品编号"
-          min-width="180"
-        />
-        <el-table-column
-          prop="sampleName"
-          label="样品名称"
-          min-width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="clientName"
-          label="委托单位"
-          min-width="140"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          label="分配进度"
-          width="180"
-          align="center"
-        >
-          <template #default="{ row }">
-            <el-progress
-              :percentage="row.assignTotal === 0 ? 0 : Math.round((row.assignDone / row.assignTotal) * 100)"
-              :status="row.assignDone === row.assignTotal && row.assignTotal > 0 ? 'success' : ''"
-              :stroke-width="14"
-              :text-inside="true"
-            />
-            <span class="progress-text">{{ row.assignDone }} / {{ row.assignTotal }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="状态"
-          width="120"
-          align="center"
-        >
-          <template #default="{ row }">
-            <StatusBadge :tone="statusTone(row.statusLabel)">
-              {{ row.statusLabel }}
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="操作"
-          width="110"
-          fixed="right"
-          align="center"
-        >
-          <template #default="{ row }">
-            <el-button
-              type="primary"
-              link
-              @click="openDrawer(row as AssignPendingRow)"
-            >
-              任务安排
-            </el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <AppEmpty title="暂无待安排样品（需先在「项目分解」完成分解确认）" />
-        </template>
-      </el-table>
-
-      <el-pagination
-        v-model:current-page="current"
-        v-model:page-size="size"
+      <DataTable
+        :rows="tableData"
+        :loading="loading"
+        :error="listError"
+        :current="current"
+        :page-size="size"
         :total="total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
-        class="pager"
+        keep-mounted
+        @retry="loadPending"
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
-      />
+      >
+        <el-table
+          :data="tableData"
+          stripe
+        >
+          <el-table-column
+            prop="sampleNo"
+            label="样品编号"
+            min-width="180"
+          />
+          <el-table-column
+            prop="sampleName"
+            label="样品名称"
+            min-width="160"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="clientName"
+            label="委托单位"
+            min-width="140"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            label="分配进度"
+            width="180"
+            align="center"
+          >
+            <template #default="{ row }">
+              <el-progress
+                :percentage="row.assignTotal === 0 ? 0 : Math.round((row.assignDone / row.assignTotal) * 100)"
+                :status="row.assignDone === row.assignTotal && row.assignTotal > 0 ? 'success' : ''"
+                :stroke-width="14"
+                :text-inside="true"
+              />
+              <span class="progress-text">{{ row.assignDone }} / {{ row.assignTotal }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="状态"
+            width="120"
+            align="center"
+          >
+            <template #default="{ row }">
+              <StatusBadge :tone="statusTone(row.statusLabel)">
+                {{ row.statusLabel }}
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="操作"
+            width="110"
+            fixed="right"
+            align="center"
+          >
+            <template #default="{ row }">
+              <el-button
+                type="primary"
+                link
+                @click="openDrawer(row as AssignPendingRow)"
+              >
+                任务安排
+              </el-button>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <AppEmpty title="暂无待安排样品（需先在「项目分解」完成分解确认）" />
+          </template>
+        </el-table>
+      </DataTable>
     </AppCard>
 
     <!-- 安排抽屉 -->
@@ -374,7 +400,16 @@ onMounted(() => {
         v-loading="drawerLoading"
         class="drawer-body"
       >
-        <template v-if="detail">
+        <AppEmpty
+          v-if="detailError && !drawerLoading"
+          title="安排明细加载失败"
+          :hint="detailError"
+        >
+          <el-button @click="currentSample && loadDetail(currentSample.id)">
+            重新加载
+          </el-button>
+        </AppEmpty>
+        <template v-else-if="detail">
           <!-- 头部：样品摘要 + 进度 + 操作 -->
           <AppCard variant="glass">
             <div class="assign-head">

@@ -17,6 +17,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import DataTable from '@/components/common/DataTable.vue'
 import { askConfirm } from '@/utils/confirm'
 
 const authStore = useAuthStore()
@@ -36,7 +38,12 @@ const total = ref(0)
 const pageNum = ref(1)
 const pageSize = ref(10)
 
+const listError = ref('')
+let listRequest = 0
+
 async function loadList(): Promise<void> {
+  const request = ++listRequest
+  listError.value = ''
   loading.value = true
   try {
     const res = await pageTaskApi({
@@ -46,12 +53,13 @@ async function loadList(): Promise<void> {
       taskName: query.taskName || undefined,
       status: query.status || undefined,
     })
+    if (request !== listRequest) return
     tableData.value = res.records
     total.value = res.total
   } catch {
-    // 请求层已统一提示
+    if (request === listRequest) listError.value = '未能读取列表，请检查网络或权限后重试。'
   } finally {
-    loading.value = false
+    if (request === listRequest) loading.value = false
   }
 }
 
@@ -93,8 +101,10 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const deletingId = ref<number | null>(null)
 
 const emptyForm = (): SuperviseTask => ({
+  id: undefined,
   taskNo: '',
   taskName: '',
   taskNature: '监督抽检',
@@ -123,6 +133,8 @@ const rules: FormRules = {
 
 function openCreate(): void {
   dialogTitle.value = '新建监抽任务'
+  // 编辑后再新建必须移除上一条 id，避免误调用更新接口。
+  delete form.id
   Object.assign(form, emptyForm())
   dialogVisible.value = true
 }
@@ -160,13 +172,17 @@ async function handleSubmit(): Promise<void> {
 }
 
 async function handleDelete(row: SuperviseTask): Promise<void> {
+  if (!row.id || deletingId.value !== null) return
   if (!(await askConfirm(`确定删除任务「${row.taskName}（${row.taskNo}）」吗？`, '删除确认', { type: 'warning' }))) return
+  deletingId.value = row.id
   try {
-    await deleteTaskApi(row.id!)
+    await deleteTaskApi(row.id)
     ElMessage.success('删除成功')
-    void loadList()
+    await loadList()
   } catch {
     // 请求层已统一提示
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -211,48 +227,54 @@ onMounted(() => {
         inline
         @submit.prevent
       >
-        <el-form-item label="任务编号">
-          <el-input
-            v-model="query.taskNo"
-            placeholder="任务编号"
-            clearable
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="任务名称">
-          <el-input
-            v-model="query.taskName"
-            placeholder="任务名称"
-            clearable
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select
-            v-model="query.status"
-            placeholder="全部"
-            clearable
-            style="width: 140px"
-          >
-            <el-option
-              v-for="s in TASK_STATUS_OPTIONS"
-              :key="s"
-              :label="s"
-              :value="s"
+        <DataFilter>
+          <el-form-item label="任务编号">
+            <el-input
+              v-model="query.taskNo"
+              placeholder="任务编号"
+              clearable
+              @keyup.enter="handleSearch"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            @click="handleSearch"
-          >
-            查询
-          </el-button>
-          <el-button @click="handleReset">
-            重置
-          </el-button>
-        </el-form-item>
+          </el-form-item>
+          <el-form-item label="任务名称">
+            <el-input
+              v-model="query.taskName"
+              placeholder="任务名称"
+              clearable
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select
+              v-model="query.status"
+              placeholder="全部"
+              clearable
+              style="width: 140px"
+            >
+              <el-option
+                v-for="s in TASK_STATUS_OPTIONS"
+                :key="s"
+                :label="s"
+                :value="s"
+              />
+            </el-select>
+          </el-form-item>
+          <template #actions>
+            <el-button
+              type="primary"
+              :disabled="loading"
+              @click="handleSearch"
+            >
+              查询
+            </el-button>
+            <el-button
+              :disabled="loading"
+              @click="handleReset"
+            >
+              重置
+            </el-button>
+          </template>
+        </DataFilter>
       </el-form>
     </AppCard>
 
@@ -261,100 +283,105 @@ onMounted(() => {
       variant="panel"
       :padding="16"
     >
-      <el-table
-        v-loading="loading"
-        :data="tableData"
-        stripe
-      >
-        <el-table-column
-          prop="taskNo"
-          label="任务编号"
-          width="160"
-        />
-        <el-table-column
-          prop="taskName"
-          label="任务名称"
-          min-width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="taskNature"
-          label="任务性质"
-          width="100"
-        />
-        <el-table-column
-          prop="taskSource"
-          label="任务来源"
-          min-width="140"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="regionLevel"
-          label="级别"
-          width="80"
-        />
-        <el-table-column
-          prop="leader"
-          label="负责人"
-          width="90"
-        />
-        <el-table-column
-          prop="receiveDate"
-          label="接受日期"
-          width="110"
-        />
-        <el-table-column
-          prop="status"
-          label="状态"
-          width="90"
-        >
-          <template #default="{ row }">
-            <StatusBadge
-              :tone="statusTone((row as SuperviseTask).status)"
-              size="sm"
-            >
-              {{ (row as SuperviseTask).status }}
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="操作"
-          width="140"
-          fixed="right"
-        >
-          <template #default="{ row }">
-            <el-button
-              v-if="authStore.hasPermission('task:edit')"
-              link
-              type="primary"
-              @click="openEdit(row as SuperviseTask)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              v-if="authStore.hasPermission('task:remove')"
-              link
-              type="danger"
-              @click="handleDelete(row as SuperviseTask)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <AppEmpty title="暂无监抽任务，可点击右上「新建任务」下达" />
-        </template>
-      </el-table>
-
-      <el-pagination
-        class="pager"
-        :current-page="pageNum"
+      <DataTable
+        :rows="tableData"
+        :loading="loading"
+        :error="listError"
+        :current="pageNum"
         :page-size="pageSize"
+        :page-sizes="[10, 20, 30, 40, 50, 100]"
         :total="total"
-        layout="total, sizes, prev, pager, next, jumper"
+        keep-mounted
+        @retry="loadList"
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
-      />
+      >
+        <el-table
+          :data="tableData"
+          stripe
+        >
+          <el-table-column
+            prop="taskNo"
+            label="任务编号"
+            width="160"
+          />
+          <el-table-column
+            prop="taskName"
+            label="任务名称"
+            min-width="160"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="taskNature"
+            label="任务性质"
+            width="100"
+          />
+          <el-table-column
+            prop="taskSource"
+            label="任务来源"
+            min-width="140"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="regionLevel"
+            label="级别"
+            width="80"
+          />
+          <el-table-column
+            prop="leader"
+            label="负责人"
+            width="90"
+          />
+          <el-table-column
+            prop="receiveDate"
+            label="接受日期"
+            width="110"
+          />
+          <el-table-column
+            prop="status"
+            label="状态"
+            width="90"
+          >
+            <template #default="{ row }">
+              <StatusBadge
+                :tone="statusTone((row as SuperviseTask).status)"
+                size="sm"
+              >
+                {{ (row as SuperviseTask).status }}
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="操作"
+            width="140"
+            fixed="right"
+          >
+            <template #default="{ row }">
+              <el-button
+                v-if="authStore.hasPermission('task:edit')"
+                link
+                type="primary"
+                @click="openEdit(row as SuperviseTask)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                v-if="authStore.hasPermission('task:remove')"
+                link
+                type="danger"
+                :loading="deletingId === (row as SuperviseTask).id"
+                :disabled="deletingId !== null && deletingId !== (row as SuperviseTask).id"
+                @click="handleDelete(row as SuperviseTask)"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <AppEmpty title="暂无监抽任务，可点击右上「新建任务」下达" />
+          </template>
+        </el-table>
+      </DataTable>
     </AppCard>
 
     <!-- 新建/编辑弹窗 -->

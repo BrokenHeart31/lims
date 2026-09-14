@@ -18,6 +18,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import DataTable from '@/components/common/DataTable.vue'
 
 // ---------------- 待分解样品列表 ----------------
 const queryRef = ref<FormInstance>()
@@ -28,7 +30,12 @@ const total = ref(0)
 const current = ref(1)
 const size = ref(10)
 
+const listError = ref('')
+let listRequest = 0
+
 async function loadPending(): Promise<void> {
+  const request = ++listRequest
+  listError.value = ''
   loading.value = true
   try {
     const res = await pagePendingItemApi({
@@ -37,12 +44,13 @@ async function loadPending(): Promise<void> {
       sampleNo: query.sampleNo || undefined,
       sampleName: query.sampleName || undefined,
     })
+    if (request !== listRequest) return
     tableData.value = res.records
     total.value = res.total
   } catch {
-    // 请求层已统一提示
+    if (request === listRequest) listError.value = '未能读取列表，请检查网络或权限后重试。'
   } finally {
-    loading.value = false
+    if (request === listRequest) loading.value = false
   }
 }
 
@@ -71,8 +79,10 @@ function handleSizeChange(s: number): void {
 // ---------------- 分解抽屉 ----------------
 const drawerVisible = ref(false)
 const drawerLoading = ref(false)
+const drawerError = ref('')
 const saving = ref(false)
 const confirming = ref(false)
+const drawerBusy = computed(() => drawerLoading.value || saving.value || confirming.value)
 const currentSample = ref<ItemPendingRow | null>(null)
 const matchResult = ref<ItemMatchResult | null>(null)
 /** 可编辑的明细网格（套库初稿 + 人工调整） */
@@ -95,6 +105,7 @@ async function openDrawer(row: ItemPendingRow): Promise<void> {
   editorItems.value = []
   matchResult.value = null
   dirty.value = false
+  drawerError.value = ''
   try {
     // 优先取已保存明细；无则自动套库生成初稿
     const saved = await listItemApi(row.id)
@@ -104,7 +115,7 @@ async function openDrawer(row: ItemPendingRow): Promise<void> {
       await doMatch(row.id)
     }
   } catch {
-    // 请求层已统一提示
+    drawerError.value = '分解明细读取失败，请重新加载后再编辑。'
   } finally {
     drawerLoading.value = false
   }
@@ -113,8 +124,9 @@ async function openDrawer(row: ItemPendingRow): Promise<void> {
 /** 套库：拉取标准库初稿（不落库） */
 async function doMatch(sampleId?: number): Promise<void> {
   const id = sampleId ?? currentSample.value?.id
-  if (!id) return
+  if (!id || (!sampleId && drawerBusy.value)) return
   drawerLoading.value = true
+  drawerError.value = ''
   try {
     const res = await matchItemApi(id)
     matchResult.value = res
@@ -149,10 +161,17 @@ async function doMatch(sampleId?: number): Promise<void> {
       ElMessage.warning('未找到匹配的产品标准库，请人工添加检测单项')
     }
   } catch {
-    // 请求层已统一提示
+    drawerError.value = '自动套库失败，原有编辑内容已保留；请重试套库。'
   } finally {
     drawerLoading.value = false
   }
+}
+
+async function retryDrawer(): Promise<void> {
+  if (!currentSample.value || drawerBusy.value) return
+  // 套库失败时保留编辑内容，不通过重新打开抽屉清空草稿。
+  if (dirty.value || editorItems.value.length > 0) await doMatch()
+  else await openDrawer(currentSample.value)
 }
 
 /** 人工新增一行 */
@@ -197,7 +216,7 @@ function resequence(): void {
 /** 保存分解（覆盖式） */
 async function handleSave(): Promise<void> {
   const sampleId = currentSample.value?.id
-  if (!sampleId) return
+  if (!sampleId || drawerBusy.value || drawerError.value) return
   if (editorItems.value.length === 0) {
     ElMessage.warning('请至少保留一个检验项目')
     return
@@ -224,7 +243,7 @@ async function handleSave(): Promise<void> {
 /** 确认保存 → S20→S30 */
 async function handleConfirm(): Promise<void> {
   const sampleId = currentSample.value?.id
-  if (!sampleId) return
+  if (!sampleId || drawerBusy.value || drawerError.value) return
   if (dirty.value) {
     ElMessage.warning('有未保存的改动，请先保存再确认')
     return
@@ -251,6 +270,12 @@ async function handleConfirm(): Promise<void> {
   } finally {
     confirming.value = false
   }
+}
+
+async function beforeCloseDrawer(done: () => void): Promise<void> {
+  if (drawerBusy.value) return
+  if (dirty.value && !(await confirm({ title: '放弃未保存改动', message: '分解内容尚未保存，确定关闭并放弃本次改动吗？', tone: 'warning', confirmText: '放弃改动' }))) return
+  done()
 }
 
 function handleCloseDrawer(): void {
@@ -287,39 +312,41 @@ onMounted(() => {
         :model="query"
         inline
       >
-        <el-form-item label="样品编号">
-          <el-input
-            v-model="query.sampleNo"
-            placeholder="模糊查询"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="样品名称">
-          <el-input
-            v-model="query.sampleName"
-            placeholder="模糊查询"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            :icon="Search"
-            @click="handleSearch"
-          >
-            查询
-          </el-button>
-          <el-button
-            :icon="Refresh"
-            @click="handleReset"
-          >
-            重置
-          </el-button>
-        </el-form-item>
+        <DataFilter>
+          <el-form-item label="样品编号">
+            <el-input
+              v-model="query.sampleNo"
+              placeholder="模糊查询"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="样品名称">
+            <el-input
+              v-model="query.sampleName"
+              placeholder="模糊查询"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <template #actions>
+            <el-button
+              type="primary"
+              :icon="Search"
+              @click="handleSearch"
+            >
+              查询
+            </el-button>
+            <el-button
+              :icon="Refresh"
+              @click="handleReset"
+            >
+              重置
+            </el-button>
+          </template>
+        </DataFilter>
       </el-form>
     </AppCard>
 
@@ -334,120 +361,120 @@ onMounted(() => {
           <span class="toolbar-sub">共 {{ total }} 条</span>
         </div>
       </div>
-      <el-table
-        v-loading="loading"
-        :data="tableData"
-        border
-        stripe
-        height="calc(100vh - 360px)"
+      <DataTable
+        :rows="tableData"
+        :loading="loading"
+        :error="listError"
+        :current="current"
+        :page-size="size"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        keep-mounted
+        @retry="loadPending"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
       >
-        <el-table-column
-          type="index"
-          label="#"
-          width="55"
-          align="center"
-        />
-        <el-table-column
-          prop="sampleNo"
-          label="样品编号"
-          width="180"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="sampleName"
-          label="样品名称"
-          min-width="140"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="clientName"
-          label="受检单位"
-          min-width="180"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="taskNo"
-          label="任务编号"
-          width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="inspectType"
-          label="检验类别"
-          width="110"
-        />
-        <el-table-column
-          prop="samplingDate"
-          label="采样日期"
-          width="115"
-        />
-        <el-table-column
-          label="分解进度"
-          width="110"
-          align="center"
+        <el-table
+          :data="tableData"
+          border
+          stripe
+          height="calc(100vh - 360px)"
         >
-          <template #default="{ row }">
-            <StatusBadge
-              v-if="row.itemCount > 0"
-              tone="success"
-            >
-              {{ row.itemCount }} 项
-            </StatusBadge>
-            <StatusBadge
-              v-else
-              tone="blank"
-            >
-              未分解
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="状态"
-          width="100"
-          align="center"
-        >
-          <template #default="{ row }">
-            <StatusBadge tone="purple">
-              {{ row.statusLabel }}
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="操作"
-          width="110"
-          fixed="right"
-          align="center"
-        >
-          <template #default="{ row }">
-            <el-button
-              type="primary"
-              link
-              @click="openDrawer(row as ItemPendingRow)"
-            >
-              项目分解
-            </el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <AppEmpty
-            title="暂无待分解样品"
-            hint="样品需先完成「登记确认」（S20）才会出现在此列表"
+          <el-table-column
+            type="index"
+            label="#"
+            width="55"
+            align="center"
           />
-        </template>
-      </el-table>
-
-      <div class="pager">
-        <el-pagination
-          :current-page="current"
-          :page-size="size"
-          :total="total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          background
-          @current-change="handlePageChange"
-          @size-change="handleSizeChange"
-        />
-      </div>
+          <el-table-column
+            prop="sampleNo"
+            label="样品编号"
+            width="180"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="sampleName"
+            label="样品名称"
+            min-width="140"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="clientName"
+            label="受检单位"
+            min-width="180"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="taskNo"
+            label="任务编号"
+            width="160"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="inspectType"
+            label="检验类别"
+            width="110"
+          />
+          <el-table-column
+            prop="samplingDate"
+            label="采样日期"
+            width="115"
+          />
+          <el-table-column
+            label="分解进度"
+            width="110"
+            align="center"
+          >
+            <template #default="{ row }">
+              <StatusBadge
+                v-if="row.itemCount > 0"
+                tone="success"
+              >
+                {{ row.itemCount }} 项
+              </StatusBadge>
+              <StatusBadge
+                v-else
+                tone="blank"
+              >
+                未分解
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="状态"
+            width="100"
+            align="center"
+          >
+            <template #default="{ row }">
+              <StatusBadge tone="purple">
+                {{ row.statusLabel }}
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="操作"
+            width="110"
+            fixed="right"
+            align="center"
+          >
+            <template #default="{ row }">
+              <el-button
+                type="primary"
+                link
+                @click="openDrawer(row as ItemPendingRow)"
+              >
+                项目分解
+              </el-button>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <AppEmpty
+              title="暂无待分解样品"
+              hint="样品需先完成「登记确认」（S20）才会出现在此列表"
+            />
+          </template>
+        </el-table>
+      </DataTable>
     </AppCard>
 
     <!-- 分解抽屉 -->
@@ -456,23 +483,42 @@ onMounted(() => {
       :title="drawerTitle"
       size="78%"
       :close-on-click-modal="false"
+      :before-close="beforeCloseDrawer"
       @closed="handleCloseDrawer"
     >
       <div
         v-loading="drawerLoading"
         class="drawer-body"
       >
+        <el-alert
+          v-if="drawerError"
+          type="error"
+          show-icon
+          :closable="false"
+          :title="drawerError"
+          class="match-alert"
+        >
+          <el-button
+            :disabled="drawerBusy"
+            @click="retryDrawer"
+          >
+            {{ dirty || editorItems.length > 0 ? '重试套库' : '重新加载' }}
+          </el-button>
+        </el-alert>
         <!-- 工具栏 -->
         <div class="toolbar">
           <el-button
             type="primary"
             :icon="MagicStick"
+            :loading="drawerLoading"
+            :disabled="drawerBusy || saving || confirming"
             @click="doMatch()"
           >
             从项目库自动套用
           </el-button>
           <el-button
             :icon="Plus"
+            :disabled="drawerBusy || !!drawerError"
             @click="handleAddRow"
           >
             新增检测单项
@@ -673,6 +719,7 @@ onMounted(() => {
           <el-button
             type="primary"
             :loading="saving"
+            :disabled="drawerLoading || confirming || !!drawerError"
             @click="handleSave"
           >
             保存分解
@@ -680,6 +727,7 @@ onMounted(() => {
           <el-button
             type="success"
             :loading="confirming"
+            :disabled="drawerLoading || saving || dirty || editorItems.length === 0 || !!drawerError"
             @click="handleConfirm"
           >
             确认保存（进入任务安排）
@@ -698,8 +746,10 @@ onMounted(() => {
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: var(--lims-sp-2);
   padding: 14px 22px;
   border-bottom: 1px solid var(--lims-hair);
 }
@@ -741,7 +791,14 @@ onMounted(() => {
 }
 .drawer-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+@media (max-width: 900px) {
+  .toolbar { padding: 12px; }
+  .toolbar .spacer { display: none; }
+  .drawer-footer { justify-content: stretch; }
+  .drawer-footer :deep(.el-button) { flex: 1; min-width: 132px; }
 }
 </style>

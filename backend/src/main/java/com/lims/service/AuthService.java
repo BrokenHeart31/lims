@@ -1,5 +1,6 @@
 package com.lims.service;
 
+import com.lims.dto.ChangePasswordDTO;
 import com.lims.dto.LoginDTO;
 import com.lims.dto.RefreshTokenDTO;
 import com.lims.vo.LoginVO;
@@ -21,4 +22,7 @@ public interface AuthService {
 
     /** 退出：无状态 JWT 预留接口（审计/后续黑名单） */
     void logout();
+
+    /** 当前登录用户自助修改密码：先校验旧密码，再写入新密码（BCrypt） */
+    void changePassword(ChangePasswordDTO dto);
 }

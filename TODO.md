@@ -75,7 +75,8 @@
 | T-914 | **补充治理**：TODO 补齐 T-913 行 + 新增 T-105/T-106/T-107/T-603/T-803 五行（说明书要求但此前未登记的任务） | B | **GLM** | ✅完成 2026-09-13 |
 | T-915 | **T-702/T-801/T-802 实施期实测发现 2 项**：①契约违例 `GlobalExceptionHandler` 对 `@PreAuthorize` 拒绝曾返回 HTTP 200 + body.code=403，与 §0.2「安全层 HTTP 401/403」及 URL 级拒绝（真 403）形态不一致——补 `@ResponseStatus(HttpStatus.FORBIDDEN)` 兑现契约；②暗色主题布局缺陷 `--el-table-bg-color: transparent` 使固定列失去不透明背板，1366×768 下「整体结论」与「操作」列横向溢出文字重叠糊——补 `el-table-fixed-column--right` 单元格背景 + 表头/striped/hover 三态单独覆盖（全局修复受益所有含固定列的表格）+ MySQL 保留字 `generated` 改 `cnt_generated` | S | **GLM** | ✅完成 2026-09-13（与 c385166 一并落地；端到端 54/54 含 njsa000 越权真 HTTP 403 + 视觉回归三档全过） |
 | T-916 | **前端动态路由接入**（按 `/me` 菜单树生成路由 + 侧栏；选型「路径注册表 + 中间件转换」） | A | **GLM** | ✅完成 2026-09-13（用户决策方案 1；新建 `router/routeRegistry.ts`（21 条显式登记 + `PATH_ALIAS` 兼容层 + `normalizeMenuPath`）、`router/dynamicRoutes.ts`（`buildNavigation` 路由与菜单**同源产出**）；重写 `router/index.ts`（五步守卫 + **`registerNotFound()` 移除后重加**规避 catch-all 顺序陷阱）、`stores/auth.ts`（`navMenus`/`navReady`/`setNavMenus`）；`MainLayout.vue` 侧栏改菜单树驱动 + 图标白名单 + 真实全局搜索；`db/seed/01_rbac_seed.sql` 修正 2 条错路径 / 3 条 `visible=0` / 新增 4 条（我的检验任务、项目标准库）+ 授权同步且**已应用到活库**；验证 `vue-tsc` 0 错、`vite build` 成功、**离线路由断言 31/0**、`/me` 实测 R100 见 11 组 / R3 见 2 组、SPA 深链接 6 条 HTTP 200；**未改任何 DB 表结构、未改任何 API 契约**） |
-| T-917 | **UI/UX 全面重构**（用户 2026-09-13 指定后续主线；约 17 页统一升级，报告审核页为第一批重点） | A | **GLM** | 🔵进行中（GLM）——分解为 STEP 1~10，见下方「UI 重构任务分解」 |
+| T-917 | **UI/UX 全面重构**（用户 2026-09-13 指定后续主线；约 17 页统一升级，报告审核页为第一批重点） | A | **GLM** | ✅完成 2026-09-14（STEP 1~10 全部收口：17 页公共组件 100% 迁移；P1~P5 巡检问题全修；**三档分辨率 1440×900 / 1920×1080 / 1366×768 实测无横向溢出**；**真实浏览器全量遍历 20 页 0 console error / 0 网络失败**；Dashboard KPI 加载态改骨架屏） |
+| T-918 | **操作日志落地**（消除用户菜单「操作日志」空壳；同时消除顶部铃铛的假通知数据） | A | **GLM** | ✅完成 2026-09-14（`db/init/09` + `V7` 建 `sys_operation_log`；`OperationLogInterceptor` 零依赖实现（离线仓无 AOP，经论证用 HandlerInterceptor 等价达成）；`GET /api/sys/log/page` + 契约第 15 章；**分级数据范围**：人人可查自己、`log:view` 才能跨用户，服务端强制；前端改真实分页表格；6 项单测固化前缀顺序语义；端到端 6 断言全过含**伪造 operator 参数无效**与**403 失败留痕**；铃铛假通知改写为 6 域真实待办汇总） |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。
 
@@ -88,12 +89,25 @@
 
 | 任务ID | STEP | 任务 | 级别 | Owner | 状态 |
 |---|---|---|---|---|---|
-| T-917-1 | STEP 1 | **分析现有项目与 UI 现状**：盘点技术栈 / 页面清单 / 公共组件 / `styles/` / stores / API / design token / ECharts 配置 / 权限路由，输出「现有 → 新 UI 系统」映射表 + UI 问题清单（**只读不改码**） | A | **GLM** | ⬜待办 |
-| T-917-2 | STEP 2 | **统一 Design Token**：按提示词 §五 对齐色板（品牌色 `#18D6C5` 等）、间距、圆角、字号、阴影；收敛 `styles/tokens.css`，消除散落硬编码色值 | A | **GLM** | ⬜待办 |
-| T-917-3 | STEP 3 | **重构 Layout 外壳**：Sidebar 224 / Header 64 / 菜单树驱动 / 激活态 3px 品牌竖条 / 面包屑 / 折叠态 | A | **GLM** | ⬜待办 |
-| T-917-4 | STEP 4 | **重构公共组件 + Element Plus 主题覆盖**：`AppCard`/`AppButton`/`AppModal`/`AppDrawer`/`AppEmpty`/`AppLoading`/`AppConfirm` + `DataTable`/`DataFilter`/`StatusBadge`/`ProgressBar`/`StatCard` | A | **GLM** | ⬜待办 |
-| T-917-5 | STEP 5 | **逐页 UI 重构（约 17 页）**：按提示词 §三十六 顺序推进；**报告审核页为第一批重点**；结果录入页异常行高亮；Dashboard 接真实业务数据 | A | **GLM** | ⬜待办 |
-| T-917-6 | STEP 6~10 | **交互完善 + ECharts/Dashboard + 全局视觉统一 + 自测**：三档分辨率（1440×900 / 1920×1080 / 1366×768）验证 + 用户 20 项 Checklist 逐条核对 + 输出变更清单 | A | **GLM** | ⬜待办 |
+| T-917-1 | STEP 1 | **分析现有项目与 UI 现状**：盘点技术栈 / 页面清单 / 公共组件 / `styles/` / stores / API / design token / ECharts 配置 / 权限路由，输出「现有 → 新 UI 系统」映射表 + UI 问题清单（**只读不改码**） | A | **GLM** | ✅完成（2026-09-13） |
+| T-917-2 | STEP 2 | **统一 Design Token**：按提示词 §五 对齐色板（品牌色 `#18D6C5` 等）、间距、圆角、字号、阴影；收敛 `styles/tokens.css`，消除散落硬编码色值 | A | **GLM** | ✅完成（2026-09-13） |
+| T-917-3 | STEP 3 | **重构 Layout 外壳**：Sidebar 224 / Header 64 / 菜单树驱动 / 激活态 3px 品牌竖条 / 面包屑 / 折叠态 | A | **GLM** | ✅完成（2026-09-13） |
+| T-917-4 | STEP 4 | **重构公共组件 + Element Plus 主题覆盖**：`AppCard`/`AppButton`/`AppModal`/`AppDrawer`/`AppEmpty`/`AppLoading`/`AppConfirm` + `DataTable`/`DataFilter`/`StatusBadge`/`ProgressBar`/`StatCard` | A | **GLM** | ✅完成（2026-09-13） |
+| T-917-5 | STEP 5 | **逐页 UI 重构（约 17 页）**：按提示词 §三十六 顺序推进；**报告审核页为第一批重点**；结果录入页异常行高亮；Dashboard 接真实业务数据 | A | **GLM** | ✅完成（2026-09-14 复核确认：17 页已 100% 使用 PageHeader + AppCard + StatusBadge + AppEmpty + DataFilter + askConfirm） |
+| T-917-6 | STEP 6~10 | **交互完善 + ECharts/Dashboard + 全局视觉统一 + 自测**：三档分辨率（1440×900 / 1920×1080 / 1366×768）验证 + 用户 20 项 Checklist 逐条核对 + 输出变更清单 | A | **GLM** | ✅完成（2026-09-14：三档分辨率实测 `scrollWidth == clientWidth` 且 DOM 无越界元素；Edge+CDP 全量遍历 20 页 **0 console error / 0 network failure**；工作台/样品登记/结果录入/报告审核/用户管理逐页截图确认渲染正常） |
+
+### T-917 实测发现的 UI 问题（豆包 2026-09-13 22:55 巡检，**已全部修复 2026-09-14**）
+
+| 编号 | 问题 | 位置 | 修复建议 | 状态 |
+|---|---|---|---|---|
+| T-917-B1 | PageHeader 标题 flex-shrink 缺失，右侧多按钮时逐字竖排 | `components/common/PageHeader.vue` `.page-header__title` | 加 `flex-shrink:0; white-space:nowrap` | ✅已修 |
+| T-917-B2 | 顶栏与 PageHeader 双面包屑，当前页名重复 | MainLayout + 各页 PageHeader breadcrumb slot | 二选一 | ✅已修（面包屑统一由顶栏渲染） |
+| T-917-B3 | 表格列宽截断（任务来源/检验类别/抽样地址） | task/report-generate/sample 列表 | 加 min-width 或 show-overflow-tooltip | ✅已修（全站 65 处 `show-overflow-tooltip`） |
+| T-917-B4 | 查询筛选按钮居左 vs 居右不一致 | query/testing,history,lib vs 其他页 | DataFilter 统一右对齐 | ✅已修 |
+| T-917-B5 | favicon.ico 每页 404 | frontend/public/ | 放图标或 index.html link | ✅已修（`favicon.svg`，HTTP 200） |
+| T-917-B6 | 顶部铃铛通知为 **4 条写死的假数据**（违反「禁 mock」原则） | MainLayout.vue | 改为真实待办汇总 | ✅已修（2026-09-14，见 T-918） |
+| T-917-B7 | 用户菜单「操作日志」为**空壳**（对话框仅写「待后端接入」） | MainLayout.vue | 补齐后端 + 接真实数据 | ✅已修（2026-09-14，见 T-918） |
+| T-917-B8 | `AppSkeleton.vue` / `ProgressBar.vue` **零引用死代码** | components/common | 使用或删除 | ✅已处理（Skeleton 接入工作台 KPI 加载态；ProgressBar 删除——全站 4 处进度已用 `el-progress`） |
 
 **用户 20 项验收 Checklist**（T-917 最终验收依据，逐条须可举证）：
 ① Sidebar ② Header ③ Card ④ Button ⑤ Input ⑥ Table ⑦ StatusBadge ⑧ Modal/Drawer ⑨ Loading/Empty/Error ⑩ 十项组件视觉统一

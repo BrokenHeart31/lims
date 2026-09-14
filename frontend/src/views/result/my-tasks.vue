@@ -22,6 +22,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
 import { ElMessage } from 'element-plus'
 
 /** 检验员任务行（与后端 MyTaskVO 对应） */
@@ -162,10 +163,7 @@ onMounted(() => {
       </el-button>
     </PageHeader>
 
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
+    <DataFilter>
       <el-form inline>
         <el-form-item label="样品编号">
           <el-input
@@ -224,7 +222,7 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </AppCard>
+    </DataFilter>
 
     <AppCard
       variant="panel"
@@ -413,7 +411,7 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 .summary-item.warn b {
-  color: var(--lims-warning, #d97706);
+  color: var(--lims-warning);
 }
 .tag {
   margin-left: 6px;

@@ -106,6 +106,15 @@ export function buildNavigation(menus: MenuNode[], permissions: string[]) {
     if (built) menuTree.push(built)        // 剪枝：返回 null 的整枝丢弃
   }
 
+  // 独立页可能不出现在后端菜单树中，例如由按钮打开的打印页。
+  // 仍须按权限从注册表主动加入，否则刷新或直接粘贴 URL 会 404。
+  for (const entry of ROUTE_REGISTRY) {
+    if (!entry.standalone || !canAccess(entry, permissionSet)) continue
+    if (!standaloneRoutes.some((route) => route.name === entry.name)) {
+      standaloneRoutes.push(toRouteRecord(entry, false))
+    }
+  }
+
   if (unresolved.length) {
     console.warn(
       '[dynamicRoutes] 以下菜单在路由注册表中无对应页面，已在侧栏忽略：\n' +
@@ -223,23 +232,40 @@ function logout() {
 function setNavMenus(tree: MenuTreeNode[]) { navMenus.value = tree }
 ```
 
-### Step 5 — 路由守卫（五步，顺序不可换）
+### Step 5 — 路由守卫（顺序不可换）
 
 ```ts
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
-  if (to.meta.public) return true
-  if (!authStore.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
+
+  // 登录页是唯一可以在导航初始化前直接放行的公开页。
+  if (to.name === 'login') return true
+
+  if (!authStore.isLoggedIn) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
 
   if (!authStore.navReady) {
     try {
       await authStore.fetchMe()
       registerDynamicRoutes()
       authStore.navReady = true
-      // ⚠️ 必须 replace 重解析：本次导航在路由注册前已解析，很可能命中 404
-      return { ...to, replace: true }
-    } catch { return true }
+      // 当前 to 可能已按公开 catch-all 解析成 name='not-found'。
+      // 禁止展开 to；也禁止把 fullPath 塞进 path。显式保留 path/query/hash 后重解析。
+      return {
+        path: to.path,
+        query: to.query,
+        hash: to.hash,
+        replace: true,
+      }
+    } catch {
+      // 401 应由请求层清 token 并跳登录；其他错误交给已注册兜底页。
+      return true
+    }
   }
+
+  // 动态导航准备完成后，才能放行公开 403/404 等兜底页。
+  if (to.meta.public) return true
 
   const required = to.meta.permissions
   if (required?.length && !required.some((p) => authStore.hasPermission(p))) {
@@ -249,7 +275,14 @@ router.beforeEach(async (to) => {
 })
 ```
 
-## ⚠️ 四个高频坑
+守卫的关键不变式：
+
+1. 登录页可提前放行，但公开 catch-all 不可提前放行。
+2. 已登录且 `navReady=false` 时，必须先取菜单、注册路由，再重解析当前地址。
+3. 重解析只使用 `path/query/hash`，不可使用 `{ ...to }`，否则可能保留旧的 `name: 'not-found'`。
+4. 不可使用 `{ path: to.fullPath }`，否则查询参数可能被错误当作 path 并丢失。
+
+## ⚠️ 七个高频坑
 
 ### 坑 1：catch-all 先注册 → F5 刷新必 404
 
@@ -260,12 +293,36 @@ catch-all 若先注册，动态路由全排在它后面 → 永远匹配不到�
 - **解法**：catch-all 用 `registerNotFound()` 函数，每次注册动态路由后移除重加
 - **验证**：**必须按 F5**，只测点击发现不了
 
-### 坑 2：切账号菜单残留
+### 坑 2：公开 catch-all 在导航初始化前放行 → 首次深链接永远 404
+
+首次访问业务深链接时，动态路由尚未注册，当前地址可能先解析为公开的 `not-found`。
+若守卫一开始就执行 `if (to.meta.public) return true`，本次导航不会进入 `/me` 和动态注册流程。
+
+- **症状**：开发服务器对 URL 返回 HTTP 200，但真实浏览器标题和页面仍是 404
+- **解法**：只提前放行登录页；已登录用户先完成动态导航初始化，再判断其他公开页
+- **验证**：清空页面会话后直接粘贴业务深链接，不要只从侧栏点击
+
+### 坑 3：展开 `to` 重解析 → 保留 `name: 'not-found'`
+
+```ts
+return { ...to, replace: true } // ❌ 可能保留旧 route name
+```
+
+动态路由注册前解析出的 `to` 可能已经带有 `name: 'not-found'`。展开后即使 path 正确，Vue Router 仍可能按旧 name 导航。
+**解法**：显式传 `{ path: to.path, query: to.query, hash: to.hash, replace: true }`。
+
+### 坑 4：standalone 页面无菜单节点 → 永远不会注册
+
+打印、预览、回调等独立页常由按钮进入且 `navVisible=false`，后端菜单树通常没有对应节点。
+若只从菜单树生成路由，直接打开或刷新这些页面必然 404。
+**解法**：菜单树转换完成后，再遍历 `ROUTE_REGISTRY`，按权限主动补齐全部 `standalone` 条目。
+
+### 坑 5：切账号菜单残留
 
 `login()` 只更新 token 不清导航状态 → R100 登出、R3 登录后看到 R100 菜单。
 **解法**：`login()` 与 `logout()` 都清 `me`/`navMenus`/`navReady` + `resetDynamicRoutes()`。
 
-### 坑 3：注释里的 `*/` 序列毁掉整个文件
+### 坑 6：注释里的 `*/` 序列毁掉整个文件
 
 ```ts
 /** 为什么不用 import.meta.glob('@/views/**/*.vue') ？ */   // ❌ `**/` 提前闭合注释
@@ -273,7 +330,7 @@ catch-all 若先注册，动态路由全排在它后面 → 永远匹配不到�
 报几百条 `TS1109: Expression expected`，**行号全挤在注释之后**。
 **解法**：注释里不写通配路径；报错行号异常密集时往上找注释。
 
-### 坑 4：`RouteRecordRaw` union 报 `redirect is missing`
+### 坑 7：`RouteRecordRaw` union 报 `redirect is missing`
 
 TS 从字面量反推时匹配到 `RouteRecordRedirect` 分支，报错误导。
 **解法**：`component as NonNullable<RouteRecordRaw['component']>` + 整体 `as RouteRecordRaw`。
@@ -312,8 +369,10 @@ const resolveIcon = (name?: string) => (name && ICON_MAP[name]) || FALLBACK_ICON
 | 8 | 不存在路径 → 404 页 | 非空白 |
 | 9 | `vue-tsc --noEmit` | 0 错误 |
 | 10 | `vite build` | 成功，主包体积无明显增长 |
+| 11 | standalone 深链接 | 直接访问无菜单的打印/预览页，页面必须正常渲染 |
+| 12 | 查询参数保留 | 直接访问带 query/hash 的独立页，重解析后 URL 与业务取数不得丢参 |
 
-### 离线纯逻辑断言（强烈建议写，不需要浏览器）
+### 离线纯逻辑断言（强烈建议写，但不能替代真实浏览器）
 
 对 `normalizeMenuPath` 断言，取**真实的** DB path 列表跑一遍：
 - 全部注册表 path 解析为自己
@@ -322,8 +381,14 @@ const resolveIcon = (name?: string) => (name && ICON_MAP[name]) || FALLBACK_ICON
 - 目录节点（`undefined`）→ `null`
 - 清洗：`/sample/` → `/sample`、`/task?x=1` → `/task`
 
-实测 31 条断言 / 0 失败，覆盖约 90% 的路由生成 bug，且无需浏览器环境。
-**优先写这个，再考虑端到端。**
+实测 31 条断言 / 0 失败可覆盖大部分路径规范化与菜单转换问题，但无法发现：
+
+- 首次导航已经被公开 catch-all 解析为 404；
+- `to` 重解析保留旧 route name；
+- 无菜单 standalone 页面没有被注册；
+- 重解析后 query/hash 丢失。
+
+因此先写离线断言，再用真实浏览器完成以下最低验证：清会话后直接粘贴业务深链接、F5、无菜单独立页、带 query/hash 的独立页，并检查最终标题、URL、页面内容和 Console Error。仅用开发服务器 HTTP 200 或 `router.resolve()` 断言不能作为最终验收。
 
 ## 数据迁移配套（当 DB path 与前端不一致时）
 

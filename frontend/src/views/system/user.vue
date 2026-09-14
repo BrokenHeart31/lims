@@ -13,7 +13,7 @@
  * R100 综合管理员——这两种操作会让系统永久失去权限维护能力。</p>
  */
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Edit, Key, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
   createSysUserApi,
@@ -34,6 +34,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import { askConfirm } from '@/utils/confirm'
 
 const query = reactive({
   username: '',
@@ -248,15 +250,11 @@ async function submitResetPwd(): Promise<void> {
 }
 
 async function handleRemove(row: SysUserRow): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确认删除用户「${row.nickname}（${row.username}）」？删除后该账号将无法登录，其历史操作记录仍保留。`,
-      '删除确认',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(
+    `确认删除用户「${row.nickname}（${row.username}）」？删除后该账号将无法登录，其历史操作记录仍保留。`,
+    '删除确认',
+    { type: 'warning' },
+  ))) return
   try {
     await removeSysUserApi(row.id)
     ElMessage.success('已删除')
@@ -304,10 +302,7 @@ onMounted(() => {
       </el-button>
     </PageHeader>
 
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
+    <DataFilter>
       <el-form inline>
         <el-form-item label="登录名">
           <el-input
@@ -376,7 +371,7 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </AppCard>
+    </DataFilter>
 
     <AppCard
       variant="panel"

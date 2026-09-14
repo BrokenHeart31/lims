@@ -27,6 +27,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import type { MenuNode } from '@/api/auth'
 import {
   ROUTE_BY_PATH,
+  ROUTE_REGISTRY,
   normalizeMenuPath,
   type RouteEntry,
 } from './routeRegistry'
@@ -191,6 +192,15 @@ export function buildNavigation(menus: MenuNode[], permissions: string[]): Built
   for (const node of menus) {
     const built = buildNode(node, permissionSet, routes, standaloneRoutes, unresolved)
     if (built) menuTree.push(built)
+  }
+
+  // 独立页通常没有菜单节点（例如报告打印由「生成/重打印」按钮进入）。
+  // 它们仍必须按当前权限主动注册，否则用户刷新或直接打开打印深链接会命中 404。
+  for (const entry of ROUTE_REGISTRY) {
+    if (!entry.standalone || !canAccess(entry, permissionSet)) continue
+    if (!standaloneRoutes.some((route) => route.name === entry.name)) {
+      standaloneRoutes.push(toRouteRecord(entry, false))
+    }
   }
 
   // fail-loud：不静默吞掉无法识别的菜单，便于第一时间发现「菜单有、页面无」

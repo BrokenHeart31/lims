@@ -3,6 +3,7 @@ package com.lims.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lims.common.ResultCode;
 import com.lims.common.exception.BizException;
+import com.lims.dto.ChangePasswordDTO;
 import com.lims.dto.LoginDTO;
 import com.lims.dto.RefreshTokenDTO;
 import com.lims.entity.Dept;
@@ -92,8 +93,29 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void logout() {
-        // 无状态 JWT：服务端不做强制失效。预留审计日志（log:view 域落地后补）。
+        // 无状态 JWT：服务端不做强制失效（前端清 token 即登出）。
+        // 退出动作本身已由 OperationLogInterceptor 记入 sys_operation_log，此处只留运行期日志。
         log.info("用户退出登录: {}", SecurityUtils.getUsername().orElse("anonymous"));
+    }
+
+    @Override
+    public void changePassword(ChangePasswordDTO dto) {
+        String username = SecurityUtils.requireUsername();
+        SysUser user = findByUsername(username);
+        if (user == null) {
+            throw new BizException(ResultCode.UNAUTHORIZED);
+        }
+        if (!passwordEncoder.matches(dto.getOldPassword(), user.getPassword())) {
+            throw new BizException(ResultCode.BAD_REQUEST.getCode(), "旧密码不正确");
+        }
+        if (dto.getOldPassword().equals(dto.getNewPassword())) {
+            throw new BizException(ResultCode.BAD_REQUEST.getCode(), "新密码不能与旧密码相同");
+        }
+        SysUser update = new SysUser();
+        update.setId(user.getId());
+        update.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        sysUserMapper.updateById(update);
+        log.info("用户修改密码成功: {}", username);
     }
 
     /** 签发双 token（权限标识入 access_token 载荷，DB 为权威源） */

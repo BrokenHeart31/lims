@@ -30,7 +30,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="stat-card app-card app-card--glass app-card--hoverable">
+  <div class="stat-card app-card app-card--panel app-card--hoverable">
     <div class="stat-card__top">
       <span
         v-if="label"

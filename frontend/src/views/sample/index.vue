@@ -26,6 +26,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import DataTable from '@/components/common/DataTable.vue'
 
 /** 采样单导入模板（置于 frontend/public/templates，随构建产物发布） */
 const TEMPLATE_URL = '/templates/sample_import_template.xlsx'
@@ -47,7 +49,12 @@ const pageNum = ref(1)
 const pageSize = ref(10)
 const selection = ref<Sample[]>([])
 
+const listError = ref('')
+let listRequest = 0
+
 async function loadList(): Promise<void> {
+  const request = ++listRequest
+  listError.value = ''
   loading.value = true
   try {
     const res = await pageSampleApi({
@@ -58,12 +65,13 @@ async function loadList(): Promise<void> {
       taskNo: query.taskNo || undefined,
       status: query.status,
     })
+    if (request !== listRequest) return
     tableData.value = res.records
     total.value = res.total
   } catch {
-    // 请求层已统一提示
+    if (request === listRequest) listError.value = '未能读取列表，请检查网络或权限后重试。勾选记录仍保留。'
   } finally {
-    loading.value = false
+    if (request === listRequest) loading.value = false
   }
 }
 
@@ -293,59 +301,65 @@ onMounted(() => {
         inline
         @submit.prevent
       >
-        <el-form-item label="样品编号">
-          <el-input
-            v-model="query.sampleNo"
-            placeholder="支持前缀匹配"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="样品名称">
-          <el-input
-            v-model="query.sampleName"
-            placeholder="模糊匹配"
-            clearable
-            style="width: 160px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="任务编号">
-          <el-input
-            v-model="query.taskNo"
-            placeholder="精确匹配"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select
-            v-model="query.status"
-            placeholder="全部状态"
-            clearable
-            style="width: 140px"
-          >
-            <el-option
-              v-for="opt in SAMPLE_STATUS_OPTIONS"
-              :key="opt.code"
-              :label="opt.label"
-              :value="opt.code"
+        <DataFilter>
+          <el-form-item label="样品编号">
+            <el-input
+              v-model="query.sampleNo"
+              placeholder="支持前缀匹配"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleSearch"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            @click="handleSearch"
-          >
-            查询
-          </el-button>
-          <el-button @click="handleReset">
-            重置
-          </el-button>
-        </el-form-item>
+          </el-form-item>
+          <el-form-item label="样品名称">
+            <el-input
+              v-model="query.sampleName"
+              placeholder="模糊匹配"
+              clearable
+              style="width: 160px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="任务编号">
+            <el-input
+              v-model="query.taskNo"
+              placeholder="精确匹配"
+              clearable
+              style="width: 180px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select
+              v-model="query.status"
+              placeholder="全部状态"
+              clearable
+              style="width: 140px"
+            >
+              <el-option
+                v-for="opt in SAMPLE_STATUS_OPTIONS"
+                :key="opt.code"
+                :label="opt.label"
+                :value="opt.code"
+              />
+            </el-select>
+          </el-form-item>
+          <template #actions>
+            <el-button
+              type="primary"
+              :disabled="loading"
+              @click="handleSearch"
+            >
+              查询
+            </el-button>
+            <el-button
+              :disabled="loading"
+              @click="handleReset"
+            >
+              重置
+            </el-button>
+          </template>
+        </DataFilter>
       </el-form>
     </AppCard>
 
@@ -364,7 +378,7 @@ onMounted(() => {
             v-permission="'sample:confirm'"
             type="success"
             :loading="confirming"
-            :disabled="selection.length === 0"
+            :disabled="selection.length === 0 || loading || !!listError"
             @click="handleConfirm"
           >
             批量登记确认
@@ -372,123 +386,124 @@ onMounted(() => {
         </div>
       </div>
 
-      <el-table
-        v-loading="loading"
-        :data="tableData"
-        border
-        stripe
-        row-key="id"
-        @selection-change="handleSelectionChange"
+      <DataTable
+        :rows="tableData"
+        :loading="loading"
+        :error="listError"
+        :current="pageNum"
+        :page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        keep-mounted
+        @retry="loadList"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
       >
-        <el-table-column
-          type="selection"
-          width="46"
-          reserve-selection
-        />
-        <el-table-column
-          prop="sampleNo"
-          label="样品编号"
-          min-width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="sampleName"
-          label="样品名称"
-          min-width="120"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="clientName"
-          label="受检单位"
-          min-width="180"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="samplingAddress"
-          label="抽样地址"
-          min-width="180"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="sampler"
-          label="采样者"
-          width="100"
-        />
-        <el-table-column
-          prop="samplingDate"
-          label="采样日期"
-          width="120"
-        />
-        <el-table-column
-          prop="taskNo"
-          label="任务编号"
-          min-width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          label="状态"
-          width="110"
-          align="center"
+        <el-table
+          :data="tableData"
+          border
+          stripe
+          row-key="id"
+          @selection-change="handleSelectionChange"
         >
-          <template #default="{ row }">
-            <StatusBadge :tone="sampleStatusInfo((row as Sample).status).tone">
-              {{ statusLabelOf(row as Sample) }}
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="操作"
-          width="140"
-          fixed="right"
-          align="center"
-        >
-          <template #default="{ row }">
-            <el-button
-              v-if="canEdit(row as Sample)"
-              v-permission="'sample:import'"
-              link
-              type="primary"
-              @click="openEdit(row as Sample)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              link
-              type="primary"
-              @click="openDetail(row as Sample)"
-            >
-              详情
-            </el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <AppEmpty
-            title="暂无样品"
-            hint="请先导入采样单 Excel，或调整筛选条件"
+          <el-table-column
+            type="selection"
+            width="46"
+            reserve-selection
+          />
+          <el-table-column
+            prop="sampleNo"
+            label="样品编号"
+            min-width="160"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="sampleName"
+            label="样品名称"
+            min-width="120"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="clientName"
+            label="受检单位"
+            min-width="180"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="samplingAddress"
+            label="抽样地址"
+            min-width="180"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            prop="sampler"
+            label="采样者"
+            width="100"
+          />
+          <el-table-column
+            prop="samplingDate"
+            label="采样日期"
+            width="120"
+          />
+          <el-table-column
+            prop="taskNo"
+            label="任务编号"
+            min-width="160"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            label="状态"
+            width="110"
+            align="center"
           >
-            <el-link
-              :href="TEMPLATE_URL"
-              target="_blank"
-              type="primary"
-              :underline="false"
+            <template #default="{ row }">
+              <StatusBadge :tone="sampleStatusInfo((row as Sample).status).tone">
+                {{ statusLabelOf(row as Sample) }}
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="操作"
+            width="140"
+            fixed="right"
+            align="center"
+          >
+            <template #default="{ row }">
+              <el-button
+                v-if="canEdit(row as Sample)"
+                v-permission="'sample:import'"
+                link
+                type="primary"
+                @click="openEdit(row as Sample)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                link
+                type="primary"
+                @click="openDetail(row as Sample)"
+              >
+                详情
+              </el-button>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <AppEmpty
+              title="暂无样品"
+              hint="请先导入采样单 Excel，或调整筛选条件"
             >
-              下载导入模板
-            </el-link>
-          </AppEmpty>
-        </template>
-      </el-table>
-
-      <div class="pagination">
-        <el-pagination
-          :current-page="pageNum"
-          :page-size="pageSize"
-          :total="total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @current-change="handlePageChange"
-          @size-change="handleSizeChange"
-        />
-      </div>
+              <el-link
+                :href="TEMPLATE_URL"
+                target="_blank"
+                type="primary"
+                :underline="false"
+              >
+                下载导入模板
+              </el-link>
+            </AppEmpty>
+          </template>
+        </el-table>
+      </DataTable>
     </AppCard>
 
     <!-- 导入结果对话框 -->

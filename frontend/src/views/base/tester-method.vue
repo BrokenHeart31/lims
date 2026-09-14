@@ -12,7 +12,7 @@
  * T-501 匹配出幽灵候选人，比直接报错更难排查。</p>
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Download, Edit, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import {
   createTesterMethodApi,
@@ -29,6 +29,9 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import DataTable from '@/components/common/DataTable.vue'
+import { askConfirm } from '@/utils/confirm'
 
 const query = reactive({
   methodName: '',
@@ -154,15 +157,11 @@ async function submitForm(): Promise<void> {
 }
 
 async function handleRemove(row: TesterMethodRow): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确认删除「${row.methodName}」— 工号 ${row.testerNo} 的资质记录？删除后 T-501 自动分配将不再考虑该组合。`,
-      '删除确认',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(
+    `确认删除「${row.methodName}」— 工号 ${row.testerNo} 的资质记录？删除后 T-501 自动分配将不再考虑该组合。`,
+    '删除确认',
+    { type: 'warning' },
+  ))) return
   try {
     await removeTesterMethodApi(row.id)
     ElMessage.success('已删除')
@@ -258,10 +257,7 @@ onMounted(() => {
       >
     </PageHeader>
 
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
+    <DataFilter>
       <el-form inline>
         <el-form-item label="检验方法">
           <el-input
@@ -323,17 +319,17 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </AppCard>
+    </DataFilter>
 
     <AppCard
       variant="panel"
       :padding="16"
     >
-      <el-table
-        v-loading="loading"
-        :data="tableData"
-        stripe
-        border
+      <DataTable
+        :rows="tableData"
+        :loading="loading"
+        :pagination="false"
+        empty-title="暂无资质数据"
       >
         <el-table-column
           prop="methodName"
@@ -415,7 +411,7 @@ onMounted(() => {
             hint="该表为空时，任务安排的第三级「方法资质规则」会永久落空，请先新增或导入"
           />
         </template>
-      </el-table>
+      </DataTable>
 
       <el-pagination
         v-model:current-page="current"
@@ -543,7 +539,10 @@ onMounted(() => {
           </div>
           <div class="result-item">
             <span class="result-label">失败</span>
-            <span class="result-value" :class="{ err: importResult.failCount > 0 }">{{ importResult.failCount }}</span>
+            <span
+              class="result-value"
+              :class="{ err: importResult.failCount > 0 }"
+            >{{ importResult.failCount }}</span>
           </div>
         </div>
         <div
@@ -616,10 +615,10 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 .result-value.ok {
-  color: var(--lims-success, #16a34a);
+  color: var(--lims-success);
 }
 .result-value.err {
-  color: var(--lims-danger, #dc2626);
+  color: var(--lims-danger);
 }
 .error-list {
   max-height: 260px;

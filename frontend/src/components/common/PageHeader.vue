@@ -25,7 +25,7 @@ defineProps<{
 </script>
 
 <template>
-  <header class="page-header lims-glass">
+  <header class="page-header">
     <div class="page-header__main">
       <div
         v-if="icon"
@@ -70,7 +70,9 @@ defineProps<{
   justify-content: space-between;
   gap: var(--lims-sp-4);
   padding: var(--lims-page-header-py) var(--lims-sp-6);
-  border-radius: var(--lims-r-lg);
+  border: 1px solid var(--lims-hair);
+  border-radius: var(--lims-r-card);
+  background: var(--lims-layer-card);
 }
 
 .page-header__main {
@@ -87,10 +89,10 @@ defineProps<{
   height: 40px;
   border: 1px solid var(--lims-hair-2);
   border-radius: var(--lims-r-sm);
-  background: rgba(var(--lims-accent-rgb), 0.08);
+  background: var(--lims-accent-soft);
   color: var(--lims-accent);
   place-items: center;
-  box-shadow: var(--lims-inner-hair);
+  box-shadow: none;
 }
 
 .page-header__text {
@@ -113,6 +115,8 @@ defineProps<{
 }
 
 .page-header__title {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--lims-page-title-size);
   font-weight: 700;
   letter-spacing: 0.2px;

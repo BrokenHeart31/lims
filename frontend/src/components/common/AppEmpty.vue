@@ -66,7 +66,7 @@ withDefaults(
   height: 72px;
   border: 1px solid var(--lims-hair);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--lims-layer-card-hover);
   color: var(--lims-faint);
   place-items: center;
   margin-bottom: 4px;

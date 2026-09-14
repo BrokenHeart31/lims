@@ -15,7 +15,7 @@
  * 在系统里残留。导入同上——按产品编号分组后覆盖式写入，同一份 Excel 可反复导入而不产生重复。</p>
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Download, Edit, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import {
   createProductLibApi,
@@ -35,6 +35,8 @@ import {
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
+import { askConfirm } from '@/utils/confirm'
 
 /** 判定类型选项（与后端 JudgeEngine 闭集一致，顺序即下拉展示顺序） */
 const JUDGE_TYPES = [
@@ -161,15 +163,11 @@ async function submitProduct(): Promise<void> {
 }
 
 async function handleRemoveProduct(row: ProductLibRow): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确认删除产品「${row.productName}」？若其下仍有检测单项，系统会拒绝删除（请先清空明细）。`,
-      '删除确认',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  if (!(await askConfirm(
+    `确认删除产品「${row.productName}」？若其下仍有检测单项，系统会拒绝删除（请先清空明细）。`,
+    '删除确认',
+    { type: 'warning' },
+  ))) return
   try {
     await removeProductLibApi(row.id)
     ElMessage.success('已删除')
@@ -366,10 +364,7 @@ onMounted(() => {
       >
     </PageHeader>
 
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
+    <DataFilter>
       <el-form inline>
         <el-form-item label="产品编号">
           <el-input
@@ -414,7 +409,7 @@ onMounted(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </AppCard>
+    </DataFilter>
 
     <AppCard
       variant="panel"
@@ -800,7 +795,10 @@ onMounted(() => {
           </div>
           <div class="result-item">
             <span class="result-label">失败行</span>
-            <span class="result-value" :class="{ err: importResult.failCount > 0 }">{{ importResult.failCount }}</span>
+            <span
+              class="result-value"
+              :class="{ err: importResult.failCount > 0 }"
+            >{{ importResult.failCount }}</span>
           </div>
         </div>
         <div
@@ -879,10 +877,10 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 .result-value.ok {
-  color: var(--lims-success, #16a34a);
+  color: var(--lims-success);
 }
 .result-value.err {
-  color: var(--lims-danger, #dc2626);
+  color: var(--lims-danger);
 }
 .error-list {
   max-height: 240px;

@@ -12,6 +12,7 @@ import { exportProvinceApi } from '@/api/exportApi'
 import { downloadBlob } from '@/utils/download'
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
 
 const query = reactive({
   taskNo: '',
@@ -69,10 +70,7 @@ function handleReset(): void {
       </template>
     </PageHeader>
 
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
+    <DataFilter>
       <el-form inline>
         <el-form-item label="任务编号">
           <el-input
@@ -100,7 +98,7 @@ function handleReset(): void {
           </el-button>
         </el-form-item>
       </el-form>
-    </AppCard>
+    </DataFilter>
 
     <AppCard
       variant="panel"

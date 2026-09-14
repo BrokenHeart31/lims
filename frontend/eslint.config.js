@@ -9,7 +9,7 @@ import globals from 'globals'
 export default tseslint.config(
   {
     // 全局忽略目录
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
+    ignores: ['dist*/**', 'node_modules/**', 'coverage/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

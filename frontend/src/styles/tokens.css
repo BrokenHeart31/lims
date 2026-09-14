@@ -16,102 +16,145 @@
 :root {
   /* ---------------------------------------------------------------------
    * 1. 底色与表面层级
-   *    暗色系统的关键：靠「内发光发丝线」而非「提亮底色」来区分层级，
-   *    否则整屏会灰糊。底色保持 ≤ #0A0B0D。
+   *
+   * ⚠️ 2026-09-13 STEP 2 重大调整（T-917-2）：
+   *   旧方案靠「半透明玻璃 + blur」区分层级，底色压到 #08090b（近纯黑）。
+   *   规范 §五 明确要求：「不要使用纯黑作为所有区域的背景。**必须通过不同
+   *   深色层级建立空间关系**」—— 即用**实色阶梯**而非 blur 来表达空间。
+   *
+   *   故本轮引入 5 层实色阶梯（由深到浅），并保留玻璃令牌仅供 hero/氛围卡用：
+   *     page(页面底) → sidebar(侧栏) → header(顶栏) → card(卡片) → elevated(悬浮)
+   *   ⚠️ 顺序不可打乱：后一层必须比前一层亮，否则层级会「反转」。
    * ------------------------------------------------------------------- */
-  --lims-bg: #08090b;
-  --lims-bg-deep: #050607;
-  --lims-paper: #0e1014;
-  /** 卡片表面（比底稍亮 + 半透明，配合玻璃模糊） */
-  --lims-surface: rgba(18, 21, 26, 0.66);
-  --lims-surface-solid: #12151a;
-  --lims-surface-hover: rgba(28, 32, 38, 0.72);
-  /** 侧栏/顶栏等结构性表面 */
-  --lims-shell: rgba(9, 11, 14, 0.72);
+  --lims-bg: #080c10; /* 页面背景（规范值） */
+  --lims-bg-deep: #05080b; /* 页面更深一档（用于 body 最底层光斑垫底） */
+  --lims-paper: #0d1218; /* 兼容旧名：等同 sidebar 层 */
+  --lims-surface-solid: #131a22; /* 卡片实色（规范 Card） */
+
+  /* ---- 5 层实色阶梯（规范 §五 定值，STEP 2 新增） ---- */
+  --lims-layer-page: #080c10; /* 页面背景 */
+  --lims-layer-sidebar: #0d1218; /* Sidebar */
+  --lims-layer-header: #10161d; /* Header */
+  --lims-layer-card: #131a22; /* Card */
+  --lims-layer-card-hover: #171f28; /* Card Hover */
+  --lims-layer-elevated: #1b2530; /* Elevated：下拉/弹窗/抽屉（最高层） */
+
+  /** 卡片表面：兼容旧引用，改为**实色**（规范 §三十一：Card 用「背景 + Border」，
+   *  不要靠半透明 + shadow 造层级） */
+  --lims-surface: #131a22;
+  --lims-surface-hover: #171f28;
+  /** 侧栏/顶栏等结构性表面：实色 */
+  --lims-shell: #0d1218;
 
   /* ---------------------------------------------------------------------
-   * 2. 文本层级
+   * 2. 文本层级（规范 §五 定值）
    * ------------------------------------------------------------------- */
-  --lims-ink: #e8ecef;
-  --lims-ink-2: #d2d7dc;
-  --lims-muted: #8a9099;
-  --lims-faint: #5c636d;
-  --lims-ink-inverse: #0a0c0f;
+  --lims-ink: #f5f7fa; /* Primary */
+  --lims-ink-2: #cbd5e1; /* Secondary */
+  --lims-muted: #94a3b8; /* Muted */
+  --lims-faint: #64748b; /* Disabled */
+  --lims-ink-inverse: #080c10;
+  /** 压在有色填充（品牌渐变 / 语义实色）之上的文字。
+   *  ⚠️ 不要用 --lims-ink(#f5f7fa) 代替：它是「深底上的浅字」，
+   *    语义是「主题前景色」；本令牌语义是「彩色块上的反白字」，用途不同。 */
+  --lims-on-accent: #ffffff;
 
   /* ---------------------------------------------------------------------
    * 3. 发丝边框与分割线（暗色下用极低透明度白，而非灰）
+   *    规范 §五 三档：0.06 / 0.08 / 0.12
    * ------------------------------------------------------------------- */
-  --lims-hair: rgba(255, 255, 255, 0.07);
-  --lims-hair-2: rgba(255, 255, 255, 0.11);
-  --lims-hair-strong: rgba(255, 255, 255, 0.16);
+  --lims-hair: rgba(255, 255, 255, 0.06);
+  --lims-hair-2: rgba(255, 255, 255, 0.08);
+  --lims-hair-strong: rgba(255, 255, 255, 0.12);
 
   /* ---------------------------------------------------------------------
-   * 4. 品牌色（极光三色）
+   * 4. 品牌色（规范 §五：品牌主色 #18D6C5）
    *    ⚠️ 分工严格区分，勿混用：
-   *      accent 青 —— 只做光晕/激活条/描边，**不做按钮底色**（浅色+白字对比不足）
+   *      accent 青 —— 只做光晕/激活条/描边/图标，**不做按钮底色**
+   *                  （#18D6C5 在近黑底上可读，但白字压在其上对比不足）
    *      gradient  —— 按钮/关键 CTA 底色（深端保证白字可读）
    * ------------------------------------------------------------------- */
-  --lims-accent: #00f5d4;
-  --lims-accent-rgb: 0, 245, 212;
-  --lims-accent-deep: #0ea5a0;
-  --lims-blue: #2442ff;
-  --lims-blue-rgb: 36, 66, 255;
-  --lims-gold: #f4d28a;
+  --lims-accent: #18d6c5; /* 品牌主色（规范值） */
+  --lims-accent-rgb: 24, 214, 197;
+  --lims-accent-hover: #20e5d3; /* 主色 Hover（规范值，STEP 2 新增） */
+  --lims-accent-deep: #0ea5a0; /* 深档：用于需要白字可读的填充场景 */
+  --lims-accent-soft: rgba(24, 214, 197, 0.1); /* 主色弱化三档（规范值） */
+  --lims-accent-soft-2: rgba(24, 214, 197, 0.12);
+  --lims-accent-soft-3: rgba(24, 214, 197, 0.16);
+  --lims-blue: #4ea1ff; /* 由 #2442ff 收敛为规范 Info 蓝（原蓝过饱和，仅够做渐变深端） */
+  --lims-blue-rgb: 78, 161, 255;
+  --lims-blue-deep: #1b5cf0; /* 保留深蓝：仅用于按钮渐变深端 */
+  --lims-blue-deep-rgb: 27, 92, 240;
+  --lims-gold: #f5b942;
   --lims-gold-deep: #9a6f2c;
 
   /** 品牌渐变：按钮/关键 CTA
-   *  深端刻意压暗（#0b7f7a）以保证白字对比度 ≥ 4.4:1 —— 直接拿浅青 #00F5D4 做底
-   *  会因对比度不足而看不清（这是「华丽但不可用」的典型陷阱）。 */
-  --lims-brand-gradient: linear-gradient(135deg, #0b7f7a 0%, #1b5cf0 55%, #2442ff 100%);
-  --lims-brand-gradient-hover: linear-gradient(135deg, #0e938c 0%, #2b6bff 55%, #3355ff 100%);
-  --lims-brand-gradient-soft: linear-gradient(135deg, rgba(0, 245, 212, 0.16), rgba(36, 66, 255, 0.16));
-  /** 极光背景光斑（用于 body 与 hero） */
+   *  深端刻意压暗（#0b7f7a）以保证白字对比度 ≥ 4.4:1 —— 直接拿浅青 #18D6C5
+   *  做底会因对比度不足而看不清（这是「华丽但不可用」的典型陷阱）。
+   *  STEP 2：深端青由 #00f5d4 系改为 #18d6c5 系，蓝端保留深蓝（不用亮蓝）。 */
+  --lims-brand-gradient: linear-gradient(135deg, #0b7f7a 0%, #1b5cf0 55%, #1f4fd8 100%);
+  --lims-brand-gradient-hover: linear-gradient(135deg, #0e938c 0%, #2b6bff 55%, #2f5ff0 100%);
+  --lims-brand-gradient-soft: linear-gradient(
+    135deg,
+    rgba(24, 214, 197, 0.16),
+    rgba(27, 92, 240, 0.16)
+  );
+  /** 极光背景光斑（用于 body 与 hero；STEP 2 已改为规范色系且整体降饱和，
+   *  因为规范目标是「克制 / 专业 / 不要满屏渐变发光」） */
   --lims-aurora:
-    radial-gradient(1100px 620px at 12% -8%, rgba(0, 245, 212, 0.10), transparent 62%),
-    radial-gradient(980px 560px at 92% 4%, rgba(36, 66, 255, 0.12), transparent 60%),
-    radial-gradient(760px 520px at 68% 108%, rgba(244, 210, 138, 0.06), transparent 62%);
+    radial-gradient(1100px 620px at 12% -8%, rgba(24, 214, 197, 0.06), transparent 62%),
+    radial-gradient(980px 560px at 92% 4%, rgba(78, 161, 255, 0.07), transparent 60%),
+    radial-gradient(760px 520px at 68% 108%, rgba(245, 185, 66, 0.035), transparent 62%);
 
   /* ---------------------------------------------------------------------
-   * 5. 语义色
-   *    检验结论三态：合格 / 不合格 / 待判定
+   * 5. 语义色（规范 §五 定值）
+   *    检验结论四态：合格 / 不合格 / 待判定 / 未录入
+   *    ⚠️ 「待判定」（有值但判不出，warning 橙）与「未录入」（空值，purple 紫）
+   *       必须是**两个不同颜色** —— 这是 T-912 业务裁决的视觉落点，
+   *       规范 §五 未涵盖，按提示词末尾「优先级 1 = 现有真实业务逻辑」以业务为准。
    * ------------------------------------------------------------------- */
-  --lims-success: #22c55e;
-  --lims-success-rgb: 34, 197, 94;
-  --lims-warning: #f5a524;
-  --lims-warning-rgb: 245, 165, 36;
-  --lims-danger: #ff5367;
-  --lims-danger-rgb: 255, 83, 103;
-  --lims-info: #7fd8ff;
-  --lims-info-rgb: 127, 216, 255;
+  --lims-success: #35d49a;
+  --lims-success-rgb: 53, 212, 154;
+  --lims-warning: #f5b942;
+  --lims-warning-rgb: 245, 185, 66;
+  --lims-danger: #f06472;
+  --lims-danger-rgb: 240, 100, 114;
+  --lims-info: #4ea1ff;
+  --lims-info-rgb: 78, 161, 255;
 
   /* ---------------------------------------------------------------------
-   * 6. 玻璃质感令牌（签名元素）
-   *    纯 blur() 是廉价感根源 → 提供 .lims-glass-refract 走 SVG 折射（渐进增强）
+   * 6. 玻璃质感令牌（**降级使用**：仅 hero / 氛围卡）
+   *
+   * ⚠️ STEP 2 调整：规范 §三十五 第 10 条禁止「过度玻璃拟态」、§三十一 要求
+   *   普通 Card 只用「背景 + Border」。故玻璃**不再是层级的主要表达手段**
+   *   （改由 §1 的 5 层实色阶梯承担），这里仅保留给登录页 / hero 区 / 悬浮抽屉。
+   *   同时把青调光晕从 rgba(0,245,212) 换为规范品牌色 rgba(24,214,197)，
+   *   并整体降低强度（原 0.052/0.075 的辉光偏「炫光」，规范明确禁止）。
    * ------------------------------------------------------------------- */
   --lims-glass-bg: linear-gradient(
     112deg,
-    rgba(72, 74, 76, 0.62),
-    rgba(24, 27, 30, 0.7) 48%,
-    rgba(8, 12, 14, 0.74)
+    rgba(72, 74, 76, 0.52),
+    rgba(24, 27, 30, 0.62) 48%,
+    rgba(8, 12, 14, 0.68)
   );
   --lims-glass-bg-focus: linear-gradient(
     112deg,
-    rgba(88, 91, 92, 0.68),
-    rgba(28, 32, 35, 0.76) 50%,
-    rgba(8, 13, 15, 0.82)
+    rgba(88, 91, 92, 0.58),
+    rgba(28, 32, 35, 0.68) 50%,
+    rgba(8, 13, 15, 0.74)
   );
-  --lims-glass-border: rgba(0, 245, 212, 0.3);
-  --lims-glass-border-soft: rgba(255, 255, 255, 0.095);
-  --lims-glass-blur: blur(20px) saturate(1.34);
-  --lims-glass-blur-strong: blur(34px) saturate(1.4);
+  --lims-glass-border: rgba(24, 214, 197, 0.28);
+  --lims-glass-border-soft: rgba(255, 255, 255, 0.08);
+  --lims-glass-blur: blur(18px) saturate(1.24);
+  --lims-glass-blur-strong: blur(28px) saturate(1.3);
   --lims-glass-shadow:
-    0 22px 64px rgba(0, 0, 0, 0.3), 0 0 34px rgba(0, 245, 212, 0.052),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -24px 58px rgba(0, 0, 0, 0.16);
+    0 18px 52px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -24px 58px rgba(0, 0, 0, 0.14);
   --lims-glass-shadow-focus:
-    0 24px 72px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(0, 245, 212, 0.13),
-    0 0 42px rgba(0, 245, 212, 0.075), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  /** 1px 白色内发光 —— 暗色系统区分层级的核心手段 */
-  --lims-inner-hair: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    0 20px 60px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(24, 214, 197, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  /** 1px 白色内发光 —— 暗色系统区分层级的**辅助**手段（不再是主要手段） */
+  --lims-inner-hair: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 
   /* ---------------------------------------------------------------------
    * 7. 圆角比例尺
@@ -181,10 +224,18 @@ html.lims-theme-light {
   --lims-bg: #f5f7f9;
   --lims-bg-deep: #eceff3;
   --lims-paper: #ffffff;
-  --lims-surface: rgba(255, 255, 255, 0.78);
+  --lims-surface: #ffffff;
   --lims-surface-solid: #ffffff;
-  --lims-surface-hover: rgba(240, 244, 248, 0.9);
-  --lims-shell: rgba(255, 255, 255, 0.82);
+  --lims-surface-hover: #f0f4f8;
+  --lims-shell: #ffffff;
+
+  /* 5 层实色阶梯（浅色版：由亮到「略暗」，同样靠层级而非阴影） */
+  --lims-layer-page: #f5f7f9;
+  --lims-layer-sidebar: #ffffff;
+  --lims-layer-header: #ffffff;
+  --lims-layer-card: #ffffff;
+  --lims-layer-card-hover: #f0f4f8;
+  --lims-layer-elevated: #ffffff;
 
   --lims-ink: #14181d;
   --lims-ink-2: #303740;
@@ -219,12 +270,16 @@ html.lims-theme-light {
  *   ② 间距采用 4 的倍数；卡片 12px、按钮/输入 8px（贴合企业 SaaS 风格）
  *   ③ 状态色新增 purple（用于「待判定」「审核中」等中性偏提示态）
  *   ④ 三类表面限定用途：玻璃（卡片氛围） / 面板（数据密集区） / 平面（次级容器）
+ *
+ * ⚠️ 2026-09-13 STEP 2 二次修订（T-917-2）：对齐规范 §五/§六 定值
+ *   · Header 60 → 64；状态软色改为规范色系的 rgba
+ *   · 表面 2/3 由半透明改为**实色阶梯**引用（§1 的 layer-*）
  * =========================================================================== */
 :root {
-  /* -------- 布局尺寸：Sidebar 224 / Header 60 / Content padding 24 -------- */
+  /* -------- 布局尺寸：Sidebar 224 / Header 64 / Content padding 24（规范 §六） -------- */
   --lims-sidebar-w: 224px;
   --lims-sidebar-w-collapsed: 68px;
-  --lims-header-h: 60px;
+  --lims-header-h: 64px;
   --lims-content-px: 24px;
   --lims-content-py: 24px;
   --lims-page-gap: 16px;
@@ -242,32 +297,36 @@ html.lims-theme-light {
   --lims-sp-10: 40px;
   --lims-sp-12: 48px;
 
-  /* -------- 圆角：卡片 12 / 按钮输入 8（提示词 §六：偏企业感） -------- */
+  /* -------- 圆角：卡片 12 / 按钮输入 8（规范 §六：偏企业感，禁用过大圆角） -------- */
   --lims-r-card: 12px;
   --lims-r-ctrl: 8px;
   --lims-r-pill: 999px;
 
-  /* -------- 表格行高（提示词 §三十：52~60px） -------- */
+  /* -------- 表格行高（规范 §三十：52~60px） -------- */
   --lims-row-h: 52px;
   --lims-row-h-lg: 60px;
 
-  /* -------- 状态色扩展：purple 用于「待判定/审核中」中性提示态 -------- */
+  /* -------- 状态色扩展：purple 用于「未录入 / 审核中」中性提示态 -------- */
   --lims-purple: #9b7cff;
   --lims-purple-rgb: 155, 124, 255;
   --lims-purple-soft: rgba(155, 124, 255, 0.14);
   --lims-purple-line: rgba(155, 124, 255, 0.42);
 
-  /* 状态色「浅版」（用于 badge / 标签背景，比纯色柔和 80%） */
-  --lims-success-soft: rgba(34, 197, 94, 0.14);
-  --lims-success-line: rgba(34, 197, 94, 0.42);
-  --lims-warning-soft: rgba(245, 165, 36, 0.14);
-  --lims-warning-line: rgba(245, 165, 36, 0.42);
-  --lims-danger-soft: rgba(255, 83, 103, 0.14);
-  --lims-danger-line: rgba(255, 83, 103, 0.42);
-  --lims-info-soft: rgba(127, 216, 255, 0.14);
-  --lims-info-line: rgba(127, 216, 255, 0.42);
+  /* 状态色「浅版」（用于 badge / 标签背景；STEP 2 改为规范色系的 rgba） */
+  --lims-success-soft: rgba(53, 212, 154, 0.14);
+  --lims-success-line: rgba(53, 212, 154, 0.42);
+  --lims-warning-soft: rgba(245, 185, 66, 0.14);
+  --lims-warning-line: rgba(245, 185, 66, 0.42);
+  --lims-danger-soft: rgba(240, 100, 114, 0.14);
+  --lims-danger-line: rgba(240, 100, 114, 0.42);
+  --lims-info-soft: rgba(78, 161, 255, 0.14);
+  --lims-info-line: rgba(78, 161, 255, 0.42);
+  /** 异常行背景（§十六 结果录入异常行高亮：轻微红色背景） */
+  --lims-danger-row: rgba(240, 100, 114, 0.07);
+  --lims-danger-row-hover: rgba(240, 100, 114, 0.12);
 
-  /* 检验结论三态（与判定引擎 ResultConclusion 对齐） */
+  /* 检验结论四态（与判定引擎 ResultConclusion 对齐）
+   * ⚠️ pending（待判定，橙）与 blank（未录入，紫）必须保持不同色 —— T-912 业务裁决的视觉落点 */
   --lims-conclusion-pass: var(--lims-success);
   --lims-conclusion-fail: var(--lims-danger);
   --lims-conclusion-pending: var(--lims-warning);
@@ -278,23 +337,26 @@ html.lims-theme-light {
   --lims-page-sub-size: 13px;
   --lims-page-header-py: 18px;
 
-  /* -------- 三类表面的进一步细分 -------- */
-  /** .lims-surface-2：卡片悬浮态，比 surface 略亮 */
-  --lims-surface-2: rgba(28, 32, 38, 0.72);
-  /** .lims-surface-3：下拉/弹窗/最高层级 */
-  --lims-surface-3: rgba(36, 41, 48, 0.86);
+  /* -------- 表面的进一步细分（STEP 2：改为实色阶梯，不再半透明） -------- */
+  /** .lims-surface-2：卡片悬浮态 */
+  --lims-surface-2: var(--lims-layer-card-hover);
+  /** .lims-surface-3：下拉/弹窗/抽屉（最高层级） */
+  --lims-surface-3: var(--lims-layer-elevated);
 
   /* -------- 面包屑 -------- */
   --lims-breadcrumb-fg: var(--lims-muted);
   --lims-breadcrumb-fg-active: var(--lims-ink);
   --lims-breadcrumb-sep: var(--lims-faint);
 
-  /* -------- 阴影（细颗粒） -------- */
-  --lims-shadow-card:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 8px 24px rgba(0, 0, 0, 0.18);
-  --lims-shadow-pop:
-    0 12px 32px rgba(0, 0, 0, 0.36), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  /* -------- 阴影 --------
+   * ⚠️ STEP 2（规范 §三十一）：**Card 不用阴影**，靠「背景层级 + Border」表达；
+   *   Shadow 只用于 Dropdown / Modal / Drawer / Floating Panel。
+   *   --lims-shadow-card 保留但降为「几乎不可见的 1px 内发光」，供需要极轻层次的场景；
+   *   真正的卡片层次由 §1 的 layer-card 实色 + hair 边框承担。 */
+  --lims-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --lims-shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --lims-shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --lims-shadow-drawer: -24px 0 72px rgba(0, 0, 0, 0.48);
 
   /* -------- 焦点环（用于键盘可达性） -------- */
   --lims-focus-ring: 0 0 0 2px rgba(var(--lims-accent-rgb), 0.55);

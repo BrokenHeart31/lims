@@ -12,7 +12,7 @@
  *   ③ 合格率分母**排除待判定**（后端已实现），故前端直接展示后端值，
  *      不做二次计算——避免前后端两套口径。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
   DataAnalysis,
   Refresh,
@@ -51,28 +51,41 @@ const testerWorkload = ref<StatNameValue[]>([])
 const unqualifiedItems = ref<StatNameValue[]>([])
 const trend = ref<StatTrend[]>([])
 
-/** 趋势月份数（预留：可做成下拉切换） */
+/** 趋势月份数与现有接口保持一致。 */
 const trendMonths = ref(6)
+const errors = reactive({ overview: '', status: '', inspect: '', clients: '', category: '', testers: '', unqualified: '', trend: '' })
+type StatSection = keyof typeof errors
+const failedCount = computed(() => Object.values(errors).filter(Boolean).length)
+const updatedAt = ref('')
 
-/**
- * 并行拉取全部统计。
- * 用 allSettled 而非 all：单个接口异常不应导致整页空白，
- * 失败的图表自然落到空态，其余图表照常展示。
- */
+/** 单接口失败不影响其他统计；失败区显示错误而非假零值或旧数据。 */
 async function load(): Promise<void> {
+  if (loading.value) return
   loading.value = true
-  const tasks = [
-    getStatOverviewApi().then((d) => (overview.value = d)),
-    getSampleStatusStatApi().then((d) => (statusDist.value = d ?? [])),
-    getInspectTypeStatApi().then((d) => (inspectType.value = d ?? [])),
-    getTopClientsStatApi(8).then((d) => (topClients.value = d ?? [])),
-    getCategoryStatApi(8).then((d) => (category.value = d ?? [])),
-    getTesterWorkloadStatApi(8).then((d) => (testerWorkload.value = d ?? [])),
-    getUnqualifiedItemsStatApi(8).then((d) => (unqualifiedItems.value = d ?? [])),
-    getMonthlyTrendStatApi(trendMonths.value).then((d) => (trend.value = d ?? [])),
-  ]
-  await Promise.allSettled(tasks)
-  loading.value = false
+  overview.value = null
+  for (const key of Object.keys(errors) as StatSection[]) errors[key] = ''
+  async function fetchSection<T>(key: StatSection, fetcher: () => Promise<T>, assign: (data: T) => void): Promise<void> {
+    try {
+      assign(await fetcher())
+    } catch {
+      errors[key] = '接口暂时不可用，请检查网络或权限后重试。'
+    }
+  }
+  try {
+    await Promise.all([
+      fetchSection('overview', getStatOverviewApi, (d) => { overview.value = d }),
+      fetchSection('status', getSampleStatusStatApi, (d) => { statusDist.value = d ?? [] }),
+      fetchSection('inspect', getInspectTypeStatApi, (d) => { inspectType.value = d ?? [] }),
+      fetchSection('clients', () => getTopClientsStatApi(8), (d) => { topClients.value = d ?? [] }),
+      fetchSection('category', () => getCategoryStatApi(8), (d) => { category.value = d ?? [] }),
+      fetchSection('testers', () => getTesterWorkloadStatApi(8), (d) => { testerWorkload.value = d ?? [] }),
+      fetchSection('unqualified', () => getUnqualifiedItemsStatApi(8), (d) => { unqualifiedItems.value = d ?? [] }),
+      fetchSection('trend', () => getMonthlyTrendStatApi(trendMonths.value), (d) => { trend.value = d ?? [] }),
+    ])
+    updatedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(load)
@@ -95,7 +108,7 @@ const kpis = computed(() => {
   return [
     {
       label: '样品总数',
-      value: o?.totalSamples ?? 0,
+      value: o?.totalSamples ?? '—',
       suffix: '份',
       icon: Document,
       iconTone: 'info' as const,
@@ -111,7 +124,7 @@ const kpis = computed(() => {
     },
     {
       label: '不合格样品',
-      value: o?.unqualifiedSamples ?? 0,
+      value: o?.unqualifiedSamples ?? '—',
       suffix: '份',
       icon: CircleClose,
       iconTone: 'danger' as const,
@@ -119,7 +132,7 @@ const kpis = computed(() => {
     },
     {
       label: '待判定',
-      value: o?.pendingSamples ?? 0,
+      value: o?.pendingSamples ?? '—',
       suffix: '份',
       icon: Warning,
       iconTone: 'warning' as const,
@@ -127,7 +140,7 @@ const kpis = computed(() => {
     },
     {
       label: '在检中',
-      value: o?.testingSamples ?? 0,
+      value: o?.testingSamples ?? '—',
       suffix: '份',
       icon: Timer,
       iconTone: 'purple' as const,
@@ -135,7 +148,7 @@ const kpis = computed(() => {
     },
     {
       label: '已出报告',
-      value: o?.reportCount ?? 0,
+      value: o?.reportCount ?? '—',
       suffix: '份',
       icon: DataAnalysis,
       iconTone: 'accent' as const,
@@ -170,6 +183,20 @@ const trendOptionValue = computed(() => trendOption(trend.value))
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="!loading && failedCount > 0"
+      type="error"
+      :closable="false"
+      show-icon
+      :title="`${failedCount} 项统计加载失败，其余统计仍可查看`"
+      description="失败数据不会显示为零或沿用上次结果。请点击刷新数据重试。"
+    />
+    <p
+      class="refresh-status"
+      role="status"
+    >
+      {{ loading ? '正在读取实时统计…' : updatedAt ? `本轮请求结束：${updatedAt}` : '等待加载' }}
+    </p>
     <!-- ================= KPI 行 ================= -->
     <section class="kpi-row">
       <StatCard
@@ -195,11 +222,13 @@ const trendOptionValue = computed(() => trendOption(trend.value))
         </header>
         <LimsChart
           :option="trendOptionValue"
+          :error="errors.trend"
           :height="296"
           :loading="loading"
           :empty="trend.length === 0"
           empty-title="暂无趋势数据"
           empty-hint="尚未登记样品，或所选区间内无记录"
+          @retry="load"
         />
       </AppCard>
 
@@ -212,11 +241,13 @@ const trendOptionValue = computed(() => trendOption(trend.value))
         </header>
         <LimsChart
           :option="statusOption"
+          :error="errors.status"
           :height="296"
           :loading="loading"
           :empty="statusDist.length === 0"
           empty-title="暂无样品"
           empty-hint="登记样品后此处将显示各阶段分布"
+          @retry="load"
         />
       </AppCard>
     </div>
@@ -232,10 +263,12 @@ const trendOptionValue = computed(() => trendOption(trend.value))
         </header>
         <LimsChart
           :option="inspectTypeOption"
+          :error="errors.inspect"
           :height="272"
           :loading="loading"
           :empty="inspectType.length === 0"
           empty-title="暂无类别数据"
+          @retry="load"
         />
       </AppCard>
 
@@ -250,9 +283,11 @@ const trendOptionValue = computed(() => trendOption(trend.value))
           :option="categoryOption"
           :height="272"
           :loading="loading"
+          :error="errors.category"
           :empty="category.length === 0"
           empty-title="暂无大类数据"
           empty-hint="样品尚未分解检测单项时无数据"
+          @retry="load"
         />
       </AppCard>
     </div>
@@ -270,9 +305,11 @@ const trendOptionValue = computed(() => trendOption(trend.value))
           :option="testerOption"
           :height="292"
           :loading="loading"
+          :error="errors.testers"
           :empty="testerWorkload.length === 0"
           empty-title="暂无任务分配"
           empty-hint="完成检验任务安排后此处显示工作量排名"
+          @retry="load"
         />
       </AppCard>
 
@@ -287,8 +324,10 @@ const trendOptionValue = computed(() => trendOption(trend.value))
           :option="clientOption"
           :height="292"
           :loading="loading"
+          :error="errors.clients"
           :empty="topClients.length === 0"
           empty-title="暂无送检单位"
+          @retry="load"
         />
       </AppCard>
     </div>
@@ -305,14 +344,20 @@ const trendOptionValue = computed(() => trendOption(trend.value))
         :option="unqualifiedOption"
         :height="280"
         :loading="loading"
+        :error="errors.unqualified"
         :empty="unqualifiedItems.length === 0"
         empty-title="暂无不合格记录"
         empty-hint="当前所有已判定单项均合格，或尚未完成判定"
+        @retry="load"
       />
     </AppCard>
 
     <p class="foot-note">
-      <span class="foot-dot" :class="{ 'is-busy': loading }" aria-hidden="true" />
+      <span
+        class="foot-dot"
+        :class="{ 'is-busy': loading }"
+        aria-hidden="true"
+      />
       统计口径：合格率分母不含「待判定」（待判定属数据缺口，非质量结论）；所有数据来自业务表实时聚合，无演示数据。
     </p>
   </div>
@@ -323,6 +368,13 @@ const trendOptionValue = computed(() => trendOption(trend.value))
   display: flex;
   flex-direction: column;
   gap: var(--lims-page-gap);
+}
+
+.refresh-status {
+  margin-top: calc(var(--lims-page-gap) * -0.65);
+  color: var(--lims-faint);
+  font-size: var(--lims-fs-xs);
+  text-align: right;
 }
 
 .kpi-row {

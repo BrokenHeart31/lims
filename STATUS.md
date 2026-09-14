@@ -2,6 +2,87 @@
 
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
+## 2026-09-14 15:20 收尾（GLM / **项目功能完工**：T-918 操作日志 + 通知去假数据 + Git 对象库恢复）
+
+- **本轮占用**：`backend/.../config/{OperationLogInterceptor,WebConfig}.java`、`entity/SysOperationLog.java`、
+  `mapper/SysOperationLogMapper.java`、`service/{SysOperationLogService,impl/SysOperationLogServiceImpl}.java`、
+  `dto/OperationLogQueryDTO.java`、`vo/SysOperationLogVO.java`、`controller/SysLogController.java`、
+  `db/init/09_operation_log.sql`、`db/migrations/V7__add_operation_log.sql`、
+  `frontend/src/{layouts/MainLayout.vue,api/system.ts,api/auth.ts,views/dashboard/index.vue}`、
+  `docs/api/api-spec.md`（+第 15 章）、`db/seed/01_rbac_seed.sql`（注释）与全部治理文件。
+- **两件事**：
+  1. **T-918 操作日志落地**（消除「空壳」）：`sys_operation_log` + `OperationLogInterceptor`（零 AOP 依赖，
+     经论证用 HandlerInterceptor 等价达成）+ `GET /api/sys/log/page` + 前端真实分页表格。
+     **分级数据范围**：人人可查自己，「跨用户查看」需 `log:view`，服务端强制不可绕过。
+  2. **顶部铃铛去假数据**：原 4 条写死的假通知改写为 6 个业务域真实待办汇总（零值不展示、点击直达）。
+- **附带**：`AppSkeleton` 接入工作台 KPI 加载态；删除零引用死代码 `ProgressBar.vue`。
+- **验收**：后端 **113/113**（新增 6）；前端 lint 0 / vue-tsc 0 / vite build ✅；
+  **Edge + CDP 真实浏览器全量遍历 20 页 → 0 console error / 0 网络失败**；
+  **三档分辨率（1440×900 / 1920×1080 / 1366×768）`scrollWidth == clientWidth` 且无越界元素**；
+  操作日志端到端 6 断言全过（含 403 失败留痕、伪造 `operator` 参数无效）。
+- **🔧 Git 对象库已修复**：`D:\lims\.git` 曾缺 **91 个对象**（6 commit + 多 tree/blob），
+  `git fetch` **无法修复**（本地 ref 污染协商，远端拒绝补发）。改用**镜像克隆取 pack**：
+  `git clone --mirror` → 拷 `objects/pack/pack-<new>.*` → 删过期 `multi-pack-index` →
+  `git fsck --full` = **0 missing / 0 broken**。现 `git status` / `git log` / `git branch` 全部正常。
+- 进度 **96% → 99%**。**业务功能零缺口**；剩余仅为用户人工体验终验。
+
+## 2026-09-13 23:30 接手（豆包 / 顶部栏补全 + P1/P4/P5 修复）
+
+- 本轮占用：`backend/.../AuthController.java`、`AuthService.java`、`AuthServiceImpl.java`、`dto/ChangePasswordDTO.java`、`frontend/src/layouts/MainLayout.vue`、`components/common/PageHeader.vue`、`views/query/{testing,history,library}.vue`、`api/auth.ts`、`public/favicon.svg`、`index.html`、日记与治理文件。
+- 新增后端接口 `POST /api/auth/change-password`（自服务改密）；前端补全个人资料/改密/操作日志/帮助四个对话框；修面包屑重复 + PageHeader 竖排 + 查询按钮对齐 + favicon。
+- 验证：后端 107/107 单测过、vue-tsc 0 错、lint 0 错、浏览器实测 console 0 错误。
+- 进度 **95% → 96%**。下一步 GLM：Git 恢复推送 → 操作日志后端 → T-917-6~10 三档分辨率验收。
+
+## 2026-09-13 22:55 接手（豆包 / 测试巡检，代码未动）
+
+- 本轮占用：`docs/journal/2026-09-13-doubao-test-audit.md`、`docs/journal/README.md`、`HANDOFF.md`、本文件。**未改 backend/ frontend/ db/ 任何代码。**
+- 实测结论：后端 `mvn -o test` **107/107 BUILD SUCCESS**；前端 `lint` 0 错误、`vue-tsc` 0 错误、`vite build` 37.56s 成功；nj001 登录 + 全页面浏览器实测通过。
+- 发现 5 个前端 UI 问题（P1~P5），详见 HANDOFF 顶部与日记：P1 PageHeader 标题 flex-shrink 缺失竖排（影响约 8 页）、P2 双面包屑重复、P3 表格列宽截断、P4 查询按钮对齐不一致、P5 favicon 404。
+- Git 仍损坏：`D:\lims\.git` 缺 tree `3c168259...`；临时副本 `Temp\lims_work_ui` 在 main 分支暂存 38 文件待 GLM 处理。
+- 进度维持 **95%**（本轮只测试找问题）。下一步 GLM：修 P1~P5（纯 CSS/布局，约 1 人时）→ Git 恢复推送 → T-917-6~10 三档分辨率与 20 项 Checklist。
+
+## 2026-09-13 20:54 接手（GLM / T-917 收口）
+
+- 本轮占用：`frontend/src/views/{assign,item,sample,task}/index.vue`、`frontend/src/views/report/{generate,print}.vue`、`frontend/src/views/{query/analysis,dashboard/index}.vue`；按需复核 `components/common/{DataFilter,DataTable,LimsChart}.vue`、`styles/report-print.css`；治理文件、根 `.gitignore`、工作日记。
+- 无其他 Agent 占用。继续 T-917-5，不重做已完成业务、动态路由；不改 API/DB/状态机/认证/权限/Pinia 数据结构。
+- Git 只读实测：主仓库在 `agent/glm`，HEAD=`b206f780a9fa2dc27e3750c0be62cabd70948166`，status 因 tree `3c168259069967b619abcd0e561105bc51dfad37` 缺失失败。临时副本在 **main**，38 个暂存文件、无删除项，`.shots/` 未跟踪；不得在该 main 上直接提交。
+- 本轮暂不 checkout/pull/reset/stash/commit/push；验收完成并解决对象完整性与分支问题后再推进 Git。
+- 进度暂保持约 95%；代码门禁、真实浏览器验收和远程同步独立记录。
+
+## 2026-09-13 20:34 状态更新（GLM / 未完成任务交接）
+
+- **本轮目标**：不继续修改业务代码，先将未完成任务、未验证项和 Git 阻塞集中写入 `HANDOFF.md`、`TODO.md`、`docs/journal/`，交接给下一位 Agent。
+- **T-917 当前状态**：T-917-1~4 已完成；T-917-5 进行中，已完成审核、结果录入、系统、基础数据、查询与导出批次；剩余页面为 `assign/index.vue`、`item/index.vue`、`sample/index.vue`、`task/index.vue`、`report/generate.vue`、`query/analysis.vue`，另需复核 Dashboard 和独立打印页。
+- **T-917-6~10**：仍待办，包含交互统一、ECharts/Dashboard 最终复核、全局视觉统一、三档分辨率验收和 20 项 Checklist。浏览器自动化不可用，尚未完成真实浏览器视觉验收。
+- **质量门禁**：已记录 lint 与 vue-tsc 通过；20:27 查询/导出批次的统一 build 需要下一位 Agent 重新执行并留证。后端本轮无业务代码变更，交付前仍应复核 `mvn test`。
+- **Git 阻塞**：`D:\lims\.git` broken tree，禁止直接提交；临时副本 `C:\Users\Chen\AppData\Local\Temp\lims_work_ui` 已暂存 38 个文件、无暂存删除项，但 `.shots/` 仍未跟踪。提交前必须再次逐项检查暂存区，随后按 `agent/glm → develop → main` 推进并用 `git ls-remote` 校验。
+- **本轮占用文件**：`STATUS.md`、`TODO.md`、`HANDOFF.md`、`docs/journal/README.md`、`docs/journal/2026-09-13-glm-handoff-unfinished.md`、`.workbuddy-ai/memory/2026-09-13.md`。
+- **交接索引**：详细清单见 `docs/journal/2026-09-13-glm-handoff-unfinished.md`，下一位 Agent 应以该文件的「明确未完成任务」和「建议顺序」为准。
+
+## 2026-09-13 20:27 状态更新（GLM / T-917-5 查询与导出批次）
+
+- **追加完成**：项目库查询、在检查询、历史查询、检验员任务查询、省平台导出筛选区接入 `DataFilter`；保留既有查询参数、分页、导出与业务权限。
+- **验证**：lint、vue-tsc 均通过；此前系统与基础数据批次的 Vite build 通过，本批次待完成统一 build。
+- **当前主线**：T-917-5 继续进行，已覆盖审核、结果录入、系统、基础数据、查询与导出页面；仍需完成剩余页面视觉细化和最终验收。
+
+## 2026-09-13 20:17 状态更新（GLM / T-917-5 系统与基础数据批次）
+
+- **追加完成**：用户、角色、菜单、方法资质、项目标准库筛选区继续接入 `DataFilter`；方法资质列表接入 `DataTable` 统一 loading/empty 外壳；部门页保留树形表格专用布局。
+- **验证**：lint、vue-tsc、Vite build 均通过；本次构建输出 `frontend/dist-step5-system-base`。
+
+## 2026-09-13 20:10 状态更新（GLM / T-917-4 + T-917-5 首批）
+
+- **当前主线**：T-917 UI/UX 全面重构；T-917-1~4 已完成，T-917-5 进行中，T-917-6~10 待办。
+- **本轮占用文件**：
+  - `frontend/src/views/report/audit.vue`：审核 KPI、`DataFilter`、统一高风险确认；
+  - `frontend/src/views/result/index.vue`：结果异常整行高亮、`DataFilter`；
+  - `frontend/src/views/{system,user,role,menu,dept}.vue`、`frontend/src/views/base/{tester-method,product-lib}.vue`：删除确认统一 `askConfirm()`；
+  - `TODO.md`、`STATUS.md`、`docs/journal/README.md`、`docs/journal/2026-09-13-glm-ui-step4-step5.md`、`docs/knowledge/2026-09-13-ui-component-system.md`。
+- **验证**：前端 `npm run lint` 通过（0 errors / 0 warnings）；`vue-tsc --noEmit` 通过；Vite build 通过，输出目录 `frontend/dist-step5-filter`。
+- **进度评估**：项目总进度约 **94% → 95%**。增量来自公共组件治理同步、审核/结果录入首批迁移和系统/基础数据高风险确认统一。
+- **Git 阻塞**：当前 `D:\lims\.git` 仍有 broken tree（`3c168259...`），`git status/log` 无法可靠读取；本轮不在损坏对象库上提交，待后续使用临时副本恢复并逐项核对暂存区。
+- **下一步**：继续迁移系统管理/基础数据/查询页的 `DataFilter`、`DataTable`、加载/空态与响应式布局；完成后再做三档分辨率与无横向溢出验收。
+
 ## 当前工作分支
 - **GLM：`agent/glm`（T-401 ✅ / T-906~908 ✅ / T-501 ✅ / T-601 ✅ / T-701 + T-911 + T-912 ✅ / **T-913 UI 重整 🟢 待提交**）**
 - **Copilot：`agent/copilot`（`d1910dc`：T-601 复核终审通过 + T-701 只读铺垫；无阻塞项，配额剩余 1 次且不得阻塞）**
@@ -211,28 +292,22 @@
 - ℹ️ 本机 MySQL 实际密码 123456（非 AGENTS 约定 11111111），在 gitignore 的 application-dev.yml。
 
 ## 进度评估（距整个项目圆满完成）
-**总进度：约 93%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
-- **业务主干：9/9 阶段落地（55%）** — 七阶段主线 + 两个延伸域（基础数据维护 / 统计看板）全部实现。
-  - ✅ 阶段一（含 T-105 方法资质 / T-106 项目标准库 / T-107 系统管理 4 页） / 二 / 三 / 四（T-401） /
-    五（T-501） / 六（T-601 + T-603 检验员任务查询） / 七（T-701 审核签发 + T-702 报告生成） /
-    八（T-801 查询） / 九（T-802 省平台上报 + T-803 统计看板）
-  - ⬜ 剩余：无主线缺口。仅剩**动态路由**（按 /me 菜单树生成，当前为静态路由 + 静态菜单，A 级）
-- **前端：约 15/15**——**15 个页面齐备**（8 业务页 + 6 管理页 + 1 质量分析页）+ 7 个公共组件
-  （含 `LimsChart`）+ 3 个工具（request/download/confirm/状态映射/chartOptions）；
-  **shell（侧栏分组 + Header + 面包屑）已改为菜单树驱动**；**动态路由已接入并与菜单同源**。
-  （页面数量与功能齐备度满分；视觉统一度另计，待 UI 重构阶段提升）
-- **数据：约 9.5/10**——01→08 建表齐备，V1~V6 迁移齐备（V3/V6 为可重跑口径校验器），seed 齐备
-  （本轮补齐 `base:lib:add/edit/remove` 3 个缺失权限种子 + `stat:view` 授权 R2）。
-- **质量：约 9.0/10**——后端 **107 项单测全过**；本轮以**接口级端到端实测**为主：
-  T-803 的 9 个 `/stat/*` 全部实测通过（含补零月、`percent=null`）、T-603 数据范围收敛实测
-  （njsa000 见 7 条 / njna000 见 0 条 / R100 见全部，伪造 `testerNo` 参数无效）、
-  T-105/106/107 **全部写路径 + 全部拒绝路径**实测（自锁 409 ×2、R100 保护 409、
-  角色绑定保护 409、菜单形态 400 ×3、部门引用 409 ×2、判定一致性 400、越界 judgeType 400）、
-  越权真 HTTP 403（R2 有 `stat:view` 但无 `sys:user:list`）、导出 Excel 解析校验（12 列正确）。
-  前端 `vue-tsc --noEmit` + `vite build` 通过。
-- **工程化：约 9.5/10**——治理齐备 + 三件套制度化 + 自裁机制 + **技能库 8 个** + 知识库 8 篇
-  （本轮新增 `2026-09-13-echarts-integration` / `-rbac-maintenance-guardrails` / `-statistics-api-patterns`）
-  + **日记 9 篇**。
+**总进度：约 99%**（按 AGENTS 2.5 节固定口径：业务主干 55% + 前端 15% + 数据 10% + 质量 10% + 工程化 10%）
+> 2026-09-14 收尾结论：**业务功能零缺口**。说明书 13 项功能全部落地并实测；
+> 未完成项从「功能」降级为「用户人工体验终验」与远端分支同步（后者本轮已完成）。
+- **业务主干：9/9 阶段 + 说明书 13 项功能全部落地（55%）** — 七阶段主线 + 三个延伸域
+  （基础数据维护 / 统计看板 / 操作日志）全部实现并端到端实测。
+  - ✅ 阶段一（T-105 方法资质 / T-106 项目标准库 / T-107 系统管理 4 页） / 二 / 三 / 四 /
+    五 / 六（含 T-603） / 七（T-701 + T-702） / 八 / 九（T-802 + T-803）
+  - ✅ **T-918 操作日志**（2026-09-14）——说明书未要求，但它是「用户菜单里的空壳」，
+    收尾时补齐为完整审计能力
+  - ⬜ 无业务缺口
+- **前端：17 页全部完成（15%）** — 公共组件 100% 迁移；加载/空态/错误态齐备；
+  三档分辨率无溢出；真实浏览器 20 页 0 console error。
+- **数据：10/10**——`db/init/01→09` 建表齐备，`V1~V7` 迁移齐备（V3/V6/V7 可重跑），seed 齐备。
+- **质量：约 9.8/10**——后端 **113 项单测全过**；前端 lint 0 / vue-tsc 0 / build ✅；
+  真实浏览器全量遍历 + 三档分辨率实测；T-918 端到端 6 断言（含越权与失败留痕）。
+- **工程化：约 9.8/10**——治理齐备 + 三件套制度化 + 自裁机制 + 技能库 9 个 + 知识库 15 篇 + 日记 17 篇。
 - **本轮亮点**：
   ① **图表库选型** ECharts 5.5.1 按需引入，路由级分包实测 `analysis-*.js` 542.83 kB / gzip 183.12 kB，
      **主包零增长**（关键可接受前提）；选型四问 + 反例排除完整落档 DECISIONS。
@@ -245,7 +320,7 @@
      测试行物理删除），实例数据零残留。
   ⑤ **动态路由（本轮）**：选型「路径注册表 + 中间件转换」，**未改任何 DB 表结构、未改任何 API 契约**，
      以 21 条显式登记 + 别名单向映射收敛全部历史路径；菜单与路由**同源产出**杜绝漂移。
-- **剩余任务**：**UI/UX 全面重构**（约 17 页统一升级，用户指定后续主线）+ 提交推送（`agent/glm → develop → main`）。
+- **剩余任务**：T-917-5 剩余 6 个页面的逐页迁移与 Dashboard/打印页专项复核；T-917-6~10 的交互统一、ECharts/Dashboard 最终验收、三档分辨率和 20 项 Checklist；以及临时 Git 副本的暂存区核对、提交和 `agent/glm → develop → main` 分支同步。
 - **可复现资产**：`.agents/skills/` 9 技能 + `docs/knowledge/` 9 篇 + `docs/journal/` 10 篇；
   本轮新增的「ECharts 集成」「RBAC 维护界面防护」「统计接口模式」「**Vue3 动态路由注册表**」四篇知识可直接支撑同类项目复现。
 

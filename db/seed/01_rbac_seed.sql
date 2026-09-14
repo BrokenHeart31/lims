@@ -163,8 +163,12 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `title`, `path`, `icon`, `menu_type`,
 (1142, 114, '部门新建', NULL, NULL, 3, 'sys:dept:add',    2, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (1143, 114, '部门编辑', NULL, NULL, 3, 'sys:dept:edit',   3, 1, 'seed', NOW(), 'seed', NOW(), 0),
 (1144, 114, '部门删除', NULL, NULL, 3, 'sys:dept:remove', 4, 1, 'seed', NOW(), 'seed', NOW(), 0),
--- ⚠️ 日志查看页**尚未开发**（后端亦无 log 查询接口）。visible 置 0 隐藏，
---    避免动态路由上线后出现死链；页面完成并登记进路由注册表后改回 1 即可。
+-- ℹ️ 日志查看：查询接口已落地（`GET /api/sys/log/page`，数据由
+--    `config/OperationLogInterceptor` 在写请求后自动写入 `sys_operation_log`）。
+--    入口采用**顶部用户菜单 →「操作日志」对话框**，不再单设页面，
+--    因此本条 sidebar 菜单保持 visible=0（避免出现指向不存在路由的死链）。
+--    子项 1151 的 `log:view` 权限**正在被使用**：拥有它可跨用户查看，
+--    否则服务层强制收敛为「仅本人工号」。
 (115, 11, '日志查看', '/sys/log', NULL, 2, NULL, 5, 0, 'seed', NOW(), 'seed', NOW(), 0),
 (1151, 115, '日志查看', NULL, NULL, 3, 'log:view', 1, 1, 'seed', NOW(), 'seed', NOW(), 0);
 

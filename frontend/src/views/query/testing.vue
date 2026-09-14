@@ -13,6 +13,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
+import DataFilter from '@/components/common/DataFilter.vue'
 
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'pending' | 'neutral'
 
@@ -139,10 +140,7 @@ onMounted(() => {
       </el-button>
     </PageHeader>
 
-    <AppCard
-      variant="panel"
-      :padding="20"
-    >
+    <DataFilter>
       <el-form inline>
         <el-form-item label="样品编号">
           <el-input
@@ -206,23 +204,23 @@ onMounted(() => {
             style="width: 240px"
           />
         </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            :icon="Search"
-            @click="handleSearch"
-          >
-            查询
-          </el-button>
-          <el-button
-            :icon="Refresh"
-            @click="handleReset"
-          >
-            重置
-          </el-button>
-        </el-form-item>
       </el-form>
-    </AppCard>
+      <template #actions>
+        <el-button
+          type="primary"
+          :icon="Search"
+          @click="handleSearch"
+        >
+          查询
+        </el-button>
+        <el-button
+          :icon="Refresh"
+          @click="handleReset"
+        >
+          重置
+        </el-button>
+      </template>
+    </DataFilter>
 
     <AppCard
       variant="panel"
