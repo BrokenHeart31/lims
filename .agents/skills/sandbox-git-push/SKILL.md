@@ -86,7 +86,26 @@ git checkout -- .      # 仅在确实发生半切换时使用
 
 ### 规则 3：推送前先探测凭据链，**能走 GCM 就别内嵌 PAT**
 
-本机 `credential.helper=GCM`。凭据链**有时有、有时没有**，所以**每次推送前先花 30 秒探测**，不要凭上次的经验直接选路径。
+本机 `credential.helper=GCM`。**推送是否阻塞取决于用户是否在桌面点了 GCM 弹窗**（见下），
+而这一点 Agent 侧无法观测，所以**每次推送前都要重新判断**，不要沿用上次的结论。
+
+#### 🔴 关键认知：「GCM 挂起」其实是「等用户点弹窗」，不是故障
+
+2026-09-14 用户亲口澄清：
+
+> 「你查路径时，我这里会有些弹窗，我点击确认了你那边才通过，但是前几次的 git 提交没有也通过了」
+
+由此真相大白：
+
+| 现象 | 真实原因 |
+|---|---|
+| 路径 A 静默无输出直到超时 | GCM 在用户桌面**弹了授权窗口**，等用户点确认；沙箱侧只看得到"没动静" |
+| 隔一会儿又自己成功了 | **用户点了确认** |
+| 前几次同样推送却从无弹窗 | 那时走的是**路径 B**：`-c credential.helper=` 置空 GCM、直接读缓存里的 PAT，**压根不经过 GCM UI** |
+
+**所以「挂起」的正确处置不是"换条路重试"，而是先意识到：有个对话框正等着人去点。**
+Agent 侧看到长时间无输出时，应当**主动告知用户「请看一下是否有凭据弹窗」**，
+而不是静默等到 SIGTERM 后自己换路径——那样用户永远不知道自己被打断了。
 
 **探测方式：直接跑真实 push，timeout 60**（成功就走完了，失败也无副作用，见下）
 
@@ -98,7 +117,7 @@ GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push origin \
 
 - 输出 `To https://...` + 各分支更新行 → **成功，结束**；
 - 输出 `could not read Username` → **走路径 B**；
-- **静默挂起直到 SIGTERM / 超时** → **走路径 B**（GCM 阻塞沙箱）。
+- **静默挂起** → 大概率在等弹窗。**先提示用户确认**；仍无响应再走路径 B。
 
 > 🔴 **不要用 `push --dry-run` 探测** —— 2026-09-14 实测踩坑：
 > `push --dry-run` 返回 `Everything up-to-date`（看起来路径 A 可用），
@@ -114,8 +133,14 @@ GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push origin \
   agent/glm:agent/glm develop:develop main:main 2>&1 | tail -8
 ```
 
-本机 Windows 凭据管理器存有 `LegacyGeneric:target=git:https://github.com`（用户 `BrokenHeart31`）。
-**凭据是有的，GCM 会不会阻塞才是变量——所以只能靠上面那次真实 push 的成败来判断。**
+本机 Windows 凭据管理器存有 `LegacyGeneric:target=git:https://github.com`（用户 `BrokenHeart31`），
+**凭据本身一直都在**。真正的变量只有一个：**这次 GCM 会不会弹窗、用户多久点到**。
+所以只能靠上面那次真实 push 的成败来判断，且**失败时先想到"人在点弹窗"**。
+
+> 🔄 2026-09-14 同一会话内的三次对照，说明它是**非确定性**的：
+> `5768215` 路径 A 挂到 SIGTERM → 转路径 B 成功；紧接着 `7b21392` 路径 A 一发即中。
+> 两次差异不在命令，而在**用户点弹窗的时机**。
+> 所以：**一次失败 ≠ 以后都要走 B；一次成功 ≠ 以后都能走 A。**
 
 **路径 B（兜底）**：手工取 PAT 内嵌 URL
 
