@@ -88,26 +88,34 @@ git checkout -- .      # 仅在确实发生半切换时使用
 
 本机 `credential.helper=GCM`。凭据链**有时有、有时没有**，所以**每次推送前先花 30 秒探测**，不要凭上次的经验直接选路径。
 
-**第 1 步：探测（决定走 A 还是 B）**
+**探测方式：直接跑真实 push，timeout 60**（成功就走完了，失败也无副作用，见下）
 
 ```bash
 export GIT="C:/Users/Chen/.workbuddy/binaries/PortableGit/versions/1.2.0/cmd/git.exe"
-GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push --dry-run origin <branch>:<branch> 2>&1 | tail -3
+GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push origin \
+  agent/glm:agent/glm develop:develop main:main 2>&1 | tail -5
 ```
 
-- 输出 `Everything up-to-date` / `To https://...` → **走路径 A**；
+- 输出 `To https://...` + 各分支更新行 → **成功，结束**；
 - 输出 `could not read Username` → **走路径 B**；
-- 命令静默挂起（>60s 无输出）→ 也是**路径 B**（GCM 弹窗阻塞沙箱）。
+- **静默挂起直到 SIGTERM / 超时** → **走路径 B**（GCM 阻塞沙箱）。
 
-**路径 A（首选，2026-09-14 实测可用）**：让 GCM 自己填凭据，**PAT 不出现在命令行里**
+> 🔴 **不要用 `push --dry-run` 探测** —— 2026-09-14 实测踩坑：
+> `push --dry-run` 返回 `Everything up-to-date`（看起来路径 A 可用），
+> 但**真实 push 却在 180s 内无任何输出直到 SIGTERM**。
+> 原因：dry-run 只做到鉴权握手就返回，**不进入真正的凭据写入/对象传输阶段**，
+> 而 GCM 的阻塞恰恰发生在后面。**「能读」不等于「能写」的凭据路径也一样。**
+> 探测手段必须与被探测的操作走同一条代码路径。
+
+**路径 A（首选）：让 GCM 自己填凭据，PAT 不出现在命令行里**
 
 ```bash
-GIT_TERMINAL_PROMPT=0 timeout 180 $GIT -c http.sslVerify=false push origin \
+GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push origin \
   agent/glm:agent/glm develop:develop main:main 2>&1 | tail -8
 ```
 
-> ✅ 2026-09-14 实测：本机 Windows 凭据管理器已有 `LegacyGeneric:target=git:https://github.com`，
-> 此命令返回 `Everything up-to-date`（= 鉴权通过）。**此时不需要也不应该内嵌 PAT。**
+本机 Windows 凭据管理器存有 `LegacyGeneric:target=git:https://github.com`（用户 `BrokenHeart31`）。
+**凭据是有的，GCM 会不会阻塞才是变量——所以只能靠上面那次真实 push 的成败来判断。**
 
 **路径 B（兜底）**：手工取 PAT 内嵌 URL
 
@@ -144,8 +152,11 @@ GIT_TERMINAL_PROMPT=0 timeout 180 $GIT -c credential.helper= -c http.sslVerify=f
 **看到这条错误 = 确认「代码/网络/TLS 都没问题，纯缺凭据」**，不要再往 TLS 方向排查。
 
 > 📌 **2026-09-14 更新**：上表是「曾经为空」，不是「永远为空」。当天实测 Windows 凭据管理器中
-> 已有 `LegacyGeneric:target=git:https://github.com`，**路径 A 直接成功**。
-> **不要固化「GCM 一定挂起」或「GCM 一定有缓存」任一结论——每次推送前用第 1 步的探测来定。**
+> 已有 `LegacyGeneric:target=git:https://github.com`，**凭据确实存在**。
+> 但同一次会话里路径 A 的真实 push 仍然挂起，**最终仍靠路径 B 推成功**
+> （`514cdd7..5768215` 三分支）。
+> **结论：不要固化「GCM 一定挂起」或「凭据一定缺失」任一结论——
+> 凭据存在与否、GCM 是否阻塞，是两个独立变量，各自都得靠真实 push 探测。**
 
 **错误链的排查顺序（照此逐层剥离，勿跳步）**：
 
