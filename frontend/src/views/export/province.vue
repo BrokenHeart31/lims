@@ -7,9 +7,13 @@
  */
 import { reactive, ref } from 'vue'
 import { Download, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { exportProvinceApi } from '@/api/exportApi'
-import { downloadBlob } from '@/utils/download'
+import {
+  XLSX_FILE_TYPE,
+  notifySaveOutcome,
+  saveBlobAs,
+  suggestedExportName,
+} from '@/utils/download'
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
@@ -37,9 +41,14 @@ const COLUMNS = [
 async function handleExport(): Promise<void> {
   exporting.value = true
   try {
-    const blob = await exportProvinceApi(query.taskNo ? { taskNo: query.taskNo } : undefined)
-    downloadBlob(blob)
-    ElMessage.success('导出已开始下载')
+    // 传「数据工厂」而不是先 await 出 Blob：
+    // saveBlobAs 会**先弹保存对话框**，用户选定位置后才发请求 —— 保证用户激活态不丢失
+    const outcome = await saveBlobAs(
+      () => exportProvinceApi(query.taskNo ? { taskNo: query.taskNo } : undefined),
+      suggestedExportName('省平台上报数据', 'xlsx'),
+      XLSX_FILE_TYPE,
+    )
+    notifySaveOutcome(outcome, '省平台上报数据')
   } catch {
     // 请求层已统一提示
   } finally {

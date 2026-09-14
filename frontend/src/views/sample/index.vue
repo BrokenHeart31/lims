@@ -28,21 +28,39 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
 import DataTable from '@/components/common/DataTable.vue'
+import { XLSX_FILE_TYPE, notifySaveOutcome, saveBlobAs } from '@/utils/download'
 
 /** 采样单导入模板（置于 frontend/public/templates，随构建产物发布） */
 const TEMPLATE_URL = '/templates/sample_import_template.xlsx'
-/**
- * 模板下载（2026-09-14 修复）
- * ----------------------------------------------------------------------------
- * 原实现是 `<el-link :href target="_blank">`，实测两个问题：
- *   ① dev server 对 `.xlsx` 返回的 `Content-Type` 为空 → 浏览器无法判定类型，
- *      新标签页打开后什么都不做（用户看到的就是「空页面 / 没有响应」）；
- *   ② `target="_blank"` 会先开一个空白标签页，观感上更像「坏了」。
- * 修复：改用 HTML `download` 属性（同名同源时浏览器按属性值保存，**忽略 Content-Type**），
- * 并去掉 `target="_blank"`。这样 dev 与生产环境行为一致。
- * 注：这里不用 fetch+Blob 方案——静态资源不需要鉴权，走原生属性更简单也更稳。
- */
 const TEMPLATE_FILENAME = '采样单导入模板.xlsx'
+
+/**
+ * 下载采样单导入模板（2026-09-14 二次修订）
+ * ----------------------------------------------------------------------------
+ * 演进过程（三次修正，值得留给后人）：
+ *   ① 初版 `<el-link :href target="_blank">`：dev server 对 `.xlsx` 返回**空 Content-Type**，
+ *      浏览器拿不到类型 → 开个空白标签页后什么都不做（用户反馈「空页面、没响应」）。
+ *   ② 改用 HTML `download` 属性：能下载了，但**固定落到浏览器默认下载目录**，
+ *      用户不知道文件去了哪里，也无法直接存到工作目录。
+ *   ③ 即本版：**先弹「另存为」对话框让用户选位置**，再把文件写进去。
+ *      因为要走 fetch-as-blob（静态资源不受 Content-Type 影响），
+ *      且 `showSaveFilePicker` 依赖瞬时用户激活态，所以必须把「取数据」做成工厂函数传给
+ *      `saveBlobAs` —— 由它**先弹对话框、后取数据**。
+ */
+async function handleDownloadTemplate(): Promise<void> {
+  const outcome = await saveBlobAs(
+    async () => {
+      const response = await fetch(TEMPLATE_URL)
+      if (!response.ok) {
+        throw new Error(`模板文件读取失败（HTTP ${response.status}）`)
+      }
+      return await response.blob()
+    },
+    TEMPLATE_FILENAME,
+    XLSX_FILE_TYPE,
+  )
+  notifySaveOutcome(outcome, '采样单导入模板')
+}
 
 // ---------------- 查询区 ----------------
 const queryRef = ref<FormInstance>()
@@ -276,11 +294,10 @@ onMounted(() => {
       :icon="Document"
     >
       <el-link
-        :href="TEMPLATE_URL"
-        :download="TEMPLATE_FILENAME"
         type="primary"
         :underline="false"
         class="template-link"
+        @click="handleDownloadTemplate"
       >
         <el-icon><Download /></el-icon>
         下载导入模板
@@ -505,10 +522,9 @@ onMounted(() => {
               hint="请先导入采样单 Excel，或调整筛选条件"
             >
               <el-link
-                :href="TEMPLATE_URL"
-                :download="TEMPLATE_FILENAME"
                 type="primary"
                 :underline="false"
+                @click="handleDownloadTemplate"
               >
                 下载导入模板
               </el-link>

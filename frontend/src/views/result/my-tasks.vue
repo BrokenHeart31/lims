@@ -17,13 +17,17 @@ import { Download, EditPen, Refresh, Search } from '@element-plus/icons-vue'
 import { get } from '@/utils/request'
 import type { PageResult } from '@/types/api'
 import { exportMyTasksApi } from '@/api/exportApi'
-import { downloadBlob } from '@/utils/download'
+import {
+  XLSX_FILE_TYPE,
+  notifySaveOutcome,
+  saveBlobAs,
+  suggestedExportName,
+} from '@/utils/download'
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
-import { ElMessage } from 'element-plus'
 
 /** 检验员任务行（与后端 MyTaskVO 对应） */
 interface MyTaskRow {
@@ -115,9 +119,13 @@ function gotoEntry(row: MyTaskRow): void {
 async function handleExport(): Promise<void> {
   exporting.value = true
   try {
-    const result = await exportMyTasksApi()
-    downloadBlob(result)
-    ElMessage.success('检验任务已导出')
+    // 传「数据工厂」：saveBlobAs 先弹「另存为」对话框，用户选好位置才发请求
+    const outcome = await saveBlobAs(
+      () => exportMyTasksApi(),
+      suggestedExportName('检验任务', 'xlsx'),
+      XLSX_FILE_TYPE,
+    )
+    notifySaveOutcome(outcome, '检验任务')
   } catch {
     // 请求层已统一提示
   } finally {

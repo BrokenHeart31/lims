@@ -2,6 +2,24 @@
 
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
+## 2026-09-14 16:30 下载改造（GLM / **全部下载改为「自选保存位置」**）
+
+- **本轮占用**：`frontend/src/utils/download.ts`（新增 `saveBlobAs` / `notifySaveOutcome` / 类型常量）、
+  `views/{result/index.vue, result/my-tasks.vue, export/province.vue, sample/index.vue,
+  base/tester-method.vue, base/product-lib.vue}`、`README.md` + 治理文件。**后端无变更**。
+- **改动**：6 处下载（4 导出 + 2 模板）统一改走 `saveBlobAs()` → 弹系统**「另存为」对话框**让用户选位置与文件名；
+  不支持的浏览器或非安全上下文自动退回默认下载目录并提示。
+- **关键约束**：`showSaveFilePicker()` 依赖**瞬时用户激活态**，`await` 之后即失效抛 `SecurityError`。
+  故 `saveBlobAs` 的参数是**数据工厂函数**而非 Blob —— 从 API 形状上强制「先弹框、后取数据」。
+  **后续维护不得改成「先请求再弹框」**。
+- **代价（已落档）**：必须先弹框 ⇒ 拿不到服务端 `Content-Disposition` 文件名，改用**带时间戳的建议名**（用户可改名）。
+- **验收**：桩替换原生对话框后真实点击 —— 检验任务 5111 字节 / 省平台 4338 字节 /
+  采样单模板 6106 字节（与磁盘一致）写入成功；取消分支提示正确且**未发请求**；
+  `eslint` 0 / `vue-tsc` 0 / `vite build` ✅ / console 0 错误。
+- ⚠️ **需人工确认**：无头浏览器无法弹真实系统对话框（对照实验证实 headless 不校验激活态），
+  **对话框外观与真实落盘需用户点一次**。
+- 进度维持 **99%**。
+
 ## 2026-09-14 16:10 修复轮（GLM / **用户实测反馈的 4 类问题全部闭环**）
 
 - **本轮占用**：`frontend/src/{views/dashboard/index.vue, views/sample/index.vue, views/error/403.vue,

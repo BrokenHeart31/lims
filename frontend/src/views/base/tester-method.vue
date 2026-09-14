@@ -14,6 +14,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Download, Edit, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import { CSV_FILE_TYPE, notifySaveOutcome, saveBlobAs } from '@/utils/download'
 import {
   createTesterMethodApi,
   importTesterMethodApi,
@@ -193,17 +194,13 @@ async function onFileChange(e: Event): Promise<void> {
   }
 }
 
-/** 下载导入模板（前端生成，避免为模板单独开一个后端接口） */
-function downloadTemplate(): void {
+/** 下载导入模板（前端生成，避免为模板单独开一个后端接口；用户可选择保存位置） */
+async function downloadTemplate(): Promise<void> {
   const header = '检验方法名称,方法编号,检验员工号,资质状态(1有效/0失效),备注\n'
   const sample = '蔬菜中有机磷类农药残留量的测定,GB 23200.121,njna000,1,农残室具备该资质\n'
   const blob = new Blob(['\uFEFF' + header + sample], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = '方法-检验员资质导入模板.csv'
-  a.click()
-  URL.revokeObjectURL(url)
+  const outcome = await saveBlobAs(blob, '方法-检验员资质导入模板.csv', CSV_FILE_TYPE)
+  notifySaveOutcome(outcome, '方法-检验员资质导入模板')
 }
 
 onMounted(() => {

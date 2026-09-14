@@ -17,6 +17,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Delete, Download, Edit, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import { CSV_FILE_TYPE, notifySaveOutcome, saveBlobAs } from '@/utils/download'
 import {
   createProductLibApi,
   importProductLibApi,
@@ -292,7 +293,8 @@ async function onFileChange(e: Event): Promise<void> {
 }
 
 /** 下载导入模板（CSV，13 列与后端 ProductLibImportRow 的 index 绑定一一对应） */
-function downloadTemplate(): void {
+/** 下载导入模板（前端生成；用户可选择保存位置） */
+async function downloadTemplate(): Promise<void> {
   const header = [
     '产品编号', '产品名称', '食品大类', '顺序号', '检测项目', '单位', '判定依据标准号',
     '检验方法', '限量值', '判定类型(1限量比较/2不得检出/3文本感官)', '是否参考项(1是/0否)',
@@ -304,12 +306,8 @@ function downloadTemplate(): void {
     'SC-0001,菠菜,蔬菜,3,感官,/,GB 2762,感官检验,具有该品种应有的色泽与气味,3,0,,人工判定',
   ].join('\n')
   const blob = new Blob(['\uFEFF' + header + '\n' + rows + '\n'], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = '项目标准库导入模板.csv'
-  a.click()
-  URL.revokeObjectURL(url)
+  const outcome = await saveBlobAs(blob, '项目标准库导入模板.csv', CSV_FILE_TYPE)
+  notifySaveOutcome(outcome, '项目标准库导入模板')
 }
 
 onMounted(() => {

@@ -19,7 +19,12 @@ import { ElMessage } from 'element-plus'
 import { Check, Download, Promotion, Refresh, Search } from '@element-plus/icons-vue'
 import { JUDGE_TYPE_OPTIONS } from '@/api/item'
 import { exportMyTasksApi } from '@/api/exportApi'
-import { downloadBlob } from '@/utils/download'
+import {
+  XLSX_FILE_TYPE,
+  notifySaveOutcome,
+  saveBlobAs,
+  suggestedExportName,
+} from '@/utils/download'
 import {
   getResultDetailApi,
   judgeResultApi,
@@ -333,9 +338,13 @@ const exporting = ref(false)
 async function handleExportMyTasks(): Promise<void> {
   exporting.value = true
   try {
-    const blob = await exportMyTasksApi()
-    downloadBlob(blob)
-    ElMessage.success('导出已开始下载')
+    // 传「数据工厂」：saveBlobAs 先弹「另存为」对话框，用户选好位置才发请求
+    const outcome = await saveBlobAs(
+      () => exportMyTasksApi(),
+      suggestedExportName('检验任务', 'xlsx'),
+      XLSX_FILE_TYPE,
+    )
+    notifySaveOutcome(outcome, '检验任务')
   } catch {
     // 请求层已统一提示
   } finally {
