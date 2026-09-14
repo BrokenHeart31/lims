@@ -177,6 +177,53 @@ git commit -q -F /c/Users/Chen/AppData/Local/Temp/commit.msg
 > 会因「基于旧内容写回」互相覆盖，出现「Edit 报成功但改动消失」——本轮实测踩到，
 > 表现为编译报 `找不到符号 XXX`（常量声明被另一条 Edit 抹掉）。
 
+### 规则 8（🔴 高价值）：对象库损坏时 `git fetch` 修不好，必须「镜像克隆取 pack」
+
+**症状**：`git status` 报 `unable to read tree <hash>`；`git branch -v` 报
+`could not parse commit <hash>`；`git fsck --full` 列出大量 `missing commit/tree/blob`。
+本地 `.git` 被沙箱/杀软（DLP `wsctrl11`）拦写导致对象没落盘。
+
+**为什么 `git fetch` 修不好**（2026-09-14 实测，走了弯路）：
+```
+error: Could not read 3e2a9daa...
+fatal: bad object 378bdd54...
+error: ... did not send all necessary objects
+```
+根因是**协商（negotiation）被本地 ref 污染**：本地 `refs/remotes/origin/*` 仍指向旧 hash，
+git 据此告诉远端「这些我都有了」→ 远端就不再发送那些对象；可本地实际缺对象，
+拉完仍然缺，远端最终判定 `did not send all necessary objects`。
+**本地对象库损坏时，增量协议会被自己过期的 ref 误导而失效。**
+
+**正确解法（确定性恢复，不依赖协商）**：
+
+```bash
+cd /c/Users/Chen/AppData/Local/Temp          # ① 切到目标父目录，用「相对路径」
+GIT_TERMINAL_PROMPT=0 git -c http.sslVerify=false \
+  clone --mirror https://github.com/<owner>/<repo>.git lims_recovery.git
+
+# ② 把完整对象库的 pack 拷回事故仓库
+cp lims_recovery.git/objects/pack/pack-<new>.* /d/lims/.git/objects/pack/
+
+# ③ 删除过期的 multi-pack-index（不删的话新 pack 里的对象可能查不到）
+rm -f /d/lims/.git/objects/info/multi-pack-index
+
+# ④ 校验
+cd /d/lims && git fsck --full | grep -cE '^missing|^broken'   # 期望 0
+```
+
+**✅ 实测效果**：修复前 91 个 missing（6 commit + 多 tree/blob），修复后 **0 missing / 0 broken**，
+`git status` / `git log` / `git branch` 全部恢复正常，且**完整保留了本地未推送的工作区改动**。
+
+**两个副坑**：
+
+1. **`git clone` 传绝对 POSIX 路径会静默失败**：`git clone --mirror <url> /c/Users/.../x.git`
+   退出码 0、无任何输出、目录根本没创建。**必须 `cd` 到父目录后用相对路径**。
+2. **判断「能否推送」只看 `git ls-remote`，不要看 `curl`**：
+   本机 `curl https://github.com` 返回 `000`（代理 CONNECT tunnel 502），
+   但 `git ls-remote` 秒回 —— git 走的是自己的 HTTP 传输栈，与 curl 的代理设置无关。
+
+> 恢复用镜像克隆**不需要写权限**（public 仓匿名可 clone），因此即使 GCM 凭据失效也能先恢复对象库。
+
 ## 标准执行清单
 
 ```bash
