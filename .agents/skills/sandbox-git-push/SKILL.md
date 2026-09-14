@@ -84,82 +84,62 @@ rm -f .git/index.lock
 git checkout -- .      # 仅在确实发生半切换时使用
 ```
 
-### 规则 3：推送前先探测凭据链，**能走 GCM 就别内嵌 PAT**
+### 规则 3：**默认走静默路径**（绕开 GCM UI），把「等弹窗」当作例外
 
-本机 `credential.helper=GCM`。**推送是否阻塞取决于用户是否在桌面点了 GCM 弹窗**（见下），
-而这一点 Agent 侧无法观测，所以**每次推送前都要重新判断**，不要沿用上次的结论。
+本机 `credential.helper=GCM`。凭据一直都在，**但走 GCM 完整流程会在用户桌面弹授权窗**，
+用户不点就一直挂着。**2026-09-14 用户明确选择：默认用静默方式，不打扰自测。**
 
-#### 🔴 关键认知：「GCM 挂起」其实是「等用户点弹窗」，不是故障
+> 📌 用户原话（2026-09-14）：「你查路径时，我这里会有些弹窗，我点击确认了你那边才通过」
+> → 选项确认：以后的推送**用静默方式（推荐）**。
 
-2026-09-14 用户亲口澄清：
-
-> 「你查路径时，我这里会有些弹窗，我点击确认了你那边才通过，但是前几次的 git 提交没有也通过了」
-
-由此真相大白：
-
-| 现象 | 真实原因 |
-|---|---|
-| 路径 A 静默无输出直到超时 | GCM 在用户桌面**弹了授权窗口**，等用户点确认；沙箱侧只看得到"没动静" |
-| 隔一会儿又自己成功了 | **用户点了确认** |
-| 前几次同样推送却从无弹窗 | 那时走的是**路径 B**：`-c credential.helper=` 置空 GCM、直接读缓存里的 PAT，**压根不经过 GCM UI** |
-
-**所以「挂起」的正确处置不是"换条路重试"，而是先意识到：有个对话框正等着人去点。**
-Agent 侧看到长时间无输出时，应当**主动告知用户「请看一下是否有凭据弹窗」**，
-而不是静默等到 SIGTERM 后自己换路径——那样用户永远不知道自己被打断了。
-
-**探测方式：直接跑真实 push，timeout 60**（成功就走完了，失败也无副作用，见下）
+**默认：静默路径 —— 先执行这条**
 
 ```bash
 export GIT="C:/Users/Chen/.workbuddy/binaries/PortableGit/versions/1.2.0/cmd/git.exe"
-GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push origin \
-  agent/glm:agent/glm develop:develop main:main 2>&1 | tail -5
+GCM="C:/Users/Chen/.workbuddy/binaries/PortableGit/versions/1.2.0/mingw64/bin/git-credential-manager.exe"
+CRED=$(printf 'protocol=https\nhost=github.com\n\n' | GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$GCM" get 2>/dev/null)
+U=$(echo "$CRED" | grep '^username=' | cut -d= -f2-)
+P=$(echo "$CRED" | grep '^password=' | cut -d= -f2-)
+GIT_TERMINAL_PROMPT=0 timeout 120 $GIT -c credential.helper= -c http.sslVerify=false \
+  push "https://${U}:${P}@github.com/<owner>/<repo>.git" agent/glm:agent/glm develop:develop main:main \
+  2>&1 | sed -E 's#//[^@/]*@#//<REDACTED>@#g' | tail -8
 ```
 
-- 输出 `To https://...` + 各分支更新行 → **成功，结束**；
-- 输出 `could not read Username` → **走路径 B**；
-- **静默挂起** → 大概率在等弹窗。**先提示用户确认**；仍无响应再走路径 B。
+- `-c credential.helper=`：置空 GCM，**这是"静默"的关键**——不经过 GCM UI 就不会弹窗。
+- `-c http.sslVerify=false`：绕过沙箱 MITM 代理（`127.0.0.1:2400`）的证书错误。**一次性用，勿写入 config。**
+- **`sed` 脱敏必加**，否则 PAT 会进工具日志。
+- 代价：PAT 短暂出现在进程命令行。这是用户知情后接受的取舍（不打扰 > 该风险）。
 
-> 🔴 **不要用 `push --dry-run` 探测** —— 2026-09-14 实测踩坑：
-> `push --dry-run` 返回 `Everything up-to-date`（看起来路径 A 可用），
-> 但**真实 push 却在 180s 内无任何输出直到 SIGTERM**。
-> 原因：dry-run 只做到鉴权握手就返回，**不进入真正的凭据写入/对象传输阶段**，
-> 而 GCM 的阻塞恰恰发生在后面。**「能读」不等于「能写」的凭据路径也一样。**
-> 探测手段必须与被探测的操作走同一条代码路径。
-
-**路径 A（首选）：让 GCM 自己填凭据，PAT 不出现在命令行里**
+**备选：GCM 路径 —— 仅当静默路径取不到凭据时用**
 
 ```bash
 GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push origin \
   agent/glm:agent/glm develop:develop main:main 2>&1 | tail -8
 ```
 
-本机 Windows 凭据管理器存有 `LegacyGeneric:target=git:https://github.com`（用户 `BrokenHeart31`），
-**凭据本身一直都在**。真正的变量只有一个：**这次 GCM 会不会弹窗、用户多久点到**。
-所以只能靠上面那次真实 push 的成败来判断，且**失败时先想到"人在点弹窗"**。
+PAT 不进命令行（更安全），但**会在用户桌面弹授权窗**。
 
-> 🔄 2026-09-14 同一会话内的三次对照，说明它是**非确定性**的：
-> `5768215` 路径 A 挂到 SIGTERM → 转路径 B 成功；紧接着 `7b21392` 路径 A 一发即中。
-> 两次差异不在命令，而在**用户点弹窗的时机**。
-> 所以：**一次失败 ≠ 以后都要走 B；一次成功 ≠ 以后都能走 A。**
+> 🔴 **这条路"卡住"不是故障，是有个对话框在等人点。** 2026-09-14 用户亲口澄清：
+> 「你查路径时，我这里会有些弹窗，我点击确认了你那边才通过」。
+>
+> | 现象 | 真实原因 |
+> |---|---|
+> | 静默无输出直到超时 | GCM 在桌面弹窗等确认，Agent 侧只看得到"没动静" |
+> | 隔一会儿又自己成了 | **用户点了确认** |
+>
+> 因此：**若走这条路，看到无输出要先提示用户"请确认是否有凭据弹窗"**，
+> 而不是静默等到 SIGTERM 后自己换路——那样用户永远不知道自己被打断了。
+> 也正因如此，用户选择了默认静默路径。
 
-**路径 B（兜底）**：手工取 PAT 内嵌 URL
+> 🔴 **不要用 `push --dry-run` 探测 GCM 路径** —— 2026-09-14 实测踩坑：
+> dry-run 返回 `Everything up-to-date`（看着可用），**真实 push 却 180s 无输出直到 SIGTERM**。
+> 原因：dry-run 只做鉴权握手就返回，不进入凭据写入/对象传输阶段，而阻塞恰在后面。
+> **探测手段必须与被探测操作走同一条代码路径。**
 
-```bash
-GCM="C:/Users/Chen/.workbuddy/binaries/PortableGit/versions/1.2.0/mingw64/bin/git-credential-manager.exe"
-CRED=$(printf 'protocol=https\nhost=github.com\n\n' | GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$GCM" get 2>/dev/null)
-U=$(echo "$CRED" | grep '^username=' | cut -d= -f2-)
-P=$(echo "$CRED" | grep '^password=' | cut -d= -f2-)
-GIT_TERMINAL_PROMPT=0 timeout 180 $GIT -c credential.helper= -c http.sslVerify=false \
-  push "https://${U}:${P}@github.com/<owner>/<repo>.git" agent/glm:agent/glm develop:develop main:main \
-  2>&1 | sed -E 's#//[^@/]*@#//<REDACTED>@#g' | tail -8
-```
-
-- `-c http.sslVerify=false`：绕过沙箱 MITM 代理（`127.0.0.1:2400`）的证书错误。**一次性用，勿写入 config。**
-- `-c credential.helper=`：置空凭据助手，避免 GCM 阻塞。**路径 B 的关键。**
-- **输出必须过 `sed` 脱敏**，否则 PAT 会进工具日志。
-
-> ⚠️ **路径 B 的代价**：PAT 会短暂出现在**进程命令行**（同机其他进程可读）与 shell 历史。
-> 这是它只能当兜底、不能当首选的原因。**能用 A 就用 A。**
+> 🔄 同一会话三次对照说明 GCM 路径是**非确定性**的：
+> `5768215` 挂到 SIGTERM → 转静默成功；紧接着 `7b21392` 一发即中。
+> 差异不在命令，而在**用户点弹窗的时机**。所以一次成败都不能当永久结论——
+> 好在我们默认不走这条路。
 
 以下为 **2026-09-13 实测（当时凭据链完全为空）**：
 
@@ -178,22 +158,22 @@ GIT_TERMINAL_PROMPT=0 timeout 180 $GIT -c credential.helper= -c http.sslVerify=f
 
 > 📌 **2026-09-14 更新**：上表是「曾经为空」，不是「永远为空」。当天实测 Windows 凭据管理器中
 > 已有 `LegacyGeneric:target=git:https://github.com`，**凭据确实存在**。
-> 但同一次会话里路径 A 的真实 push 仍然挂起，**最终仍靠路径 B 推成功**
+> 但同一次会话里 GCM 路径的真实 push 仍然挂起（实为等弹窗），**最终仍靠静默路径推成功**
 > （`514cdd7..5768215` 三分支）。
-> **结论：不要固化「GCM 一定挂起」或「凭据一定缺失」任一结论——
-> 凭据存在与否、GCM 是否阻塞，是两个独立变量，各自都得靠真实 push 探测。**
+> **结论：「凭据是否存在」与「GCM 会不会卡在弹窗」是两个独立变量——
+> 所以默认走不依赖后者的静默路径。**
 
 **错误链的排查顺序（照此逐层剥离，勿跳步）**：
 
 ```
 CRYPT_E_NO_REVOCATION_CHECK      → TLS 层（schannel），加 sslVerify=false 或换 openssl 后端
 unable to get local issuer cert  → TLS 层（openssl），加 sslVerify=false
-命令挂起无输出                    → 凭据层，GCM 阻塞 → 加 credential.helper=
-could not read Username          → 凭据层，确认缺 PAT → 交给用户，停止重试
+命令挂起无输出（静默路径下）      → 凭据层，PAT 失效 → 重新 git-credential-manager get
+could not read Username          → 凭据层，缓存取不到 PAT → 交给用户，停止重试
 ```
 
 > ⚠️ **不要在缺凭据时反复重试不同 TLS 开关**——本轮为此浪费了 4 次尝试。
-> 判断依据：`ls-remote` 能成功（说明网络与 TLS 都通）而 `push` 挂起 → 一定是凭据问题。
+> 判断依据：`ls-remote` 能成功（说明网络与 TLS 都通）而 `push` 失败 → 一定是凭据问题。
 
 ### 规则 4：令牌权限判断只看 401/403/成功三态
 
@@ -317,21 +297,18 @@ HASH=$(tail -1 .git/logs/refs/heads/agent/glm | awk '{print $2}')
 mkdir -p .git/refs/heads/agent && printf '%s\n' "$HASH" > .git/refs/heads/agent/glm
 git branch -v
 
-# ④ 推送
-GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
-git -c http.sslVerify=false -c credential.helper= \
-  push "https://<PAT>@github.com/<owner>/<repo>.git" agent/glm
+# ④ 推送（静默路径，规则 3 默认）
+GCM="C:/Users/Chen/.workbuddy/binaries/PortableGit/versions/1.2.0/mingw64/bin/git-credential-manager.exe"
+CRED=$(printf 'protocol=https\nhost=github.com\n\n' | GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$GCM" get 2>/dev/null)
+U=$(echo "$CRED" | grep '^username=' | cut -d= -f2-)
+P=$(echo "$CRED" | grep '^password=' | cut -d= -f2-)
+GIT_TERMINAL_PROMPT=0 timeout 120 git -c credential.helper= -c http.sslVerify=false \
+  push "https://${U}:${P}@github.com/<owner>/<repo>.git" \
+  agent/glm:agent/glm develop:develop main:main \
+  2>&1 | sed -E 's#//[^@/]*@#//<REDACTED>@#g' | tail -8
 
-# ⑤ 快进 develop/main 再推（规则 2 + 3）
-git update-ref refs/heads/develop "$HASH"
-git update-ref refs/heads/main    "$HASH"
-GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
-git -c http.sslVerify=false -c credential.helper= \
-  push "https://<PAT>@github.com/<owner>/<repo>.git" develop main
-
-# ⑥ 核对远程权威状态
-GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
-git -c http.sslVerify=false ls-remote "https://<PAT>@github.com/<owner>/<repo>.git"
+# ⑤ 核对远程权威状态（只读，不需要凭据）
+GIT_TERMINAL_PROMPT=0 git -c http.sslVerify=false ls-remote origin "refs/heads/*"
 
 # ⑦ 按 ⑥ 结果回填 refs/remotes/origin/*（规则 1）
 ```
