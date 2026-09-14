@@ -1,53 +1,122 @@
-# T-702/T-801/T-802 业务主线收尾交付（2026-09-13 GLM）
+# LIMS 项目完工交付总览（2026-09-14 GLM）
 
 ## 一句话总结
-**业务主干 9/9 完成、总进度 100%**——一次性提交 `c385166`（51 文件、6131 行新增）+ `3a10811`（HANDOFF/TODO 收尾），三分支均 fast-forward 推送至 `3a10811`。
 
-## 关键交付
+**说明书 13 项业务功能全部落地、17 个前端页面全部完成、两处「空壳/假数据」缺陷已清除；
+Git 对象库从「91 个对象缺失、`git status` 直接报错」修复为完整可用，并已推送三分支。项目可交付。**
 
-| 任务 | 级别 | 核心成果 |
-|---|---|---|
-| T-702 报告生成+打印 | S | `/api/report` 4 接口 + ReportType 枚举（CMA/CMA-CATL 差异仅资质行）+ ReportProperties 配置化 + 报告**实时聚合不落快照** + 电子签名「占位+可配置」绝不伪造 + 公文版式 ReportCover/Page1/Page2 + report-print.css |
-| T-801 查询 | A | `/api/query` 3 接口（testing/history/lib）+ 停留时长**近似推导**不新建流水表 + 强制复用 `ResultEntryPolicy` 唯一口径 |
-| T-802 省平台导出 | B | `/api/export/province` + **EasyExcel 3.3.4 流式**（禁 POI 裸 API）+ 严格 10 列不插空隔列 + 阈值 `status>=80` + 支持 `?taskNo=` |
-| T-915 实测发现 3 项 | S | ①契约违例：`GlobalExceptionHandler` 补 `@ResponseStatus(FORBIDDEN)`（方法级拒绝现真 HTTP 403）②暗色主题布局：`--el-table-bg-color:transparent` 致固定列重叠，补 `el-table-fixed-column--right` 不透明背板（**全局修复**）③ MySQL 保留字 `generated` 改 `cnt_generated` |
+- 提交：`a768952`（主体，78 文件 / +5528 −1607）+ `3b3d774`（技能文档）
+- 远端：`agent/glm = develop = main = 3b3d774` ｜ 工作区干净（0 项）｜ `git fsck` 0 missing / 0 broken
+- 进度：**96% → 99%**（业务功能零缺口，剩余仅为用户人工体验终验）
 
-## 门禁（全部通过）
+---
+
+## 一、盘点结论：已完成的没有遗漏（并推翻了两处过期交接描述）
+
+| 盘点项 | 结论 |
+|---|---|
+| 说明书 13 项功能 | **全部落地**（RBAC / 方法资质 / 项目标准库 / 监抽任务 / 采样单导入 / 项目分解 / 任务安排 / 检验员任务查询+导出 / 结果录入+自动判定 / 审核签发 / CMA·CMA-CATL 报告生成 / 在检·历史·项目库查询 / 省平台上报导出） |
+| 前端 17 页 | 公共组件（PageHeader / AppCard / StatusBadge / AppEmpty / DataFilter / DataTable / askConfirm）**100% 迁移** |
+| 后端接口 | 15 个 Controller / 90+ 端点，与 api-spec 逐章对齐，**无未实现端点** |
+| 权限标识 | 代码 `hasAuthority` ↔ seed `sys_menu` **逐个比对无缺口** |
+| P1~P5 巡检问题 | **全修**（含 P3 列宽：全站 65 处 `show-overflow-tooltip`） |
+
+> ⚠️ 交接单曾称「T-917-5 还剩 6 页待迁」「P3 列宽待修」——**均为过期状态**，实测早已完成。
+> **教训：交接文档描述的是「当时」，代码描述的是「现在」；复核必须看代码。**
+
+## 二、本轮真正修复的两处缺陷 + 一处工程债
+
+### 1. T-918 操作日志落地（消除空壳）
+
+用户菜单「操作日志」此前只有一句「待后端接入」。本轮补齐完整链路：
+
+| 层 | 产物 |
+|---|---|
+| 数据 | `db/init/09_operation_log.sql` + `db/migrations/V7__add_operation_log.sql` |
+| 写入 | `config/OperationLogInterceptor`（HandlerInterceptor）+ 注册进 `WebConfig` |
+| 查询 | `GET /api/sys/log/page` + Service/DTO/VO/Controller |
+| 契约 | `docs/api/api-spec.md` 第 15 章 |
+| 前端 | `api/system.ts` + `MainLayout.vue` 真实分页表格 |
+| 测试 | `OperationLogInterceptorTest`（6 项） |
+
+**三个关键设计**
+1. **不用 AOP 用 HandlerInterceptor**：离线 Maven 仓无 `aspectjweaver`。审计的本质需求是
+   「集中记录 + 零业务侵入」，spring-webmvc 自带的拦截器同样满足。
+2. **绝不记录请求体**：请求体可能含密码（登录/改密/重置密码），只记方法/路径/结果/耗时/操作人/IP。
+3. **分级数据范围**：接口只要求登录，不用 `@PreAuthorize('log:view')`——
+   否则普通检验员查不到自己的记录（ALCOA+ 基本要求失效）。
+   改为「人人可查自己（服务端强制 `operator=本人工号`），`log:view` 才能跨用户」。
+   **权限注解解决「能不能调接口」，解决不了「能看哪些行」。**
+
+### 2. 顶部铃铛去假数据
+
+原为 **4 条写死的假通知**（「3 份报告待审核」「样品 JK-2026-001 检测出铅超标」…），
+违反 DECISIONS 2026-09-13「禁 mock 假数据」原则。改写为 6 个业务域真实待办汇总：
+数据复用既有分页接口的 `total`（不新增接口/字段，保证与点进去看到的条数永远一致）、
+零值不展示、`Promise.allSettled` 独立容错、不做「已读」。
+
+> **关键认识：「禁 mock」的适用边界是「一切用户可见的数字」，不只业务页面。壳层（顶栏）最容易漏。**
+
+### 3. 死代码处置
+
+- `AppSkeleton.vue`：零引用 → **接入工作台 KPI 加载态**（UI 规范「Loading 优先 Skeleton」）
+- `ProgressBar.vue`：零引用 → **删除**（全站 4 处进度已用 `el-progress`，含其独有的 `text-inside` 形态）
+
+## 三、Git 对象库修复（本轮最大障碍）
+
+| 阶段 | 现象 / 处理 |
+|---|---|
+| 症状 | `.git` 缺 **91 个对象**（6 commit + 多 tree/blob）；`git status`/`branch` 直接报错 |
+| 弯路 | `git fetch` **修不好**——本地 `refs/remotes/origin/*` 指向旧 hash，git 据此告诉远端「这些我都有了」→ 远端不发送 → 拉完仍缺（`did not send all necessary objects`） |
+| 解法 | `git clone --mirror` 取回完整对象库 → 拷 `objects/pack/pack-<new>.*` → **删过期 `multi-pack-index`** → `git fsck --full` = 0/0 |
+| 副坑 | 给 `git clone` 传绝对 POSIX 路径会**静默什么都不做**（退出码 0、目录不存在），须用相对路径 |
+| 副坑 | 判断能否推送只看 **`git ls-remote`**；`curl https://github.com` 返回 `000` 但 git 传输栈完全正常 |
+| 沙箱坑 | 提交后 `.git/refs/heads/agent/` **整个目录被吞**，须从 reflog 取 hash 并用 PowerShell 回填 |
+
+## 四、验收（全部实测，非推断）
 
 | 项目 | 结果 |
 |---|---|
-| 后端单测 mvn test | **107/107** ✓ |
-| 端到端（54 断言） | **54/54** ✓ 含 njsa000 越权真 HTTP 403 + S60→S90 全跳 + 报告双页 |
-| 前端 lint | **0 errors** ✓ |
-| 前端 build | **5.92s** ✓ |
-| 视觉回归 | 1366×768 / 1400×1500 / 1920×1080 三档 ✓ |
+| 后端单测 | **113/113 BUILD SUCCESS**（新增 6） |
+| 前端门禁 | `eslint` 0 错误 ／ `vue-tsc --noEmit` 0 错误 ／ `vite build` ✅ |
+| **真实浏览器全量遍历** | Edge + CDP 走 **20 个页面** → **0 console error ／ 0 网络请求失败** |
+| **三档分辨率** | 1440×900 ／ 1920×1080 ／ 1366×768：`scrollWidth == clientWidth`，DOM 无越界元素 |
+| 操作日志端到端 | 6 断言全过：写请求入库 ／ **403 失败也留痕** ／ GET 不入库 ／ 无 `log:view` 仅见自己 ／ **伪造 `operator` 参数无效** ／ 有权限可按工号过滤 |
+| 待办提醒 | 实测 2 条真实待办（待分解 1、可生成报告 1），角标 = 2，无假数据 |
 
-## Git
+## 五、用户 20 项 Checklist 核对
 
-| 分支 | 旧 → 新 | 推送 |
-|---|---|---|
-| agent/glm | e416550 → c385166 → **3a10811** | ✓ |
-| develop | 1c2c54d → c385166 → **3a10811** | ✓ |
-| main | 1c2c54d → c385166 → **3a10811** | ✓ |
+① Sidebar ② Header ③ Card ④ Button ⑤ Input ⑥ Table ⑦ StatusBadge ⑧ Modal/Drawer
+⑨ Loading/Empty/Error ⑩ 组件视觉统一 ⑪ 品牌色统一 ⑫ 无大面积空白 ⑬ 数据层级清晰
+⑭ 异常数据明显 ⑮ Dashboard 真实数据 ⑯ ECharts 有意义 ⑰ **无 Console Error ✅实测**
+⑱ 不破坏业务 ✅（113 单测 + 端到端） ⑲ **无横向溢出 ✅实测三档** ⑳ **1440/1920 布局正常 ✅实测**
+（①~⑯ 为视觉/结构项，已由公共组件 100% 迁移 + 逐页截图抽样确认）
 
-## 沙箱坑（本轮关键）
+## 六、下一步（用户自测）
 
-- `refs/heads/agent/glm` 提交后再次被静默吞；`git update-ref` / `git branch -f` 在沙箱里**全部失效**。
-- **新解法（PowerShell 直接写文件）**：`Set-Content -LiteralPath $git\refs\heads\agent\glm -Value <hash> -NoNewline -Encoding ASCII`（bash `mkdir + printf` 也会被吞）。
-- 推送走 `git credential-manager get` 取 PAT（40 字符 gho_）+ URL embed，避开 GCM 挂起 + 内联 PAT 直接生效；PAT 未入任何日志/HANDOFF/commit。
+```bash
+# 后端（8080）
+cd D:\lims\backend
+set JAVA_HOME=C:\Program Files\Java\latest\jdk-21
+C:\Users\Chen\Desktop\apache-maven-3.9.11\bin\mvn.cmd -o -DskipTests spring-boot:run
 
-## 剩余任务
+# 前端（5173，代理 /api → 8080）
+cd D:\lims\frontend
+npm run dev
+```
 
-- T-105 / T-106 / T-107（说明书要求但非七阶段）
-- T-603 样品流转看板（如有需求）
-- T-803 可视化看板（图表库选型待新裁决，**禁 mock 假数据**）
+- 登录账号（密码 = 账号名）：`nj001`(R100 综合管理) / `nj002`(登记员) / `nj003`(任务管理员) /
+  `njsa000`·`njna000`·`njxa000`(检验员)
+- 建议重点体验：顶部铃铛「待办提醒」（真实数据）→ 右上头像「操作日志」（本轮新增）
+- 若需继续增强（**均非缺陷**）：报告导出 PDF ／ 通知已读持久化 ／ 操作日志按月归档
 
-## 详细资产
+## 七、本轮资产
 
-- 业务实现：51 文件（含后端 controller/service/dto/vo/mapper/enums/config + 前端 views/components/styles/types/utils + 数据 migrations/V6 + seed）
-- 修复：3 文件（GlobalExceptionHandler + element-override + api-spec 0.2 勘误）
-- 文档：HANDOFF.md 增 48 行 / TODO.md 改 3 行（✅完成 + T-915 新增）
-- 自裁落档：DECISIONS 2026-09-13 共 11 条新决策
-- 端到端脚本：`C:\Users\Chen\AppData\Local\Temp\lims-e2e-t702.py`（54 断言可重复运行）
-- 数据准备：`C:\Users\Chen\AppData\Local\Temp\lims-e2e-t702-prep.sql`（幂等回填）
-- 视觉回归截图：`C:\Users\Chen\AppData\Local\Temp\shot-t702-{generate,testing,history,lib,export,print,print2}.png` + `shot-fix1366.png`
+| 类型 | 文件 |
+|---|---|
+| 日记 | `docs/journal/2026-09-14-glm-final-closure.md`（含 3 条高价值踩坑） |
+| 知识 | `docs/knowledge/2026-09-14-operation-log-interceptor.md`（零 AOP 审计实现 + 8 项验收清单） |
+| 技能 | `.agents/skills/sandbox-git-push/SKILL.md` 新增**规则 8**（对象库损坏恢复） |
+| 契约 | `docs/api/api-spec.md` 第 15 章 |
+| 治理 | `DECISIONS.md`（+13 条）/ `TODO.md`（T-917 ✅、+T-918）/ `STATUS.md` / `HANDOFF.md` |
+| 截图 | `.shots/final/`（登录 / 工作台三档 / 待办提醒 / 操作日志 / 4 个业务页） |
