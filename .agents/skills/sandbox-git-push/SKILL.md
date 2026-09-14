@@ -84,23 +84,53 @@ rm -f .git/index.lock
 git checkout -- .      # 仅在确实发生半切换时使用
 ```
 
-### 规则 3：推送命令定型（含 `credential.helper=` 置空）
+### 规则 3：推送前先探测凭据链，**能走 GCM 就别内嵌 PAT**
 
-本机 `credential.helper=GCM` 但无缓存凭据，**无凭据时 `git push` 不报错而是长时间挂起**（GCM 弹窗阻塞沙箱）。必须：
+本机 `credential.helper=GCM`。凭据链**有时有、有时没有**，所以**每次推送前先花 30 秒探测**，不要凭上次的经验直接选路径。
+
+**第 1 步：探测（决定走 A 还是 B）**
 
 ```bash
-GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
-git -c http.sslVerify=false -c credential.helper= \
-  push "https://<PAT>@github.com/<owner>/<repo>.git" agent/glm develop main
+export GIT="C:/Users/Chen/.workbuddy/binaries/PortableGit/versions/1.2.0/cmd/git.exe"
+GIT_TERMINAL_PROMPT=0 timeout 60 $GIT -c http.sslVerify=false push --dry-run origin <branch>:<branch> 2>&1 | tail -3
+```
+
+- 输出 `Everything up-to-date` / `To https://...` → **走路径 A**；
+- 输出 `could not read Username` → **走路径 B**；
+- 命令静默挂起（>60s 无输出）→ 也是**路径 B**（GCM 弹窗阻塞沙箱）。
+
+**路径 A（首选，2026-09-14 实测可用）**：让 GCM 自己填凭据，**PAT 不出现在命令行里**
+
+```bash
+GIT_TERMINAL_PROMPT=0 timeout 180 $GIT -c http.sslVerify=false push origin \
+  agent/glm:agent/glm develop:develop main:main 2>&1 | tail -8
+```
+
+> ✅ 2026-09-14 实测：本机 Windows 凭据管理器已有 `LegacyGeneric:target=git:https://github.com`，
+> 此命令返回 `Everything up-to-date`（= 鉴权通过）。**此时不需要也不应该内嵌 PAT。**
+
+**路径 B（兜底）**：手工取 PAT 内嵌 URL
+
+```bash
+GCM="C:/Users/Chen/.workbuddy/binaries/PortableGit/versions/1.2.0/mingw64/bin/git-credential-manager.exe"
+CRED=$(printf 'protocol=https\nhost=github.com\n\n' | GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$GCM" get 2>/dev/null)
+U=$(echo "$CRED" | grep '^username=' | cut -d= -f2-)
+P=$(echo "$CRED" | grep '^password=' | cut -d= -f2-)
+GIT_TERMINAL_PROMPT=0 timeout 180 $GIT -c credential.helper= -c http.sslVerify=false \
+  push "https://${U}:${P}@github.com/<owner>/<repo>.git" agent/glm:agent/glm develop:develop main:main \
+  2>&1 | sed -E 's#//[^@/]*@#//<REDACTED>@#g' | tail -8
 ```
 
 - `-c http.sslVerify=false`：绕过沙箱 MITM 代理（`127.0.0.1:2400`）的证书错误。**一次性用，勿写入 config。**
-- `-c credential.helper=`：置空凭据助手，避免 GCM 挂起。**这是关键。**
-- 诊断挂起：`GIT_CURL_VERBOSE=1 git ... push`，看是否 `401 WWW-Authenticate: Basic realm="GitHub"`。
+- `-c credential.helper=`：置空凭据助手，避免 GCM 阻塞。**路径 B 的关键。**
+- **输出必须过 `sed` 脱敏**，否则 PAT 会进工具日志。
 
-**必须提供 PAT（或用交互终端）——GCM 缓存不可依赖。** 2026-09-13 实测凭据链完全为空：
+> ⚠️ **路径 B 的代价**：PAT 会短暂出现在**进程命令行**（同机其他进程可读）与 shell 历史。
+> 这是它只能当兜底、不能当首选的原因。**能用 A 就用 A。**
 
-| 凭据来源 | 状态 |
+以下为 **2026-09-13 实测（当时凭据链完全为空）**：
+
+| 凭据来源 | 当时的状态 |
 |---|---|
 | `credential.helper` | `!...git-credential-manager.exe`（GCM，交互式） |
 | `C:/Users/Chen/.git-credentials` | 不存在 |
@@ -109,9 +139,13 @@ git -c http.sslVerify=false -c credential.helper= \
 | `GH_TOKEN` / `GITHUB_TOKEN` / `GH_ENTERPRISE_TOKEN` | 均未设置 |
 | `gh` CLI | 未安装 |
 
-此时不加 `credential.helper=` 的命令会**静默挂起**（>120s 无输出、日志 0 字节、最终 SIGTERM）；
+**凭据链为空时**，不加 `credential.helper=` 的命令会**静默挂起**（>120s 无输出、日志 0 字节、最终 SIGTERM）；
 加上后才会快失败并给出可读错误 `could not read Username for 'https://github.com': terminal prompts disabled`。
 **看到这条错误 = 确认「代码/网络/TLS 都没问题，纯缺凭据」**，不要再往 TLS 方向排查。
+
+> 📌 **2026-09-14 更新**：上表是「曾经为空」，不是「永远为空」。当天实测 Windows 凭据管理器中
+> 已有 `LegacyGeneric:target=git:https://github.com`，**路径 A 直接成功**。
+> **不要固化「GCM 一定挂起」或「GCM 一定有缓存」任一结论——每次推送前用第 1 步的探测来定。**
 
 **错误链的排查顺序（照此逐层剥离，勿跳步）**：
 
@@ -135,7 +169,7 @@ could not read Username          → 凭据层，确认缺 PAT → 交给用户�
 | `403` + `Permission ... denied` | 令牌**有效但无写权**（fine-grained PAT 的 Contents 默认 Read-only） |
 | 推送成功 | 权限正确 |
 
-### 规则 5（🔴 最重要）：令牌不得写入仓库任何文件
+### 规则 5（🔴 最重要）：令牌不得写入**任何文件**，包括 gitignore 掉的记忆文件
 
 Push Protection 会以 `GH013: push cannot contain secrets` 拦截含密钥的推送。若已误提交：
 
@@ -147,6 +181,13 @@ git commit -q --amend --no-edit
 # 3. 回填引用（规则 1）
 # 4. 重推
 ```
+
+> ⚠️ **2026-09-14 实测教训**：`.workbuddy/memory/2026-09-12.md`（已被 `.gitignore` 忽略、从未入仓）
+> 里**明文记了两个 PAT 全文**，理由大概是「反正不进 git」。
+> **这仍然违反红线**：gitignore 只保证不上传，不保证文件不被同步/备份/截屏/误加白名单。
+> **判定标准：明文令牌不应存在于磁盘上任何文本文件里，与是否在 git 中无关。**
+> 正确写法是 `ghp_***REDACTED***` + 一句「凭据存于 GCM，需要时 `git-credential-manager get` 取」。
+> 已修复并写入本条，避免后人复现。
 
 **记录推送结果时只写结论**（「令牌用于推送成功」「401 无效」「403 无写权」），**永不写令牌值**到 HANDOFF.md / DECISIONS.md / STATUS.md / 脚本。
 
