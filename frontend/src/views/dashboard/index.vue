@@ -28,6 +28,24 @@ const dashboardLoading = ref(false)
 const overviewError = ref(false)
 const tasksError = ref(false)
 
+/**
+ * 权限感知（2026-09-14 修复）
+ * ----------------------------------------------------------------------------
+ * 现象：以 R3「检验员」登录时，工作台顶部直接弹出红色「业务概览加载失败」；
+ * 点「查看质量分析」跳到 404。根因是工作台**无条件**调用了
+ * `/stat/overview`（需 `stat:view`）与 `/query/my-tasks/page`（需 `result:entry`），
+ * 而检验员没有 `stat:view`。
+ *
+ * 判断：**「没有权限」不是「加载失败」**。用错误告警表达权限不足，
+ * 会让用户以为系统坏了（本次用户反馈正是如此），也会掩盖真正的故障。
+ * 正确做法是——只请求当前账号有权限的数据，无权限的部分呈现**中性空态**并说明原因。
+ */
+const canViewStat = computed(() => authStore.hasPermission('stat:view'))
+/** 我的检验任务与结果录入共用 `result:entry`（见契约第 13 章） */
+const canViewMyTasks = computed(() => authStore.hasPermission('result:entry'))
+/** 当前账号是否能看到任何一块工作台数据 */
+const hasAnyDashboardData = computed(() => canViewStat.value || canViewMyTasks.value)
+
 interface MyTaskRow {
   sampleId: number
   sampleNo: string
@@ -49,18 +67,28 @@ async function loadDashboard(): Promise<void> {
   overview.value = null
   myTasks.value = []
   myTasksTotal.value = null
-  const [overviewResult, taskResult] = await Promise.allSettled([
-    getStatOverviewApi(),
-    get<PageResult<MyTaskRow>>('/query/my-tasks/page', { current: 1, size: 5 }),
-  ])
-  if (overviewResult.status === 'fulfilled') overview.value = overviewResult.value
-  else overviewError.value = true
-  if (taskResult.status === 'fulfilled') {
-    myTasks.value = taskResult.value.records
-    myTasksTotal.value = taskResult.value.total
-  } else {
-    tasksError.value = true
+
+  // 只发起「有权限」的请求；无权限的保持 null 并由模板渲染中性空态，
+  // 这样 overviewError / tasksError 的语义被收窄为「有权限但真的失败了」。
+  const jobs: Promise<void>[] = []
+  if (canViewStat.value) {
+    jobs.push(
+      getStatOverviewApi()
+        .then((data) => { overview.value = data })
+        .catch(() => { overviewError.value = true }),
+    )
   }
+  if (canViewMyTasks.value) {
+    jobs.push(
+      get<PageResult<MyTaskRow>>('/query/my-tasks/page', { current: 1, size: 5 })
+        .then((data) => {
+          myTasks.value = data.records
+          myTasksTotal.value = data.total
+        })
+        .catch(() => { tasksError.value = true }),
+    )
+  }
+  await Promise.all(jobs)
   dashboardLoading.value = false
 }
 
@@ -99,41 +127,62 @@ const stages: { title: string; desc: string; status: StageStatus }[] = [
   { title: '报告生成打印', desc: 'CMA / CMA-CATL 检验报告合成（S80 → S90）', status: 'done' },
 ]
 
-/** KPI 行：全部来自统计接口或当前用户任务分页，不展示猜测数字。 */
-const kpis = computed(() => [
-  {
-    label: '待处理任务',
-    value: myTasksTotal.value ?? '—',
-    suffix: '项',
-    icon: Document,
-    iconTone: 'info' as const,
-    hint: '当前权限范围',
-  },
-  {
-    label: '检测中样品',
-    value: overview.value?.testingSamples ?? '—',
-    suffix: '份',
-    icon: EditPen,
-    iconTone: 'accent' as const,
-    hint: '真实统计',
-  },
-  {
-    label: '已完成样品',
-    value: overview.value?.completedSamples ?? '—',
-    suffix: '份',
-    icon: Notebook,
-    iconTone: 'success' as const,
-    hint: '已签发及以上',
-  },
-  {
-    label: '合格率',
-    value: overview.value?.qualifiedRate == null ? '—' : overview.value.qualifiedRate.toFixed(1),
-    suffix: overview.value?.qualifiedRate == null ? '' : '%',
-    icon: Histogram,
-    iconTone: 'warning' as const,
-    hint: overview.value?.qualifiedRate == null ? '暂无有效结论' : '排除待判定',
-  },
-])
+/**
+ * KPI 行：全部来自统计接口或当前用户任务分页，不展示猜测数字。
+ *
+ * 2026-09-14：改为**按权限过滤**——检验员没有 `stat:view`，
+ * 若仍渲染「检测中样品 / 已完成样品 / 合格率」三张卡，会得到一排「—」，
+ * 既无信息量又让人以为数据坏了。无权限的卡片直接不出现在列表里。
+ */
+const kpis = computed(() => {
+  const list: {
+    label: string
+    value: string | number
+    suffix: string
+    icon: typeof Document
+    iconTone: 'info' | 'accent' | 'success' | 'warning'
+    hint: string
+  }[] = []
+  if (canViewMyTasks.value) {
+    list.push({
+      label: '待处理任务',
+      value: myTasksTotal.value ?? '—',
+      suffix: '项',
+      icon: Document,
+      iconTone: 'info',
+      hint: '当前权限范围',
+    })
+  }
+  if (canViewStat.value) {
+    list.push(
+      {
+        label: '检测中样品',
+        value: overview.value?.testingSamples ?? '—',
+        suffix: '份',
+        icon: EditPen,
+        iconTone: 'accent',
+        hint: '真实统计',
+      },
+      {
+        label: '已完成样品',
+        value: overview.value?.completedSamples ?? '—',
+        suffix: '份',
+        icon: Notebook,
+        iconTone: 'success',
+        hint: '已签发及以上',
+      },
+      {
+        label: '合格率',
+        value: overview.value?.qualifiedRate == null ? '—' : overview.value.qualifiedRate.toFixed(1),
+        suffix: overview.value?.qualifiedRate == null ? '' : '%',
+        icon: Histogram,
+        iconTone: 'warning',
+        hint: overview.value?.qualifiedRate == null ? '暂无有效结论' : '排除待判定',
+      },
+    )
+  }
+  return list
+})
 
 const statusText: Record<StageStatus, string> = {
   done: '已交付',
@@ -178,7 +227,9 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
         </p>
       </div>
       <div class="hero-side">
+        <!-- 跳转按钮按权限显隐：此前硬编码 → 无权限账号点击后命中 catch-all 变 404 -->
         <button
+          v-if="canViewMyTasks"
           type="button"
           class="hero-cta"
           @click="router.push('/result/entry')"
@@ -189,6 +240,7 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
           录入检测数据
         </button>
         <button
+          v-if="canViewStat"
           type="button"
           class="hero-cta hero-cta--ghost"
           @click="router.push('/query/analysis')"
@@ -198,9 +250,15 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
           </el-icon>
           查看质量分析
         </button>
+        <!-- 两个按钮都没权限时，给一句明确的替代指引，而不是一片空白 -->
+        <span
+          v-if="!canViewMyTasks && !canViewStat"
+          class="hero-tip"
+        >请从左侧菜单进入你负责的业务功能</span>
       </div>
     </section>
 
+    <!-- 只有「有权限但真的失败」才报警告；权限不足由各区块的中性空态表达 -->
     <el-alert
       v-if="!dashboardLoading && overviewError"
       type="error"
@@ -231,6 +289,15 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
           height="14px"
         />
       </AppCard>
+    </section>
+    <section
+      v-else-if="!hasAnyDashboardData"
+      class="kpi-row kpi-row--notice"
+    >
+      <AppEmpty
+        title="当前账号没有工作台统计权限"
+        hint="你的业务功能在左侧菜单中（如「结果录入」「我的检验任务」）；如需查看统计概览，请联系管理员分配 stat:view 权限。"
+      />
     </section>
     <section
       v-else
@@ -312,6 +379,11 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
           text="正在读取任务数据…"
         />
         <AppEmpty
+          v-else-if="!canViewMyTasks"
+          title="当前账号没有检验任务权限"
+          hint="「我的检验任务」需要 result:entry 权限；请联系管理员分配。"
+        />
+        <AppEmpty
           v-else-if="tasksError"
           title="任务数据暂时不可用"
           hint="请刷新重试；页面不会用假数据替代真实业务数据。"
@@ -357,7 +429,10 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
           </li>
         </ol>
 
-        <footer class="recent-foot">
+        <footer
+          v-if="canViewMyTasks"
+          class="recent-foot"
+        >
           <button
             class="recent-foot__link"
             type="button"
@@ -475,6 +550,11 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
   display: grid;
   gap: var(--lims-sp-3);
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* 无统计权限时：整行只放一条中性说明（不是错误） */
+.kpi-row--notice {
+  display: block;
 }
 
 /* ===========================================================================

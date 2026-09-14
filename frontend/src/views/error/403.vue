@@ -11,15 +11,15 @@ function goHome(): void {
 <template>
   <el-result
     icon="warning"
-    title="403"
-    sub-title="抱歉，您没有权限访问该页面。"
+    title="无访问权限"
+    sub-title="当前账号没有该功能的访问权限。请从左侧菜单进入你负责的业务功能；如需开通，请联系管理员在「角色管理」中分配对应权限。"
   >
     <template #extra>
       <el-button
         type="primary"
         @click="goHome"
       >
-        返回首页
+        返回工作台
       </el-button>
     </template>
   </el-result>

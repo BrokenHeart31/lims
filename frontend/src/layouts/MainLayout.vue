@@ -245,6 +245,15 @@ interface TodoSource {
   label: string
   path: string
   tone: TodoItem['tone']
+  /**
+   * 取该项待办所需权限。
+   *
+   * ⚠️ 必须在**发请求前**判断：待办面板在挂载时就会拉数据，
+   * 若不做权限过滤，无权限的账号会在控制台留下成串的 `403 Forbidden`,
+   * 用户看到的就是「没权限还报错」（2026-09-14 实测：R3 登录后 15 条 403）。
+   * 权限是前端已知信息（`/me` 已返回），没有任何理由先请求再吃 403。
+   */
+  permission: string
   /** 取该项待办数量（复用既有分页接口，size=1 只取 total） */
   load: () => Promise<number>
 }
@@ -255,6 +264,7 @@ const todoSources: TodoSource[] = [
     label: '份报告待审核',
     path: '/report/audit',
     tone: 'audit',
+    permission: 'report:audit',
     load: async () => (await pagePendingAuditApi({ current: 1, size: 1 })).total,
   },
   {
@@ -262,6 +272,7 @@ const todoSources: TodoSource[] = [
     label: '份报告待签发',
     path: '/report/audit',
     tone: 'sign',
+    permission: 'report:sign',
     load: async () => (await pagePendingSignApi({ current: 1, size: 1 })).total,
   },
   {
@@ -269,6 +280,7 @@ const todoSources: TodoSource[] = [
     label: '个样品待录入结果',
     path: '/result/entry',
     tone: 'result',
+    permission: 'result:entry',
     load: async () => (await pagePendingResultApi({ current: 1, size: 1 })).total,
   },
   {
@@ -276,6 +288,7 @@ const todoSources: TodoSource[] = [
     label: '个样品待分解项目',
     path: '/item/decompose',
     tone: 'item',
+    permission: 'item:decompose',
     load: async () => (await pagePendingItemApi({ current: 1, size: 1 })).total,
   },
   {
@@ -283,6 +296,7 @@ const todoSources: TodoSource[] = [
     label: '个样品待安排检验员',
     path: '/assign/index',
     tone: 'assign',
+    permission: 'assign:confirm',
     load: async () => (await pagePendingAssignApi({ current: 1, size: 1 })).total,
   },
   {
@@ -290,6 +304,7 @@ const todoSources: TodoSource[] = [
     label: '个样品可生成报告',
     path: '/report/generate',
     tone: 'report',
+    permission: 'report:generate',
     load: async () => (await pageReportPendingApi({ current: 1, size: 1 })).total,
   },
 ]
@@ -300,10 +315,17 @@ const todoLoading = ref(false)
 const todoLoaded = ref(false)
 
 async function loadTodos(): Promise<void> {
+  // 只对**有权限**的待办源发请求，从源头消除无意义的 403
+  const allowed = todoSources.filter((s) => authStore.hasPermission(s.permission))
+  if (allowed.length === 0) {
+    todos.value = []
+    todoLoaded.value = true
+    return
+  }
   todoLoading.value = true
   try {
-    const results = await Promise.allSettled(todoSources.map((s) => s.load()))
-    todos.value = todoSources
+    const results = await Promise.allSettled(allowed.map((s) => s.load()))
+    todos.value = allowed
       .map((source, index) => {
         const settled = results[index]
         const count = settled.status === 'fulfilled' ? Number(settled.value) || 0 : 0

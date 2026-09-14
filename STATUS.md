@@ -2,6 +2,28 @@
 
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
+## 2026-09-14 16:10 修复轮（GLM / **用户实测反馈的 4 类问题全部闭环**）
+
+- **本轮占用**：`frontend/src/{views/dashboard/index.vue, views/sample/index.vue, views/error/403.vue,
+  router/index.ts, layouts/MainLayout.vue}`、`db/seed/03_demo_flow_seed.sql`（新增）、`README.md` + 治理文件。
+  **后端无 Java 变更**（本轮纯前端 + 数据）。
+- **3 个真代码缺陷**：
+  1. 工作台无条件调 `/stat/overview`（需 `stat:view`）→ 无权限账号看到红色「业务概览加载失败」；
+     改为**权限感知**（条件请求 + 分区中性空态 + 按钮 `v-if`），错误告警只留给「有权限但真失败」。
+  2. Hero 硬编码跳转 → 无权限点「查看质量分析」命中 catch-all 变 404；
+     路由守卫新增「已登记但无权限 → 403」判定，403 页文案改为可操作。
+  3. 模板下载 `target=_blank` + dev server 对 `.xlsx` 返回**空 Content-Type** → 空页面无响应；
+     改用 HTML `download` 属性（忽略 Content-Type），实测真实落盘 6106 bytes。
+- **2 个数据缺口（非缺陷）**：库里无 S40/S50 样品（检验员无从录入）、无 S80 样品（只给重打印）。
+  新增 `db/seed/03_demo_flow_seed.sql`（**幂等**）：5 个演示样品覆盖 S10/S30/S40/S60/S70，
+  另补「河蟹」项目标准库 5 项使既有样品 2 可套库。**六个账号现在各自都有可走的第一步。**
+- **自查发现并修复**：顶部「待办提醒」挂载即拉 6 个接口 → 无权限账号刷出 15 条控制台 403；
+  改为**发请求前**按 `permission` 过滤（权限来自 `/me`，前端已知，不该用 403 去发现）。
+- **验收**：后端 **113/113**；前端 lint 0 / vue-tsc 0 / build ✅；
+  真实浏览器：R3 工作台 **0 红错**、点质量分析 → **403 页**、**实际录入并保存 → 进度 0/4→75%**、
+  模板**真实落盘**、报告审核放行红线生效、签发→生成→打印全通、**console 0 错误 / 0 失败请求**。
+- 进度维持 **99%**（修复轮，无新功能域；可自测性显著提升）。
+
 ## 2026-09-14 15:20 收尾（GLM / **项目功能完工**：T-918 操作日志 + 通知去假数据 + Git 对象库恢复）
 
 - **本轮占用**：`backend/.../config/{OperationLogInterceptor,WebConfig}.java`、`entity/SysOperationLog.java`、

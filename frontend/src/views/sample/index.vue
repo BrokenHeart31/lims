@@ -31,6 +31,18 @@ import DataTable from '@/components/common/DataTable.vue'
 
 /** 采样单导入模板（置于 frontend/public/templates，随构建产物发布） */
 const TEMPLATE_URL = '/templates/sample_import_template.xlsx'
+/**
+ * 模板下载（2026-09-14 修复）
+ * ----------------------------------------------------------------------------
+ * 原实现是 `<el-link :href target="_blank">`，实测两个问题：
+ *   ① dev server 对 `.xlsx` 返回的 `Content-Type` 为空 → 浏览器无法判定类型，
+ *      新标签页打开后什么都不做（用户看到的就是「空页面 / 没有响应」）；
+ *   ② `target="_blank"` 会先开一个空白标签页，观感上更像「坏了」。
+ * 修复：改用 HTML `download` 属性（同名同源时浏览器按属性值保存，**忽略 Content-Type**），
+ * 并去掉 `target="_blank"`。这样 dev 与生产环境行为一致。
+ * 注：这里不用 fetch+Blob 方案——静态资源不需要鉴权，走原生属性更简单也更稳。
+ */
+const TEMPLATE_FILENAME = '采样单导入模板.xlsx'
 
 // ---------------- 查询区 ----------------
 const queryRef = ref<FormInstance>()
@@ -265,7 +277,7 @@ onMounted(() => {
     >
       <el-link
         :href="TEMPLATE_URL"
-        target="_blank"
+        :download="TEMPLATE_FILENAME"
         type="primary"
         :underline="false"
         class="template-link"
@@ -494,7 +506,7 @@ onMounted(() => {
             >
               <el-link
                 :href="TEMPLATE_URL"
-                target="_blank"
+                :download="TEMPLATE_FILENAME"
                 type="primary"
                 :underline="false"
               >

@@ -181,7 +181,16 @@ router.beforeEach(async (to) => {
     }
   }
 
-  if (to.meta.public) return true
+  if (to.meta.public) {
+    // 语义修正（2026-09-14）：「页面存在但当前账号没权限」不应显示 404。
+    // 未授权的页面不会被注册进路由，因此会命中 public 的 catch-all 404；
+    // 这里回查注册表——若该路径确实是系统内已登记的页面，则改判为「无权限」（403）。
+    // 起因：检验员点工作台上硬编码的「查看质量分析」得到 404，观感像功能缺失。
+    if (to.name === 'not-found' && ROUTE_BY_PATH.has(to.path)) {
+      return { name: 'forbidden' }
+    }
+    return true
+  }
 
   // ⑤ 路由级权限校验（与动态路由构建时的过滤口径一致）
   const required = to.meta.permissions
