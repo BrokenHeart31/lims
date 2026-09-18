@@ -203,6 +203,16 @@ export function buildNavigation(menus: MenuNode[], permissions: string[]): Built
     }
   }
 
+  // 无菜单入口、但需可路由的页面（如 AI 会话审计，仅挂按钮权限；见 RouteEntry.autoRegister）。
+  // 与菜单驱动并行注册，且仍受 permissions 约束；已在菜单路径注册过的不再重复。
+  for (const entry of ROUTE_REGISTRY) {
+    if (entry.standalone || !entry.autoRegister) continue
+    if (!canAccess(entry, permissionSet)) continue
+    if (!routes.some((route) => route.name === entry.name)) {
+      routes.push(toRouteRecord(entry, true))
+    }
+  }
+
   // fail-loud：不静默吞掉无法识别的菜单，便于第一时间发现「菜单有、页面无」
   if (unresolved.length > 0) {
     console.warn(

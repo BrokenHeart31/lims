@@ -77,6 +77,10 @@
 | T-916 | **前端动态路由接入**（按 `/me` 菜单树生成路由 + 侧栏；选型「路径注册表 + 中间件转换」） | A | **GLM** | ✅完成 2026-09-13（用户决策方案 1；新建 `router/routeRegistry.ts`（21 条显式登记 + `PATH_ALIAS` 兼容层 + `normalizeMenuPath`）、`router/dynamicRoutes.ts`（`buildNavigation` 路由与菜单**同源产出**）；重写 `router/index.ts`（五步守卫 + **`registerNotFound()` 移除后重加**规避 catch-all 顺序陷阱）、`stores/auth.ts`（`navMenus`/`navReady`/`setNavMenus`）；`MainLayout.vue` 侧栏改菜单树驱动 + 图标白名单 + 真实全局搜索；`db/seed/01_rbac_seed.sql` 修正 2 条错路径 / 3 条 `visible=0` / 新增 4 条（我的检验任务、项目标准库）+ 授权同步且**已应用到活库**；验证 `vue-tsc` 0 错、`vite build` 成功、**离线路由断言 31/0**、`/me` 实测 R100 见 11 组 / R3 见 2 组、SPA 深链接 6 条 HTTP 200；**未改任何 DB 表结构、未改任何 API 契约**） |
 | T-917 | **UI/UX 全面重构**（用户 2026-09-13 指定后续主线；约 17 页统一升级，报告审核页为第一批重点） | A | **GLM** | ✅完成 2026-09-14（STEP 1~10 全部收口：17 页公共组件 100% 迁移；P1~P5 巡检问题全修；**三档分辨率 1440×900 / 1920×1080 / 1366×768 实测无横向溢出**；**真实浏览器全量遍历 20 页 0 console error / 0 网络失败**；Dashboard KPI 加载态改骨架屏） |
 | T-918 | **操作日志落地**（消除用户菜单「操作日志」空壳；同时消除顶部铃铛的假通知数据） | A | **GLM** | ✅完成 2026-09-14（`db/init/09` + `V7` 建 `sys_operation_log`；`OperationLogInterceptor` 零依赖实现（离线仓无 AOP，经论证用 HandlerInterceptor 等价达成）；`GET /api/sys/log/page` + 契约第 15 章；**分级数据范围**：人人可查自己、`log:view` 才能跨用户，服务端强制；前端改真实分页表格；6 项单测固化前缀顺序语义；端到端 6 断言全过含**伪造 operator 参数无效**与**403 失败留痕**；铃铛假通知改写为 6 域真实待办汇总） |
+| T-919 | **本地 AI 助手**（qwen3-4b 项目内托管 + 领域护栏 + GB 标准库检索 + 可拖拽悬浮窗）<br>⚠️ **超出业务说明书范围**，用户新增需求 | S | **GLM** | 🟢 代码完成，**待用户验证真实推理**<br>设计：`docs/design/2026-09-17-{prd,arch}-ai-assistant-and-rollback.md`；数据：`db/init/11_ai_tables.sql`（`gb_document`/`gb_clause`(ngram FULLTEXT)/`gb_import_job`/`ai_conversation`/`ai_message`）；后端：`service/ai/**`（22 类，含 Ollama 客户端、`DomainGuard` 领域护栏、`GbRetriever` 检索、`parser/*` 解析器）+ `controller/{Ai,AiKb}Controller`；前端：`components/ai/*`（悬浮窗 6 件，自研拖拽 + 位置记忆 + 引用卡片）；运行时：`ai/scripts/*`（便携版部署 + 多镜像回退）。**零新增 Maven 依赖**（唯一新增 `jsoup` 1.18.3 用于 HTML 解析；AI 调用用 JDK17 `HttpClient`，流式用 `SseEmitter`）。**未验证**：Ollama 未下载（沙箱代理拦大文件，7 条镜像全失败）、GB 库无真实数据 |
+| T-920 | **全流程逐步回退（撤销/回滚）机制**<br>⚠️ **超出业务说明书范围**，用户新增需求 | S | **GLM** | ✅ 完成（后端 + 单测 + 前端 UI）<br>**第三条独立白名单 `ROLLBACK`**（6 条边，**S80/S90 无回退边**，物理上不可绕）+ 统一状态流水 `sample_status_log`（7 类事件）+ `sample_rollback`（可恢复状态机）+ `sample_data_archive`（失效留档，取证）+ `report_void`（S80/S90 作废/召回标记动作，不改 status）；分级授权（常规/敏感 S70→S60 需 R100+R2+二次确认）；四条不变式用 `InOrder`/`verify(times(1))` **测试固化**；**推翻** DECISIONS 2026-09-13「不新建状态流水表」旧自裁（已落档）。⚠️ **最高风险改动**：`sample_item`/`sample_result` 的 `deleted` 语义升级为「0=有效 / 非 0=行自身 id」（解决二次失效撞唯一键；MP `@TableLogic` 不支持表达式，故走显式 `set(deleted, id)`）；后端 **204/204 全绿** |
+| T-921 | **遗留项（QA 复核提出，非阻断）**：① 全仓 `rgba(255,255,255,…)` 硬编码白透明度共 **55 处**（本批新增 3 处），与「只用 `--lims-*`」令牌纪律不符 —— 建议抽 `--lims-overlay-1/2/3` 变量后**一次性替换**（只改新增的 3 处反而制造不一致，故本轮不动）；② `BaseEntity.deleted` Java 类型为 `Integer` 而列已是 `BIGINT`（因 `@TableField(select=false)` 不读取，当前无风险）—— **若将来放开读取该列，必须同步改为 `Long`**；③ 架构文档原写「用 `LambdaUpdateWrapper.set(deleted,id)`」与实现（原生 `@Update`）不符，**已于 2026-09-17 在文档中更正并写明原因**（MP 会追加 `AND deleted=0`，匹配不到已失效行）；④ QA 提出的**信息性发现**（不改代码，仅备记）：`SampleDataDisposer` 用 `ObjectMapper.writeValueAsString` 序列化实体做快照时，`SampleItem`/`SampleResult` 上的中文派生 getter（如 `getJudgeTypeLabel()`）会被 Jackson 当属性序列化进 `archive/snapshot_json`，使快照 JSON 略显冗余（**功能无误、当前无读取缺口**）——若将来要解析该 JSON 或在快照上加索引，建议在原始 XML 生产链路上按列精确序列化（`@JsonInclude` 或显式字段映射） | B | GLM | ⬜ 待办（③ 已完成） |
+| T-922 | **待用户确认后再开**：`RECALL` 白名单（S80→S70，召回后重新签发）。当前 S80/S90 一律**禁止普通回退**，只提供 `report_void`（作废/召回**标记动作**，不改 status）。若业务确认「召回后需重新签发」，按 `ROLLBACK` 同一模式新增**第四条独立白名单**（设计文档 §10-R6 已留扩展点） | S | GLM | ⏸ 待业务确认 |
 
 > 注：以上为初始骨架。S/A 级任务的接口定义由 GLM 起草写入 api-spec.md，**Copilot 终审**；存在判定口径歧义时由 Copilot 裁决。豆包不自行设计业务表。
 
@@ -113,3 +117,14 @@
 ① Sidebar ② Header ③ Card ④ Button ⑤ Input ⑥ Table ⑦ StatusBadge ⑧ Modal/Drawer ⑨ Loading/Empty/Error ⑩ 十项组件视觉统一
 ⑪ 品牌色统一 ⑫ 无大面积空白 ⑬ 数据层级清晰 ⑭ 异常数据明显 ⑮ Dashboard 有真实业务数据 ⑯ ECharts 有实际意义
 ⑰ 无 Console Error ⑱ 不破坏业务 ⑲ 无横向溢出 ⑳ 1440×900 与 1920×1080 布局正常
+
+### T-923 用户实测缺陷修复（2026-09-18，GLM）
+
+| 编号 | 任务 | 级别 | Owner | 状态 |
+|---|---|---|---|---|
+| T-923-1 | AI 助手「流式永久卡在正在生成」——SSE ASYNC 派发鉴权异常致连接被 RST + 前端改裸对象不触发视图更新 | S | GLM | ✅完成（236/236 全绿；经 5173 代理 `curl_exit=0`） |
+| T-923-2 | 前端 SSE 兜底：30s 静默超时 + 「无 done 帧」显式回调，保证界面不再永久卡住 | A | GLM | ✅完成（含「区分用户主动停止 vs 超时」） |
+| T-923-3 | 检索召回错误：整句改走自然语言模式 + 布尔层剔除噪声词（`GB`/纯数字）+ 条款标题相关性优先排序 | S | GLM | ✅完成（新增 `ft_gbc_title` ngram 索引，迁移 `V10`） |
+| T-923-4 | OCR 条款归属错误：两行式标题合并、数字空格还原、纯数字伪边界剔除、带标题边界必切 | S | GLM | ✅完成（824 → 0 条噪声标题；索引已重建） |
+| T-923-5 | 「点名的标准未收录」确定性 fail-loud（不再拿其他标准条款凑答案） | S | GLM | ✅完成（GB 2762 → 明说未收录 + 已收录清单） |
+| T-923-6 | 审计口径：流式接口操作人被记成 `anonymousUser`、耗时恒为 0 | A | GLM | ✅完成（`nj001` / 真实耗时） |

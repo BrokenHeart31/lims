@@ -81,12 +81,18 @@ public class OperationLogInterceptor implements HandlerInterceptor {
         MODULE_PREFIXES.put("/report/audit", "报告审核");
         MODULE_PREFIXES.put("/report/sign", "报告签发");
         MODULE_PREFIXES.put("/report/generate", "报告生成");
+        MODULE_PREFIXES.put("/report/void", "报告作废");
         MODULE_PREFIXES.put("/sample", "样品登记");
         MODULE_PREFIXES.put("/item", "项目分解");
         MODULE_PREFIXES.put("/assign", "任务安排");
         MODULE_PREFIXES.put("/result", "结果录入");
         MODULE_PREFIXES.put("/task", "监抽任务");
         MODULE_PREFIXES.put("/export", "数据导出");
+        // 2026-09-17 增量（feature A/B）——沿用「更长的前缀必须排在更短的前面」：
+        //   /ai/kb 必须排在 /ai 之前，否则知识库动作会被记成「AI 助手」。
+        MODULE_PREFIXES.put("/rollback", "流程回溯");
+        MODULE_PREFIXES.put("/ai/kb", "AI 知识库");
+        MODULE_PREFIXES.put("/ai", "AI 助手");
         MODULE_PREFIXES.put("/auth", "认证");
     }
 
@@ -99,6 +105,13 @@ public class OperationLogInterceptor implements HandlerInterceptor {
         }
         String uri = stripContextPath(request);
         if (SKIP_PATHS.contains(uri)) {
+            return true;
+        }
+        // 幂等：ASYNC 派发（SSE 完成时）会让本方法**再执行一次**。
+        // 若此处覆盖上下文，会把「起始时间」重置为 ASYNC 派发时刻——耗时变成 0ms，
+        // 真实耗时（如流式对话 1.6s）永久丢失；且 ANONYMOUS 阶段会把操作人写坏。
+        // 故已有上下文时直接复用首次（REQUEST 派发）建立的这一份。
+        if (request.getAttribute(ATTR_CONTEXT) != null) {
             return true;
         }
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -186,6 +199,10 @@ public class OperationLogInterceptor implements HandlerInterceptor {
      * 不猜测语义。</p>
      */
     static String resolveAction(String method, String uri) {
+        // 2026-09-17：/kb/import 必须排在 /import 之前，否则知识库导入会被记为通用「导入」
+        if (uri.contains("/kb/import")) {
+            return "导入标准";
+        }
         if (uri.contains("/import")) {
             return "导入";
         }
@@ -215,6 +232,26 @@ public class OperationLogInterceptor implements HandlerInterceptor {
         }
         if (uri.contains("/auto")) {
             return "自动分配";
+        }
+        // 2026-09-17 增量（feature B）：回退 / 恢复 / 作废
+        //   /rollback/execute 与 /rollback/recover 分属两个不同动作，故分别匹配；
+        //   /report/void 的作废动作亦在此登记（/void 不与既有任何关键词冲突）。
+        if (uri.contains("/rollback/execute")) {
+            return "回退";
+        }
+        if (uri.contains("/recover")) {
+            return "恢复";
+        }
+        if (uri.contains("/void")) {
+            return "作废";
+        }
+        // 2026-09-17 增量（feature A）：AI 对话
+        //   /chat/stream 必须排在 /chat 之前，否则流式对话会被记成普通「对话」。
+        if (uri.contains("/chat/stream")) {
+            return "流式对话";
+        }
+        if (uri.contains("/chat")) {
+            return "对话";
         }
         // 注意顺序：/change-password 必须排在 /password 之前，否则会被后者抢先匹配
         if (uri.contains("/change-password")) {

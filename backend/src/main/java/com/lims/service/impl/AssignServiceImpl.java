@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.lims.common.enums.AssignType;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.enums.SampleStatusTransition;
+import com.lims.common.enums.StatusEventType;
 import com.lims.common.exception.BizException;
 import com.lims.entity.Sample;
 import com.lims.entity.SampleItem;
@@ -20,6 +21,7 @@ import com.lims.mapper.TesterMethodMapper;
 import com.lims.mapper.UserMethodMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.AssignService;
+import com.lims.service.SampleStatusLogService;
 import com.lims.vo.AssignAutoResultVO;
 import com.lims.vo.AssignDetailVO;
 import com.lims.vo.AssignPendingVO;
@@ -68,6 +70,8 @@ public class AssignServiceImpl extends ServiceImpl<SampleItemMapper, SampleItem>
     private final SysUserMapper sysUserMapper;
     private final UserMethodMapper userMethodMapper;
     private final TesterMethodMapper testerMethodMapper;
+    /** 统一状态流水写入口（feature B）：安排确认 S30→S40 埋点 */
+    private final SampleStatusLogService statusLogService;
 
     /** 分类代码的固定匹配顺序（编号同时含多个代码时取先命中者） */
     private static final List<String> CATEGORY_ORDER = List.of("NA", "XA", "SA");
@@ -85,6 +89,9 @@ public class AssignServiceImpl extends ServiceImpl<SampleItemMapper, SampleItem>
 
     private static final String SOURCE_CATEGORY = "CATEGORY";
     private static final String SOURCE_METHOD = "METHOD";
+
+    /** 状态流水来源：任务安排域 */
+    private static final String SOURCE_ASSIGN = "ASSIGN";
 
     // =========================================================================
     // 5.2 分页查询待安排样品
@@ -311,6 +318,9 @@ public class AssignServiceImpl extends ServiceImpl<SampleItemMapper, SampleItem>
         if (updated == 0) {
             throw new BizException(400, "样品状态已变更，请刷新后重试");
         }
+        // 状态流水埋点（feature B）：正向推进 S30→S40
+        statusLogService.append(sample, StatusEventType.FORWARD, SampleStatus.S30, SampleStatus.S40,
+                "安排确认", null, SOURCE_ASSIGN, null, null);
         return SampleStatus.S40.getCode();
     }
 

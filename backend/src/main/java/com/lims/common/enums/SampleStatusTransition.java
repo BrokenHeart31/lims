@@ -23,6 +23,19 @@ import java.util.Set;
  * 而实际上退回必须伴随**原因留痕 + 通知检验员**，是比正向更强的约束。
  * 故：正向与退回各自一张表、各自一个断言方法，**不得互相调用、不得合并**。</p>
  *
+ * <p><b>为什么是「三条」白名单而不是两条（2026-09-17 增量）</b>：
+ * 本类原只有 {@link #VALID}（正向）与 {@link #RETURN}（退回）。新增全流程逐步回退后，
+ * 有了第三类语义——{@link #ROLLBACK}（纠错）。三者的**业务动机完全不同**：
+ * <ul>
+ *   <li>{@code VALID}=业务**向前走**（推进）；</li>
+ *   <li>{@code RETURN}=上一环节**否定**（审核退回，业务否定，保留数据）；</li>
+ *   <li>{@code ROLLBACK}=**操作失误后的纠错**（回退到上一状态并处置下游数据）。</li>
+ * </ul>
+ * 若把 ROLLBACK 并入 VALID，`assertTransition(S30, S20)` 会变全局合法；若并入 RETURN，
+ * 则「审核退回」与「回退纠错」两种留痕（event_type 2 vs 4）、权限（常规 vs 敏感）与
+ * 下游处置语义将无法区分。故**第三条独立白名单 + 独立断言**，理由与既有「正向/退回不得合并」同源。
+ * 边策略（分组/权限/二次确认/失效范围/拒绝原因）的**唯一权威**是 {@link RollbackEdgePolicy}。</p>
+ *
  * <p>性能：EnumMap 数组索引 O(1)，零外部依赖（选型依据见
  * docs/knowledge/2026-09-11-sample-statemachine-research.md）。</p>
  *
@@ -42,6 +55,19 @@ public final class SampleStatusTransition {
      */
     private static final Map<SampleStatus, Set<SampleStatus>> RETURN = new EnumMap<>(SampleStatus.class);
 
+    /**
+     * 回退白名单（纠错，独立于 {@link #VALID} 与 {@link #RETURN}，2026-09-17 新增）。
+     *
+     * <p>只允许**逐级**回退（每次退一步，PRD T4）。被拒边（S80→S70、S90→S80）
+     * **不在此表**——它们由 {@link RollbackEdgePolicy#rejectReason} 给出专门业务码 4102/4103。</p>
+     *
+     * <pre>
+     *   常规（未签发）  S20→S10、S30→S20、S40→S30、S50→S40、S60→S50
+     *   敏感（已审核）  S70→S60
+     * </pre>
+     */
+    private static final Map<SampleStatus, Set<SampleStatus>> ROLLBACK = new EnumMap<>(SampleStatus.class);
+
     static {
         VALID.put(SampleStatus.S10, EnumSet.of(SampleStatus.S20));                        // 登记确认
         VALID.put(SampleStatus.S20, EnumSet.of(SampleStatus.S30));                        // 项目分解确认
@@ -54,6 +80,14 @@ public final class SampleStatusTransition {
         VALID.put(SampleStatus.S90, EnumSet.noneOf(SampleStatus.class));                  // 终态
 
         RETURN.put(SampleStatus.S60, EnumSet.of(SampleStatus.S50));                       // 审核退回
+
+        // 回退（逐级，每次退一步）
+        ROLLBACK.put(SampleStatus.S20, EnumSet.of(SampleStatus.S10));                     // 回退至已登记
+        ROLLBACK.put(SampleStatus.S30, EnumSet.of(SampleStatus.S20));                     // 回退至登记确认
+        ROLLBACK.put(SampleStatus.S40, EnumSet.of(SampleStatus.S30));                     // 回退至已分解
+        ROLLBACK.put(SampleStatus.S50, EnumSet.of(SampleStatus.S40));                     // 回退至已安排
+        ROLLBACK.put(SampleStatus.S60, EnumSet.of(SampleStatus.S50));                     // 回退至检验中
+        ROLLBACK.put(SampleStatus.S70, EnumSet.of(SampleStatus.S60));                     // 回退至已审核（敏感）
     }
 
     private SampleStatusTransition() {
@@ -146,6 +180,53 @@ public final class SampleStatusTransition {
             return Collections.emptySet();
         }
         return Collections.unmodifiableSet(RETURN.getOrDefault(from, Collections.emptySet()));
+    }
+
+    // =========================================================================
+    // 回退流转（纠错，独立白名单，2026-09-17 新增）
+    // =========================================================================
+
+    /**
+     * 判断是否允许由 {@code from} **回退**到 {@code to}（仅逐级）。
+     *
+     * @return 任一侧为 null 时返回 false
+     */
+    public static boolean canRollback(SampleStatus from, SampleStatus to) {
+        if (from == null || to == null) {
+            return false;
+        }
+        return ROLLBACK.getOrDefault(from, Collections.emptySet()).contains(to);
+    }
+
+    /**
+     * 断言回退合法，非法即抛 {@link BizException}(业务码 4101)。
+     *
+     * <p>消息带「回退」字样，便于前端与日志区分于正向流转 / 审核退回失败。
+     * 被拒边（S80→S70、S90→S80）的**专门业务码**（4102/4103）由
+     * {@link RollbackEdgePolicy#rejectReason} 给出，本方法只做白名单兜底。</p>
+     */
+    public static void assertRollback(SampleStatus from, SampleStatus to) {
+        if (!canRollback(from, to)) {
+            throw new BizException(4101,
+                    "样品状态不允许从「" + label(from) + "」回退至「" + label(to) + "」（回退仅支持逐级）");
+        }
+    }
+
+    /**
+     * 断言回退合法（按 code）。
+     */
+    public static void assertRollback(int fromCode, int toCode) {
+        assertRollback(SampleStatus.of(fromCode), SampleStatus.of(toCode));
+    }
+
+    /**
+     * 当前状态允许回退到的状态集合（只读），供前端渲染「回退」按钮与预览目标。
+     */
+    public static Set<SampleStatus> rollbackAllowed(SampleStatus from) {
+        if (from == null) {
+            return Collections.emptySet();
+        }
+        return Collections.unmodifiableSet(ROLLBACK.getOrDefault(from, Collections.emptySet()));
     }
 
     private static String label(SampleStatus status) {

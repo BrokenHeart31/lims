@@ -1,0 +1,146 @@
+%% =============================================================================
+%% 业务全流程 AI 助手（增量 ai_flow_assistant）—— 关键类图
+%% 对应设计：docs/design/2026-09-18-arch-ai-flow-assistant.md §3.4
+%% =============================================================================
+classDiagram
+  class AiChatContextDTO {
+    +String sampleNo
+    +Integer status
+    +String stdNo
+    +String itemName 「★新增」
+    +String basisCode 「★新增」
+    +String pageKey   「★新增」
+    +String roleCode  「★新增」
+  }
+  class AiAnswerVO {
+    +String answer
+    +boolean refused
+    +String domain
+    +String confidence
+    +List~AiCitationVO~ citations
+    +List~Suggestion~ suggestions
+    +FlowGuideVO flowGuide 「★新增」
+    +List~AiValueAnchorVO~ valueAnchors 「★新增」
+  }
+  class AiCitationVO {
+    +String stdNo
+    +String clauseNo
+    +String snippet
+    +Integer sourceType 「★新增」
+    +String sourceTypeLabel 「★新增」
+    +boolean ocrDerived 「★新增」
+  }
+  class FlowGuideVO {
+    +String sampleNo
+    +Integer currentStatus
+    +String currentStatusLabel
+    +int stageIndex
+    +Step nextStep
+    +List~Step~ steps
+  }
+  class FlowGuideVO.Step {
+    +Integer status
+    +String stageLabel
+    +String nextAction
+    +String entryPath
+    +String requiredPermission
+    +boolean hasPermission
+    +String fieldHint
+    +boolean isCurrent
+  }
+  class AiCompanionHintVO {
+    +String hintKey
+    +String sampleNo
+    +String itemName
+    +String stdNo
+    +String stdTitle
+    +String oneLine
+    +List~AiCitationVO~ citationPreview
+    +AiValueAnchorVO valueAnchor
+  }
+  class AiValueAnchorVO {
+    +String itemName
+    +String unit
+    +String stdValue
+    +String judgeTypeLabel
+    +boolean isReference
+    +String basisCode
+    +Long libItemId
+    +String jumpScope 「LIBRARY/SAMPLE/NONE」
+    +String jumpLabel
+    +String jumpPath
+    +String sourceLabel
+  }
+  class ScanOcrJobVO {
+    +String stdKey
+    +String sourceFile
+    +String stdNo
+    +String mode
+    +Integer totalPages
+    +Integer donePages
+    +List~FailedPage~ failedPages
+    +String status
+    +String updatedAt
+  }
+  class BusinessFlowMap {
+    <<static 权威>>
+    +StageFact of(SampleStatus) StageFact
+    +List~StageFact~ all()
+    +Optional~StageFact~ next(SampleStatus)
+  }
+  class FlowGuideAssembler {
+    +FlowGuideVO guide(Integer status, String sampleNo, List~String~ perms)
+  }
+  class CompanionTriggerPolicy {
+    +boolean shouldTrigger(AiChatContextDTO ctx)
+    +Optional~String~ resolveStdNo(AiChatContextDTO ctx)
+    +String hintKey(AiChatContextDTO ctx, String stdNo)
+  }
+  class StandardCompanionService {
+    <<interface>>
+    +List~AiCompanionHintVO~ hints(AiChatContextDTO ctx, List~String~ perms)
+    +boolean feedback(AiCompanionFeedbackDTO dto)
+  }
+  class ValueAnchorAssembler {
+    +Optional~AiValueAnchorVO~ anchor(String itemName, String stdNo, Long sampleId, List~String~ perms)
+  }
+  class ScanOcrJobStore {
+    +List~ScanOcrJobVO~ list()
+    +Optional~ScanOcrJobVO~ get(String stdKey)
+    +ScanOcrRetryVO resetFailedToPending(String stdKey)
+  }
+  class BusinessContextReader {
+    +readStatus(sampleNo) Optional~SampleStatusView~
+    +readRolePermissions() List~String~
+  }
+  class SampleItemFactMapper {
+    <<只读投影 @Select>>
+    +selectFactsBySampleNo(sampleNo) List~SampleItemFact~
+  }
+  class GbRetriever {
+    +search(query, topN, stdNo) List~GbSearchHitVO~
+  }
+  class BusinessRuleAssembler {
+    +detectIntent(question) Intent
+    +answer(intent, question, ctx) String
+  }
+  class AiAssistantServiceImpl {
+    +status() AiStatusVO
+    +chat(dto) AiAnswerVO
+    +chatStream(dto) SseEmitter
+  }
+
+  AiAssistantServiceImpl --> FlowGuideAssembler : 业务域 NEXT_STEP/GUIDE
+  AiAssistantServiceImpl --> BusinessRuleAssembler
+  AiAssistantServiceImpl --> GbRetriever
+  AiAssistantServiceImpl --> AiConversation : 只写 ai_message/ai_conversation
+  FlowGuideAssembler --> BusinessFlowMap : 唯一权威映射
+  FlowGuideAssembler --> BusinessContextReader : 只读角色权限
+  StandardCompanionService --> CompanionTriggerPolicy
+  StandardCompanionService --> GbRetriever : 条款预览
+  StandardCompanionService --> ValueAnchorAssembler
+  StandardCompanionService --> SampleItemFactMapper : 只读补全
+  StandardCompanionService --> AiHintLog : 留痕（唯一写）
+  ValueAnchorAssembler --> ProductLibItem : 只读系统标准库
+  ValueAnchorAssembler ..> GbRetriever : ✗ 禁止依赖（数值路径不碰 OCR）
+  ScanOcrJobStore --> ScanOcrJob : .scan/*/progress.json（文件）

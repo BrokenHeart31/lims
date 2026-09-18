@@ -48,4 +48,23 @@ public final class SecurityUtils {
         return getUsername()
                 .orElseThrow(() -> new BizException(ResultCode.UNAUTHORIZED));
     }
+
+    /**
+     * 当前登录用户是否拥有某权限标识（resource:action）。
+     *
+     * <p>用于**服务层**需要按权限做分支的场合（如敏感回退 rollback:sensitive——
+     * Controller 已按 rollback:execute 放行，敏感边再在服务层二次校验）。
+     * 前端菜单/按钮显隐只是体验层，真正的权限判定必须在此类后端逻辑完成（AGENTS 8.4）。</p>
+     */
+    public static boolean hasAuthority(String authority) {
+        if (authority == null || authority.isBlank()) {
+            return false;
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> authority.equals(a.getAuthority()));
+    }
 }

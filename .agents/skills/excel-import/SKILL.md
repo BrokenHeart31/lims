@@ -34,8 +34,36 @@ T-301 采样单 Excel 导入；后续任何批量导入/导出（T-802 省平台
 - 重复样品编号：查重拦截并计入失败清单
 - 单测：小样本 xlsx 断言导入行数与错误定位（AGENTS 4.3）
 
+## 造测试文件并实测（2026-09-15 补充，可复用）
+
+生成导入样例后用 curl 实测一遍再交付，**验证后必须清理**，否则污染用户首次导入：
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" \
+  -d '{"username":"nj001","password":"nj001"}' | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
+curl -s -X POST http://localhost:8080/api/sample/import -H "Authorization: Bearer $TOKEN" \
+  -F "file=@<文件>.xlsx"          # 字段名为 file
+```
+
+清理（缺一不可）：
+
+```sql
+DELETE FROM sample_import_batch WHERE file_marker LIKE 'SAMPLE-IMPORT-TEST%';  -- 文件标记防重
+DELETE FROM sample_info WHERE sample_no LIKE 'TEST-%';
+```
+
+三个导入端点：`POST /api/sample/import`、`/api/base/tester-method/import`、`/api/base/lib/import`。
+
 ## 踩坑
 
+- **A1 是「文件标记」，同标记禁止重复导入**（落 `sample_import_batch`），重复导直接 400。
+  想再导一次改 A1 文本即可。造样例时 A1 用独立标记名。
+- **「文件内重复编号」依赖前一行先成功入库**：撞号的第一行若自身校验失败（如样品名称空），
+  第二行**不会**报重复而会成功。造错误样例时撞号的第一行必须本身合法，否则错误数会比预期少一条。
+- **列按 `@ExcelProperty(index=n)` 绑定，不是按表头名**：生成文件时列顺序必须严格对齐 DTO 的 index 注解，
+  表头文字写错不影响读取，但列错位会整列读空。
+- **判定类型一致性**（项目标准库导入）：1=限量比较（限量值须为数值、`≤0.5` 也可）、
+  2=不得检出/不得使用（限量值必须含该文本）、3=文本（填 `--`）。三者互斥，填反会 400。
 - 监听器每文件一实例，**不可**做成 Spring 单例（并发导入互相污染 cachedList）。
 - 表头与 `@ExcelProperty` 严格一致；说明书表头含空格/全角括号要在 DTO 上原样写。
 - 大文件流式读，不要 `doReadSync()` 全量进内存。

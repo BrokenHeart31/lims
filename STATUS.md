@@ -2,6 +2,88 @@
 
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
+## 2026-09-18 用户实测缺陷修复（GLM / 流式卡死 + 检索召回 + 审计口径）
+
+> 触发：用户反馈「问 GB 2762 铅的限量，AI 助手一直显示正在生成，关闭再打开才看到回答」。
+> 结论：**三个独立缺陷叠加**，已全部修复并实测闭证。详见
+> `docs/knowledge/2026-09-18-sse-async-vue-reactivity-ngram-routing.md` 与 `docs/journal/2026-09-18-glm-ai-flow-assistant.md`（本轮追加章节）。
+
+- **本轮改动的文件**（全部为既有新增能力的修复，无新功能）：
+  - 后端**修改**：`config/SecurityConfig.java`（放行 `DispatcherType.ASYNC/ERROR`）、
+    `security/JwtAuthenticationFilter.java`（ASYNC 派发也认证）、`config/OperationLogInterceptor.java`（preHandle 幂等）、
+    `service/ai/GbRetriever.java`（检索路由 + 噪声词剔除）、`service/ai/impl/AiAssistantServiceImpl.java`（点名标准未收录 → 确定性作答）、
+    `service/ai/ChunkSplitter.java`（两行式标题合并 / OCR 数字还原 / 伪边界剔除 / 带标题边界必切）、
+    `service/ai/parser/TxtParser.java`（标准名抽取）、`mapper/GbDocumentMapper.java`（+已收录标准号查询）、
+    `mapper/GbClauseMapper.java` + `resources/mapper/GbClauseMapper.xml`（标题相关性排序）
+  - 前端**修改**：`stores/aiAssistant.ts`（**取回响应式代理再改**）、`utils/aiStream.ts`（静默超时 + `onIncomplete`）
+  - 数据：**新增** `db/migrations/V10__gb_clause_title_fulltext.sql`；**修改** `db/init/11_ai_tables.sql`（+`ft_gbc_title`）
+  - 测试**修改/新增**：`GbRetrieverTest`(+3)、`ChunkSplitterTest`(+2)、`ParsersTest`(+2)、`AiAssistantServiceOfflineTest`(+2)
+- **质量门禁（自行复现）**：后端 `mvn -o test` **236 项全绿 / BUILD SUCCESS**；
+  前端 `vue-tsc` 0 错误、`eslint` 0 问题、`vite build` 成功。
+- **真实链路实测**：经 `localhost:5173` 代理 `curl -N` → **退出码 0**（修复前为 18），refs/token/done 三帧齐全；
+  `sys_operation_log` 中 `/ai/chat/stream` 记到 `operator=nj001`、`duration_ms=5570`（修复前 `anonymousUser` / `0`）。
+- **GB 索引已按新规则重建**：4660 块、纯数字标题 **0**、`4.121 → 毒死蜱（chlorpyrifos）`；
+  5 个抽样项目（毒死蜱/阿维菌素/腐霉利/吡虫啉/多菌灵）的条款**全部排到检索第 1 位**。
+- **存量库已应用**：`V10` 已执行（`gb_clause` 现有 `ft_gbc_content` + `ft_gbc_title` 两个 ngram 索引）。
+- **项目总进度：99% → 99%**（本轮为缺陷修复与质量提升，未新增业务范围）。
+
+## 2026-09-17 新增能力（GLM / **本地 AI 助手 + 全流程逐步回退**，超出说明书范围）
+
+- **本轮占用**（新增为主，改动既有文件均已列明）：
+  - 数据：`db/init/10_rollback_tables.sql`、`db/init/11_ai_tables.sql`、`db/migrations/V8__rollback_and_ai.sql`、
+    `db/seed/01_rbac_seed.sql`（权限种子增量）；**存量表语义变更**：`db/init/06_item_tables.sql`、`db/init/07_result_tables.sql`（`deleted` 列 TINYINT→BIGINT）
+  - 后端新增：`common/enums/{RollbackEdgePolicy,RollbackGroup,StatusEventType,ArchiveTarget,AiDomain}.java`、
+    `entity/{SampleStatusLog,SampleRollback,SampleDataArchive,ReportVoid,GbDocument,GbClause,GbImportJob,AiConversation,AiMessage}.java`、
+    `mapper/*.java`（9 个）、`dto/*`（9 个）、`vo/*`（9 个）、
+    `service/rollback/{RollbackPlanner,RollbackScope,SampleDataDisposer}.java`、
+    `service/{RollbackService,SampleStatusLogService,ReportVoidService}.java` + `impl/*`、
+    `service/ai/**`（22 个，含 `parser/*` 5 个）、`controller/{RollbackController,ReportVoidController,AiController,AiKbController}.java`、
+    `config/AsyncConfig.java`
+  - 后端**修改**：`common/enums/SampleStatusTransition.java`（+第三条白名单 `ROLLBACK`）、
+    `common/ResultCode.java`（+4102/4103/4108/4109/4201/4202/4203/4211）、
+    `security/SecurityUtils.java`、`entity/Sample.java`、`mapper/{SampleItemMapper,SampleResultMapper}.java`、
+    `config/{OperationLogInterceptor,WebConfig}.java`、`resources/application.yml`、
+    **6 个既有 ServiceImpl**（`Sample/Item/Assign/Result/Audit/ReportGenerate`）——接入状态流水
+  - 前端新增：`components/ai/*`（6 个）、`components/rollback/RollbackTimelineDrawer.vue`、
+    `views/rollback/index.vue`、`views/ai/audit.vue`、`stores/aiAssistant.ts`、`api/{ai,rollback}.ts`、`utils/aiStream.ts`、`types/rollback.ts`
+  - 前端**修改**：`layouts/MainLayout.vue`（挂载悬浮窗）、`router/{routeRegistry,dynamicRoutes}.ts`（+路由）、
+    `views/{report/audit,result/index}.vue`（+携带上下文入口，**未改其数据流与权限判断**）
+  - AI 运行时与脚本：`ai/{README.md, config/*, scripts/*}`（`.gitignore` 已排除 `ai/runtime`、`ai/models`）
+  - 设计与资产：`docs/design/2026-09-17-{prd,arch}-ai-assistant-and-rollback.md`、
+    `docs/knowledge/2026-09-17-{rollback-mechanism,local-ai-and-gb-retrieval}.md`、`docs/journal/2026-09-17-*.md`
+- **两项能力**：
+  1. **本地 AI 助手**：qwen3-4b 项目内托管（`ai/runtime` + `OLLAMA_MODELS=ai/models`）；JDK17 `HttpClient` 调 Ollama
+     （**零新增 Maven 依赖**，唯一新增是 `jsoup` 用于 HTML 解析）；**领域护栏**（业务域由本地规则确定性作答、越界拒答、
+     标准域走 GB 检索）；**GB 标准库**用 MySQL 8.0 `FULLTEXT ... WITH PARSER ngram` 秒级检索（**零新增依赖**）；
+     回答为**结构化对象 + 引用卡片**（不引 Markdown 库）；可拖拽悬浮窗（自研 Pointer Events，无拖拽库）。
+  2. **全流程逐级回退**：**第三条独立白名单 `ROLLBACK`**（6 条边，**S80/S90 无回退边**）+ 统一状态流水
+     `sample_status_log`（7 种事件类型） + 回退记录 + 失效留档 + 报告作废/召回标记动作。
+- **⚠️ 本轮最高风险改动**：`sample_item`/`sample_result` 的 `deleted` 语义由「0/1 两态」升级为「0=有效 / 非 0=行自身 id」，
+  以解决「逻辑删除二次失效撞唯一键」。**MyBatis-Plus `@TableLogic` 只支持固定字面量、不支持表达式**（实测），
+  故这两张表的失效必须走 `SampleDataDisposer` 显式 `set(deleted, id)`，**禁用 `baseMapper.delete(...)`**。
+  全局 `logic-delete-value=1` 保留（其余表仍两态，查询恒为 `deleted = 0`，不受列类型影响）。
+- **验收**（真实命令/产物，非自述）：
+  - 后端 `mvn -o test`：**212 项全绿**（既有 151 + 本轮新增 61：回退 30 + AI 23 + QA 补齐 8，0 失败 0 错误）
+    > 首轮交付时为 204；**QA 第 2 轮**（授权补齐 P1/P2）新增 `SampleDataDisposerTest`(8) 把**不变式④「无物理删除路径」**
+    > 真正固化成断言，并加固乐观 UPDATE 的 `WHERE status=旧值` 捕获，最终 **212/212 BUILD SUCCESS**。
+  - 前端 `vue-tsc --noEmit` / `npm run lint` / `npm run build` 三门禁全绿
+  - 回退四条不变式（乐观 UPDATE 冲突→4108 / 失效处置在状态 UPDATE 之后且同事务 / 一次回退仅新增 1 条 `event_type=4` /
+    无物理删除路径）已用 `InOrder` + `verify(times(1))` **测试固化**，非注释承诺
+  - `AiDomainIsolationTest` 用**反射穷举依赖**断言 AI 不持有判定链 Mapper（T3 红线可执行化）
+  - 独立复核：三条白名单真正独立；`ROLLBACK` 恰好 6 条边且无 S80/S90 出边；AI 包对结论字段 grep 零命中
+- **⚠️ 必须由用户执行才能闭环的事项（不得视为已验证）**：
+  1. **Ollama 运行时与 qwen3:4b 权重未下载**——实施环境沙箱代理对大文件返回 502，实测 **7 条镜像路径全部失败**。
+     交付的是 `ai/scripts/deploy-ollama.ps1`（多镜像回退 + 手动兜底），**需用户在本机执行**。
+     故本轮 AI 能力的验收边界是「**Ollama 不可用时系统行为正确**」（降级 + fail-loud + 业务零影响），
+     **真实推理链路未端到端跑通**。
+  2. GB 标准库**无真实数据**（用户尚未提供标准文件），检索链路以构造数据验证。
+  3. 悬浮窗拖拽/回退 UI 未做真实浏览器人工体验终验（需用户点一次）。
+- **进度**：**按说明书口径维持 99%**（两项能力超出说明书范围，见 DECISIONS 2026-09-17 口径裁决）。
+  新能力自身完成度：**回退机制 后端+测试+UI 完成、真实浏览器端到端未跑；AI 助手 代码链路完成、真实模型推理未验证**。
+- **未提交**：本轮改动**未执行任何 git 提交**（本机 git 沙箱有已知问题，统一由 GLM 后续处理）。
+  当前工作区含**本会话之前遗留的未提交改动**（如 `directives/permission.ts` 09-14、`.agents/skills/excel-import/SKILL.md` 09-15），
+  提交前必须 `git status --short` 逐项核对（AGENTS 第 12 章红线）。
+
 ## 2026-09-14 16:30 下载改造（GLM / **全部下载改为「自选保存位置」**）
 
 - **本轮占用**：`frontend/src/utils/download.ts`（新增 `saveBlobAs` / `notifySaveOutcome` / 类型常量）、

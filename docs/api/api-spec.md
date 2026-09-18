@@ -30,6 +30,10 @@
 | 500 | 系统异常 | 前端提示稍后重试 |
 | 1000+ | 业务自定义 | 按模块分段，新增时必须登记在本文件对应域 |
 
+> **业务码分段登记（2026-09-17 增量 `ai_assistant_and_rollback`）**：
+> **回退域 4100–4199**（见第 17 章）、**AI 域 4200–4299**（见第 16 章）。其余域沿用 0/400/401/403/500。
+> 已占用：回退 4101~4108；AI 4201/4202/4203/4211。
+
 - 安全层（未带/非法 token、权限不足）返回 **HTTP 401/403 + 上述响应体**（URL 级与 `@PreAuthorize` 方法级**一律如此**）；业务异常返回 HTTP 200 + body.code 区分。
   > ⚠️ 2026-09-13 实现勘误：方法级鉴权拒绝曾返回「HTTP 200 + body.code=403」，与本节及 URL 级拒绝（真 403）形态不一致，已修复（`GlobalExceptionHandler` 补 `@ResponseStatus`）。
 - 前端同时兼容两种形态（见 `frontend/src/utils/request.ts`：HTTP 401 → 清 token 跳 /login；body.code≠0 → 提示 msg；非 2xx → 读取 `error.response.data.msg`），故调用方无需关心 HTTP 层差异，但**服务端必须按上一条输出**。
@@ -1409,6 +1413,10 @@ GET /api/sys/log/page?current=1&size=20&module=&operator=&startTime=&endTime=
 | `/base/tester-method` | 方法资质 | `/report/audit` | 报告审核 |
 | `/auth` | 认证 | `/report/sign` | 报告签发 |
 | | | `/report/generate` | 报告生成 |
+| | | `/report/void` | 报告作废 |
+| | | `/rollback` | 流程回溯 |
+| | | `/ai/kb` | AI 知识库 |
+| | | `/ai` | AI 助手 |
 
 `summary` 中的动作词由路径关键词派生（`/import`→导入、`/confirm`→确认、
 `/generate`→生成、`/approve`→审核通过、`/return`→审核退回、`/sign`→签发、
@@ -1428,3 +1436,193 @@ GET /api/sys/log/page?current=1&size=20&module=&operator=&startTime=&endTime=
 见 `db/init/09_operation_log.sql`（全新部署）与 `db/migrations/V7__add_operation_log.sql`（存量库升级，幂等）。
 
 ---
+
+# 增量契约：本地 AI 助手 + 全流程逐步回退（2026-09-17）
+
+> 增量代号 `ai_assistant_and_rollback`；设计见
+> `docs/design/2026-09-17-arch-ai-assistant-and-rollback.md`。
+> 统一前缀 `/api`；鉴权 `Authorization: Bearer`；响应 `{code,msg,data}`；
+> 分页 data = `records/total/current/size`（请求 `current`/`size`）；字段 camelCase。
+> **本批（T01/T02/T04）已落地第 17 章与 18 章后端；第 16 章（`/api/ai`）为 T03 待落地契约。**
+
+---
+
+## 16. AI 助手域 `/api/ai`（feature A，T03 实现）
+
+| # | 方法 | 路径 | 权限标识 | 说明 |
+|---|---|---|---|---|
+| A1 | GET | `/ai/status` | 登录即可 | AI 服务健康检查（Ollama 在线 / 模型就绪） |
+| A2 | POST | `/ai/chat` | `ai:chat` | 非流式问答（自检/降级/测试用） |
+| A3 | POST | `/ai/chat/stream` | `ai:chat` | 流式问答（SSE），主通道 |
+| A4 | GET | `/ai/conversations` | `ai:log:view` | 分页查询会话（审计） |
+| A5 | GET | `/ai/conversations/{id}/messages` | `ai:log:view` | 会话消息明细（含引用/拒答留痕） |
+| A6 | POST | `/ai/kb/import/upload` | `ai:kb:import` | 上传文本文件（txt/html/htm/md/csv）→ 异步建索引 |
+| A7 | POST | `/ai/kb/import/scan` | `ai:kb:import` | 扫描 `ai/standards/parsed/` → 批量导入 |
+| A8 | GET | `/ai/kb/import/jobs` | `ai:kb:import` | 分页查询导入任务与进度 |
+| A9 | GET | `/ai/kb/import/jobs/{id}` | `ai:kb:import` | 单任务详情（含失败明细） |
+| A10 | POST | `/ai/kb/import/jobs/{id}/retry` | `ai:kb:import` | 失败重试 |
+| A11 | GET | `/ai/kb/documents` | `ai:kb:query` | 分页查询已入库标准 |
+| A12 | POST | `/ai/kb/search` | `ai:kb:query` | 直接检索标准条款（页面联动/调试） |
+| A13 | DELETE | `/ai/kb/documents/{id}` | `ai:kb:import` | 删除文档索引（可重建） |
+
+**A1 响应示例**
+```json
+{ "code": 0, "msg": "success", "data": {
+  "online": true, "baseUrl": "http://127.0.0.1:11434", "model": "qwen3:4b-instruct",
+  "modelPresent": true, "latencyMs": 12,
+  "hint": "AI 服务正常", "startScript": "ai/scripts/start-ollama.ps1" } }
+```
+离线时：`online=false, modelPresent=false, hint="本地模型服务未启动；业务功能不受影响。请运行 ai/scripts/start-ollama.ps1"`（HTTP 200 + code 0，**状态查询不是错误**）。
+
+**A2 请求 / 响应**
+```json
+// 请求
+{ "conversationId": null, "question": "水产品中铅的限量是多少？",
+  "context": { "sampleNo": "JK(2023)-SA-001", "status": 50, "stdNo": "GB 2762" } }
+// 响应 data（AiAnswerVO）
+{ "conversationId": 12, "messageId": 34, "answer": "……(纯文本，不含 Markdown)", "refused": false,
+  "domain": "standard", "confidence": "high", "model": "qwen3:4b-instruct", "elapsedMs": 3120,
+  "citations": [
+    { "stdNo": "GB 2762-2022", "clauseNo": "4.2 表3", "clauseTitle": "铅限量",
+      "snippet": "水产制品中铅（以Pb计）限量为0.5 mg/kg……", "docId": 3, "sourceFile": "GB2762-2022.txt", "score": 4.81 } ],
+  "suggestions": [] }
+```
+
+**AI 业务码**
+
+| 场景 | code | msg |
+|---|---|---|
+| 本地模型服务未启动/不可达 | 4201 | AI 助手暂不可用（本地模型服务未启动），业务功能不受影响。 |
+| 模型未就绪 | 4202 | 本地模型未就绪，请先运行 ai/scripts/deploy-ollama.ps1 拉取模型 |
+| 推理超时 | 4203 | 本地模型响应超时，请缩短问题后重试 |
+| 上传 PDF（拒绝） | 4211 | PDF 需先经 ai/scripts/prepare-standards.py 转为文本（见 ai/README.md） |
+
+> 「拒答」不是错误：`refused=true` 走 `code=0`；AI 离线走 `code=4201` 且 HTTP 200（前端静默降级，不弹全局错误）。
+
+**A3 SSE 事件序列**（`text/event-stream`）
+```
+event: refs      data: {"citations":[...],"domain":"standard"}
+event: token     data: {"t":"水产"}   （多帧）
+event: done      data: {"messageId":34,"conversationId":12,"elapsedMs":3120,"confidence":"high"}
+event: error     data: {"code":4201,"msg":"..."}
+```
+
+**A6/A7/A12 请求示例**
+```json
+// A7 scan
+{ "dir": "ai/standards/parsed", "sourceType": 1 }
+// A12 search
+{ "query": "铅 限量", "topN": 5, "stdNo": "GB 2762" }
+```
+
+---
+
+## 17. 流程回溯域 `/api/rollback`（feature B，T02 已落地）
+
+> 状态机第三条独立白名单 `common/enums/SampleStatusTransition.ROLLBACK`；
+> 边策略唯一权威 `common/enums/RollbackEdgePolicy`。
+> **回退只允许逐级**（每次退一步）；跨级与 S80/S90 回退被显式拒绝并给出专门业务码。
+
+| # | 方法 | 路径 | 权限标识 | 说明 |
+|---|---|---|---|---|
+| B1 | GET | `/rollback/timeline/{sampleId}` | `rollback:view` | 该样品全链路事件时间线（正向+逆向，供回溯面板） |
+| B2 | POST | `/rollback/preview` | `rollback:view` | 回退前「下游影响预览」（不落库） |
+| B3 | POST | `/rollback/execute` | `rollback:execute`（敏感边再由服务层校验 `rollback:sensitive`） | 执行一次逐级回退 |
+| B4 | POST | `/rollback/recover` | `rollback:execute` | 恢复某次未产生新下游数据的回退 |
+| B5 | GET | `/rollback/history` | `rollback:view` | 分页查询回退记录（跨样品） |
+
+**B1 响应示例（`RollbackTimelineVO`）**
+```json
+{ "sampleId": 10, "sampleNo": "JK(2023)-SA-001", "currentStatus": 50, "currentStatusLabel": "检验中",
+  "canRollbackTo": [40], "rollbackEdges": [ { "from":50, "to":40, "group":1, "groupLabel":"常规", "reasonRequired":true } ],
+  "rejectedEdges": [ { "from":80, "to":70, "code":4102, "msg":"已签发样品不支持普通回退，请使用「作废/召回」" } ],
+  "events": [
+    { "id":41, "eventType":4, "eventTypeLabel":"回退", "fromStatus":60, "toStatus":50,
+      "fromStatusLabel":"检验完成", "toStatusLabel":"检验中", "actionLabel":"回退至检验中",
+      "reason":"误提交，尚有一个项目未录", "dataDisposition":"无下游数据",
+      "rollbackId":9, "canRecover":true, "recovered":false,
+      "source":"ROLLBACK_PANEL", "operatedBy":"njsa000", "operatedAt":"2026-09-17 15:31:02" } ] }
+```
+
+**B2 请求 / 响应示例**
+```json
+// 请求
+{ "sampleId": 10, "targetStatus": 40 }
+// 响应 data（RollbackPreviewVO，允许）
+{ "sampleId":10, "sampleNo":"JK(2023)-SA-001", "fromStatus":50, "fromStatusLabel":"检验中",
+  "toStatus":40, "toStatusLabel":"已安排", "allowed":true, "group":1, "groupLabel":"常规",
+  "reasonRequired":true, "needSensitive":false, "needSecondConfirm":false, "irreversible":false,
+  "invalidations":[
+    { "type":"sample_result", "typeLabel":"检验结果", "count":9, "items":[ {"id":51,"label":"1 铅 0.12"} ] } ],
+  "hint":"回退后将失效上述下游数据（保留留档，可恢复）；请填写原因后确认。" }
+// 响应 data（被拒边：allowed=false，携带业务码，不抛 HTTP 错误）
+{ "sampleId":10, "fromStatus":80, "toStatus":70, "allowed":false,
+  "code":4102, "msg":"已签发样品不支持普通回退；报告已对外生效，请使用「作废 / 召回」" }
+```
+
+**B3 请求示例**
+```json
+{ "sampleId": 10, "targetStatus": 60, "reason": "审核人发现结论输入有误，需回退重审", "secondConfirmed": true }
+```
+**B4 请求示例**
+```json
+{ "rollbackId": 9, "reason": "复查后确认无需回退，恢复" }
+```
+
+**回退业务码（段 4100–4199）**
+
+| 场景 | code | msg |
+|---|---|---|
+| 边不在 `ROLLBACK` 白名单 / 跨级 | 4101 | 样品状态不允许从「已签发」回退至「已出报告」（回退仅支持逐级） |
+| 目标为 S80→S70 | 4102 | 已签发样品不支持普通回退；报告已对外生效，请使用「作废 / 召回」 |
+| 目标为 S90→S80 | 4103 | 已出报告不支持回退；数据已上报省平台，只能新增更正 / 作废记录 |
+| 敏感边（S70→S60）权限不足 | 4104 | 敏感回退需要「业务管理员 / 系统管理员」权限 |
+| 未二次确认 | 4105 | 敏感回退需二次确认 |
+| 原因缺失 | 4106 | 回退原因不能为空 |
+| 该回退不可再撤销 | 4107 | 该回退已产生新的下游数据，无法原路恢复；请重新前进 |
+| 并发状态已变更 | 4108 | 样品状态已变更，请刷新后重试 |
+
+---
+
+## 18. 报告作废/召回域 `/api/report/void`（feature B，T02 已落地）
+
+| # | 方法 | 路径 | 权限标识 | 说明 |
+|---|---|---|---|---|
+| B6 | POST | `/report/void` | `report:void` | 已签发 / 已出报告 作废 / 召回（**不改 status**，只写标记） |
+
+**B6 请求 / 响应示例**
+```json
+// 请求
+{ "sampleNo": "JK(2023)-SA-001", "voidType": 1, "reason": "受检单位申请撤回检验，报告作废", "secondConfirmed": true }
+// 响应 data（ReportVoidResultVO）
+{ "sampleId":10, "sampleNo":"JK(2023)-SA-001", "voidType":1, "voidTypeLabel":"作废",
+  "statusAtVoid":80, "statusAtVoidLabel":"已签发",
+  "reason":"受检单位申请撤回检验，报告作废", "secondConfirmed":1,
+  "operatedBy":"nj001", "operatedAt":"2026-09-17 15:40:00" }
+```
+
+> 说明：作废/召回是**标记动作**——`sample_info.void_status` 置 1/2，`status` 保持 80/90 不变，
+> 并追加一条 `sample_status_log(event_type=6)`。若业务后续要求「召回后可重新签发」，
+> 需新增第四条独立白名单 `RECALL`（S80→S70），见设计 §10-R6 待明确项。
+
+---
+
+## 19. `OperationLogInterceptor` 模块识别扩展（2026-09-17 增量）
+
+`MODULE_PREFIXES` 追加（**有序**，长的在前）：
+```
+"/report/void"  -> "报告作废"
+"/ai/kb"        -> "AI 知识库"
+"/ai"           -> "AI 助手"
+"/rollback"     -> "流程回溯"
+```
+`resolveAction` 追加：
+```
+contains("/rollback/execute") -> "回退"
+contains("/recover")          -> "恢复"
+contains("/void")             -> "作废"
+contains("/kb/import")        -> "导入标准"
+```
+
+---
+

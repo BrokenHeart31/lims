@@ -328,86 +328,91 @@ onMounted(() => {
         :pagination="false"
         empty-title="暂无资质数据"
       >
-        <el-table-column
-          prop="methodName"
-          label="检验方法"
-          min-width="240"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          prop="methodNo"
-          label="方法编号"
-          min-width="140"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          label="检验员"
-          min-width="150"
+        <el-table
+          :data="tableData"
+          style="width: 100%"
         >
-          <template #default="{ row }">
-            <span>{{ row.testerName ?? '—' }}</span>
-            <span class="muted mono">（{{ row.testerNo }}）</span>
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="deptName"
-          label="所属部门"
-          min-width="130"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          label="资质状态"
-          width="110"
-          align="center"
-        >
-          <template #default="{ row }">
-            <StatusBadge
-              :tone="row.qualStatus === 1 ? 'success' : 'danger'"
-              size="sm"
-            >
-              {{ row.qualStatusLabel ?? (row.qualStatus === 1 ? '有效' : '失效') }}
-            </StatusBadge>
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="remark"
-          label="备注"
-          min-width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column
-          label="操作"
-          width="150"
-          align="center"
-          fixed="right"
-        >
-          <template #default="{ row }">
-            <el-button
-              v-permission="'base:tester-method:edit'"
-              type="primary"
-              link
-              :icon="Edit"
-              @click="openEdit(row as TesterMethodRow)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              v-permission="'base:tester-method:remove'"
-              type="danger"
-              link
-              :icon="Delete"
-              @click="handleRemove(row as TesterMethodRow)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <AppEmpty
-            title="暂无资质数据"
-            hint="该表为空时，任务安排的第三级「方法资质规则」会永久落空，请先新增或导入"
+          <el-table-column
+            prop="methodName"
+            label="检验方法"
+            min-width="240"
+            show-overflow-tooltip
           />
-        </template>
+          <el-table-column
+            prop="methodNo"
+            label="方法编号"
+            min-width="140"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            label="检验员"
+            min-width="150"
+          >
+            <template #default="{ row }">
+              <span>{{ row.testerName ?? '—' }}</span>
+              <span class="muted mono">（{{ row.testerNo }}）</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="deptName"
+            label="所属部门"
+            min-width="130"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            label="资质状态"
+            width="110"
+            align="center"
+          >
+            <template #default="{ row }">
+              <StatusBadge
+                :tone="row.qualStatus === 1 ? 'success' : 'danger'"
+                size="sm"
+              >
+                {{ row.qualStatusLabel ?? (row.qualStatus === 1 ? '有效' : '失效') }}
+              </StatusBadge>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="remark"
+            label="备注"
+            min-width="160"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            label="操作"
+            width="150"
+            align="center"
+            fixed="right"
+          >
+            <template #default="{ row }">
+              <el-button
+                v-permission="'base:tester-method:edit'"
+                type="primary"
+                link
+                :icon="Edit"
+                @click="openEdit(row as TesterMethodRow)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                v-permission="'base:tester-method:remove'"
+                type="danger"
+                link
+                :icon="Delete"
+                @click="handleRemove(row as TesterMethodRow)"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <AppEmpty
+              title="暂无资质数据"
+              hint="该表为空时，任务安排的第三级「方法资质规则」会永久落空，请先新增或导入"
+            />
+          </template>
+        </el-table>
       </DataTable>
 
       <el-pagination

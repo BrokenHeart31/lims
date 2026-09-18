@@ -1,0 +1,126 @@
+%% =============================================================================
+%% 业务全流程 AI 助手（增量 ai_flow_assistant）—— 关键流程时序
+%% 对应设计：docs/design/2026-09-18-arch-ai-flow-assistant.md §6
+%% =============================================================================
+
+%% -----------------------------------------------------------------------------
+%% 6.1 标准伴随查询（TA：上下文触发 → 建议条 → 查看 → 引用卡片 + 数值对齐）
+%% -----------------------------------------------------------------------------
+sequenceDiagram
+  autonumber
+  participant U as 用户(结果录入页)
+  participant P as result/index.vue
+  participant W as AiPanel
+  participant S as aiAssistant(store)
+  participant CC as AiCompanionController
+  participant SC as StandardCompanionServiceImpl
+  participant TP as CompanionTriggerPolicy
+  participant R as GbRetriever
+  participant VA as ValueAnchorAssembler
+  participant DB as MySQL(gb_*/product_lib_item)
+  participant HL as ai_hint_log
+
+  U->>P: 打开样品/聚焦某检测单项
+  P->>S: pushContext({sampleNo,status,itemName:"毒死蜱",basisCode,pageKey})
+  S->>S: 防抖 + 检查 companionEnabled / shownHintKeys / mutedHintKeys
+  S->>CC: POST /ai/companion (context)
+  CC->>SC: hints(ctx, permissions)
+  SC->>TP: shouldTrigger(ctx)
+  alt itemName 为空 或 无标准号 或 标准未入库
+    TP-->>SC: false
+    SC-->>CC: []  （误报率=0：无项目名绝不主动）
+  else 命中
+    SC->>TP: resolveStdNo(ctx) -> "GB 2763-2021"
+    SC->>R: search("毒死蜱", topN=2, stdNo)
+    R->>DB: MATCH(content) AGAINST ngram（带 ocr_derived）
+    DB-->>R: 命中条款(含 ocrDerived)
+    SC->>VA: anchor("毒死蜱","GB 2763-2021", sampleId)
+    VA->>DB: 只读 product_lib_item / sample_item(deleted=0)
+    DB-->>VA: 系统权威值(stdValue/unit/basisCode/libItemId)
+    VA-->>SC: AiValueAnchorVO（数值路径不碰 OCR）
+    SC-->>CC: [AiCompanionHintVO]
+    SC->>HL: insert(ai_hint_log, clicked=0)
+  end
+  CC-->>S: hints
+  S->>S: 记入 shownHintKeys（同会话同项目只提示一次）
+  S-->>W: 建议条待展示（气泡加角标，不自动展开）
+  U->>W: 点「查看」
+  W->>S: openHint(hint)
+  S->>CC: POST /ai/companion/feedback {clicked:true}
+  CC->>HL: update clicked=1, clicked_at
+  S-->>W: 展开会话：引用卡片(标注来源类型) + 数值对齐卡片
+  Note over W: OCR 卡片强制标注「扫描件 OCR · 数值请以系统标准库为准」；数值取自系统库，非模型断言
+
+%% -----------------------------------------------------------------------------
+%% 6.2 业务全流程引导（TB/TF：事实层确定性 + 一键跳转 + 权限收敛）
+%% -----------------------------------------------------------------------------
+sequenceDiagram
+  autonumber
+  participant U as 用户
+  participant P as 业务页(样品/录入/审核)
+  participant W as AiFlowGuideCard
+  participant AC as AiController
+  participant FA as FlowGuideAssembler
+  participant FM as BusinessFlowMap
+  participant CR as BusinessContextReader
+  participant R as Vue Router
+
+  U->>P: 打开某样品
+  P->>AC: GET /ai/flow/guide?sampleNo=…&status=…
+  AC->>FA: guide(status, sampleNo, permissions)
+  Note over FA: 事实层：**不调模型**
+  FA->>FM: of(status) / all() / next(status)
+  FM-->>FA: 阶段事实(动作/入口/权限/负责人/字段指引)
+  FA->>CR: readRolePermissions()（只读 authorities，不查库）
+  CR-->>FA: [result:entry, ...]
+  FA->>FA: 逐步计算 hasPermission（越权步不给入口）
+  FA-->>AC: FlowGuideVO(当前步/下一步/steps)
+  AC-->>W: 结构化事实（状态/下一步/入口/权限/是否具备）
+  W-->>U: 引导卡片：当前步高亮、后续灰显、越权步灰显+「需 X 权限，联系 R100/R2」
+  U->>W: 点「一键跳转」
+  W->>R: router.push(entryPath)（**只读跳转，不代填/不代提交**）
+  Note over W,R: G3：重复 10 次，结构化事实字段 100% 一致（模型不参与事实）
+
+%% -----------------------------------------------------------------------------
+%% 6.3 扫描件 OCR 通道（TD：离线 + 断点续跑 + 页级进度 + 重试）
+%% -----------------------------------------------------------------------------
+sequenceDiagram
+  autonumber
+  participant A as 业务管理员(R2)
+  participant PS as prepare-standards.py(OCR)
+  participant OE as ocr_engine.py(RapidOCR)
+  participant FS as ai/standards/(inbox|parsed|.scan)
+  participant K as AiKbController
+  participant OS as ScanOcrJobStore
+  participant I as GbIndexServiceImpl(既有)
+  participant DB as MySQL(gb_*)
+
+  A->>FS: 投放 GB2763-2021-ys.pdf 到 inbox/
+  A->>PS: python prepare-standards.py --ocr --workers 4
+  PS->>PS: 探测文字层（逐页 extract_text 计数）
+  alt 有文字层
+    PS->>FS: 直接文本抽取 → parsed/<stem>.txt
+  else 无文字层（扫描件）
+    loop 每页（断点续跑：已有片段则跳过）
+      PS->>OE: OCR(页内嵌 JPEG bytes)   （不传 PIL.Image）
+      OE-->>PS: 该页文本
+      PS->>FS: 写 .scan/<stdKey>/page-XXXX.txt
+      PS->>FS: 原子更新 progress.json（donePages++ / 失败页+理由）
+      PS->>A: 打印 [ocr] N/422 页（%）… 失败清单
+    end
+    PS->>FS: 按页号拼接 → parsed/<stem>.ocr.txt
+  end
+  opt 部分页失败
+    A->>K: GET /ai/kb/scan/jobs/{stdKey}（页级进度 + 失败页）
+    A->>K: POST /ai/kb/scan/jobs/{stdKey}/retry
+    K->>OS: resetFailedToPending(stdKey)
+    OS-->>A: {pendingPages, commandToRun}（系统**不代跑**，A 去终端执行）
+  end
+  A->>K: POST /ai/kb/import/scan {dir:"ai/standards/parsed", ocrDerived:true}
+  K->>I: importScanDir(...) → gb_import_job
+  Note over I: @Async 建索引（既有通道）；逐文件进度
+  I->>DB: gb_document(ocr_derived=1) + gb_clause(FULLTEXT ngram)
+  loop 前端轮询
+    A->>K: GET /ai/kb/import/jobs  （段/块级进度）
+  end
+  Note over A,DB: 全程不占 Web 线程；对话不受影响（旁路隔离）

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.enums.SampleStatusTransition;
+import com.lims.common.enums.StatusEventType;
 import com.lims.common.exception.BizException;
 import com.lims.dto.ItemSaveDTO;
 import com.lims.entity.ProductLib;
@@ -17,6 +18,8 @@ import com.lims.mapper.ProductLibMapper;
 import com.lims.mapper.SampleItemMapper;
 import com.lims.mapper.SampleMapper;
 import com.lims.service.ItemService;
+import com.lims.service.SampleStatusLogService;
+import com.lims.service.rollback.SampleDataDisposer;
 import com.lims.vo.ItemMatchVO;
 import com.lims.vo.ItemPendingVO;
 import lombok.RequiredArgsConstructor;
@@ -53,9 +56,16 @@ public class ItemServiceImpl extends ServiceImpl<SampleItemMapper, SampleItem> i
     private static final Set<Integer> VALID_REFERENCE_FLAGS = Set.of(0, 1);
     private static final Set<Integer> VALID_SOURCE_TYPES = Set.of(1, 2);
 
+    /** 状态流水来源：项目分解域 */
+    private static final String SOURCE_ITEM = "ITEM";
+
     private final SampleMapper sampleMapper;
     private final ProductLibMapper productLibMapper;
     private final ProductLibItemMapper productLibItemMapper;
+    /** 下游数据处置器（feature B）：覆盖式重建的旧明细改走「失效」而非 MP 逻辑删除（解 Pit 1） */
+    private final SampleDataDisposer dataDisposer;
+    /** 统一状态流水写入口（feature B）：分解确认 S20→S30 埋点 */
+    private final SampleStatusLogService statusLogService;
 
     // =========================================================================
     // 4.2 套库预览
@@ -175,9 +185,11 @@ public class ItemServiceImpl extends ServiceImpl<SampleItemMapper, SampleItem> i
             }
         }
 
-        // 覆盖式：先逻辑删除该样品全部旧明细，再全量重建
-        baseMapper.delete(new LambdaQueryWrapper<SampleItem>()
-                .eq(SampleItem::getSampleId, dto.getSampleId()));
+        // 覆盖式：先「失效」该样品全部旧明细，再全量重建。
+        // ⚠️ feature B（设计 §2.9 Pit 1）：不得用 baseMapper.delete(...)——MP 会写死 deleted=1，
+        //    一旦支持回退到 S20，同一批明细被二次失效就会撞唯一键 uk_sample_item_order(1062)。
+        //    改走 SampleDataDisposer：失效前整行留档（取证）+ deleted = 该行自身 id（id 唯一 → 永不撞键）。
+        dataDisposer.invalidateItems(dto.getSampleId(), null);
 
         for (ItemSaveDTO.Item it : items) {
             SampleItem entity = new SampleItem();
@@ -228,6 +240,9 @@ public class ItemServiceImpl extends ServiceImpl<SampleItemMapper, SampleItem> i
         if (updated == 0) {
             throw new BizException(400, "样品状态已变更，请刷新后重试");
         }
+        // 状态流水埋点（feature B）：正向推进 S20→S30
+        statusLogService.append(sample, StatusEventType.FORWARD, SampleStatus.S20, SampleStatus.S30,
+                "分解确认", null, SOURCE_ITEM, null, null);
         return SampleStatus.S30.getCode();
     }
 

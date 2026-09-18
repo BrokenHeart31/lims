@@ -59,6 +59,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    /**
+     * ASYNC 派发时**同样执行**认证（2026-09-18 修复）。
+     *
+     * <p>为什么：{@code SseEmitter} 完成时会触发容器的 ASYNC 派发，过滤器链与拦截器链会重跑一遍。
+     * {@link OncePerRequestFilter} 默认在 ASYNC 派发时跳过本过滤器 ⇒ 上下文变匿名，后果有二：
+     * (a) 任何读当前用户的逻辑（含 {@code OperationLogInterceptor} 的「操作人」）会拿到空身份，
+     * 违反本项目「操作人 = 责任人」的审计红线（实测流式对话被记成 {@code anonymousUser}）；
+     * (b) 依赖上下文的续跑逻辑拿不到用户。JWT 解析无副作用且开销极小，重跑安全。</p>
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     private String resolveToken(HttpServletRequest request) {
         String headerValue = request.getHeader(jwtProperties.getHeader());
         String prefix = jwtProperties.getTokenPrefix();

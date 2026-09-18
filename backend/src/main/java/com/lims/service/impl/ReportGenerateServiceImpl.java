@@ -7,6 +7,7 @@ import com.lims.common.PageResult;
 import com.lims.common.enums.ReportType;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.enums.SampleStatusTransition;
+import com.lims.common.enums.StatusEventType;
 import com.lims.common.exception.BizException;
 import com.lims.dto.ReportGenerateDTO;
 import com.lims.entity.Sample;
@@ -17,6 +18,7 @@ import com.lims.mapper.SampleMapper;
 import com.lims.mapper.SysUserMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.ReportGenerateService;
+import com.lims.service.SampleStatusLogService;
 import com.lims.service.report.ReportDataBuilder;
 import com.lims.vo.ReportPendingVO;
 import com.lims.vo.ReportVO;
@@ -46,10 +48,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReportGenerateServiceImpl implements ReportGenerateService {
 
+    /** 状态流水来源：报告域 */
+    private static final String SOURCE_REPORT = "REPORT";
+
     private final SampleMapper sampleMapper;
     private final SampleItemMapper sampleItemMapper;
     private final SysUserMapper sysUserMapper;
     private final ReportDataBuilder reportDataBuilder;
+    /** 统一状态流水写入口（feature B）：报告生成 S80→S90 埋点 */
+    private final SampleStatusLogService statusLogService;
 
     // =========================================================================
     // 8.2 可生成 / 可重打列表
@@ -146,6 +153,10 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
         if (updated == 0) {
             throw new BizException(400, "样品状态已变更，请刷新后重试");
         }
+
+        // 状态流水埋点（feature B）：报告生成 S80→S90（event_type=7 报告生成）
+        statusLogService.append(sample, StatusEventType.REPORT, SampleStatus.S80, SampleStatus.S90,
+                "报告生成", null, SOURCE_REPORT, null, null);
 
         return reportDataBuilder.build(sample.getId(), type);
     }

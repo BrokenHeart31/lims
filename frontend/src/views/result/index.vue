@@ -16,7 +16,7 @@
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Check, Download, Promotion, Refresh, Search } from '@element-plus/icons-vue'
+import { Check, ChatDotRound, Download, Promotion, Refresh, Search } from '@element-plus/icons-vue'
 import { JUDGE_TYPE_OPTIONS } from '@/api/item'
 import { exportMyTasksApi } from '@/api/exportApi'
 import {
@@ -42,7 +42,48 @@ import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
+import RollbackEntryButton from '@/components/rollback/RollbackEntryButton.vue'
+import { useAiAssistantStore } from '@/stores/aiAssistant'
 import { askConfirm } from '@/utils/confirm'
+
+/** AI 助手（跨页联动：把当前样品上下文带入悬浮窗） */
+const aiAssistant = useAiAssistantStore()
+
+function askAi(row: ResultPendingRow): void {
+  aiAssistant.openWithContext({ sampleNo: row.sampleNo, status: row.status })
+}
+
+function askAiDetail(): void {
+  if (!detail.value) return
+  aiAssistant.openWithContext({
+    sampleNo: detail.value.sampleNo,
+    status: detail.value.status,
+    pageKey: 'result-entry',
+  })
+}
+
+/**
+ * 单项联动：把「当前正在看的检测项目」带入悬浮窗（**只读**，用于触发标准伴随建议条）。
+ * 不代填、不代提交；仅在具备 ai:chat 时可用。
+ */
+function askItemAi(item: ResultDetailItem): void {
+  if (!detail.value) return
+  aiAssistant.pushContext({
+    sampleNo: detail.value.sampleNo,
+    status: detail.value.status,
+    itemName: item.itemName,
+    basisCode: basisOf(item),
+    pageKey: 'result-entry',
+  })
+  aiAssistant.expand()
+}
+
+/** 回退完成后：刷新明细与列表（不改变既有业务逻辑） */
+async function onRollbackDone(): Promise<void> {
+  if (!detail.value) return
+  await loadDetail(detail.value.sampleId)
+  await loadPending()
+}
 
 function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
   if (!label) return 'neutral'
@@ -506,7 +547,7 @@ onMounted(() => {
         </el-table-column>
         <el-table-column
           label="操作"
-          width="110"
+          width="250"
           fixed="right"
           align="center"
         >
@@ -518,6 +559,18 @@ onMounted(() => {
             >
               结果录入
             </el-button>
+            <el-button
+              type="primary"
+              link
+              @click="askAi(row as ResultPendingRow)"
+            >
+              问 AI
+            </el-button>
+            <RollbackEntryButton
+              :sample-id="(row as ResultPendingRow).id"
+              :sample-no="(row as ResultPendingRow).sampleNo"
+              @done="loadPending"
+            />
           </template>
         </el-table-column>
         <template #empty>
@@ -606,6 +659,20 @@ onMounted(() => {
                   >
                     提交 → 检验完成
                   </el-button>
+                  <el-button
+                    :icon="ChatDotRound"
+                    @click="askAiDetail"
+                  >
+                    问 AI
+                  </el-button>
+                  <RollbackEntryButton
+                    :sample-id="detail.sampleId"
+                    :sample-no="detail.sampleNo"
+                    label="回退"
+                    :link="false"
+                    size="default"
+                    @done="onRollbackDone"
+                  />
                 </div>
                 <span
                   v-if="!allEntered"
@@ -643,6 +710,17 @@ onMounted(() => {
               >
                 <template #default="{ row }">
                   <span>{{ row.itemName }}</span>
+                  <el-button
+                    v-if="aiAssistant.available"
+                    link
+                    type="primary"
+                    size="small"
+                    class="ask-std"
+                    title="查看该项目的标准出处与数值对齐（只读）"
+                    @click="askItemAi(rowItem(row))"
+                  >
+                    查标准
+                  </el-button>
                   <StatusBadge
                     v-if="row.isReference === 1"
                     tone="warning"

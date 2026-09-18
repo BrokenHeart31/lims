@@ -62,7 +62,7 @@ CREATE TABLE `sample_item` (
   `created_at`     DATETIME     DEFAULT NULL COMMENT '创建时间',
   `updated_by`     VARCHAR(64)  DEFAULT NULL COMMENT '更新人',
   `updated_at`     DATETIME     DEFAULT NULL COMMENT '更新时间',
-  `deleted`        TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除 0=否 1=是',
+  `deleted`        BIGINT       NOT NULL DEFAULT 0 COMMENT '失效标记 0=有效 非0=该行自身id（已失效，见 docs/design §2.9）',
 
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_sample_item_order` (`sample_id`, `item_order`, `deleted`),

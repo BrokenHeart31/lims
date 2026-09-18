@@ -23,12 +23,22 @@ import {
 import { sampleStatusInfo } from '@/utils/sampleStatus'
 import { confirm } from '@/utils/confirm'
 import PageHeader from '@/components/common/PageHeader.vue'
+import { useAiAssistantStore } from '@/stores/aiAssistant'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import { XLSX_FILE_TYPE, notifySaveOutcome, saveBlobAs } from '@/utils/download'
+
+/** AI 助手（只读联动：登记流程引导） */
+const aiAssistant = useAiAssistantStore()
+
+/** 只读入口：「我要登记新样品」→ 展开分步引导（事实层确定性，不代操作） */
+function showRegisterGuide(): void {
+  void aiAssistant.openFlowGuide({ pageKey: 'sample-register' })
+  aiAssistant.expand()
+}
 
 /** 采样单导入模板（置于 frontend/public/templates，随构建产物发布） */
 const TEMPLATE_URL = '/templates/sample_import_template.xlsx'
@@ -317,6 +327,12 @@ onMounted(() => {
           导入采样单
         </el-button>
       </el-upload>
+      <el-button
+        v-if="aiAssistant.available"
+        @click="showRegisterGuide"
+      >
+        我要登记新样品
+      </el-button>
     </PageHeader>
 
     <!-- 查询区 -->

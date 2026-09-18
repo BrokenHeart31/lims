@@ -17,7 +17,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Check, CircleCheck, DataAnalysis, Refresh, Search, Stamp, Timer, Warning } from '@element-plus/icons-vue'
+import { Check, ChatDotRound, CircleCheck, DataAnalysis, Refresh, Search, Stamp, Timer, Warning } from '@element-plus/icons-vue'
 import {
   ABNORMAL_TYPE_PENDING,
   approveAuditApi,
@@ -36,7 +36,42 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
+import RollbackEntryButton from '@/components/rollback/RollbackEntryButton.vue'
+import { useAiAssistantStore } from '@/stores/aiAssistant'
 import { askConfirm } from '@/utils/confirm'
+
+/** AI 助手（跨页联动：把当前样品上下文带入悬浮窗） */
+const aiAssistant = useAiAssistantStore()
+
+function askAi(row: AuditPendingRow): void {
+  aiAssistant.openWithContext({ sampleNo: row.sampleNo, status: row.status, pageKey: 'report-audit' })
+}
+
+function askAiDetail(): void {
+  if (!detail.value) return
+  aiAssistant.openWithContext({
+    sampleNo: detail.value.sampleNo,
+    status: detail.value.status,
+    pageKey: 'report-audit',
+  })
+}
+
+/** 一键查看流程引导（A16，事实层确定性；只读，越权步灰显） */
+function showFlowGuide(): void {
+  void aiAssistant.openFlowGuide({
+    sampleNo: detail.value?.sampleNo,
+    status: detail.value?.status,
+    pageKey: 'report-audit',
+  })
+  aiAssistant.expand()
+}
+
+/** 回退完成后：刷新明细与列表（不改变既有审核/签发逻辑） */
+async function onRollbackDone(): Promise<void> {
+  if (!detail.value) return
+  await loadDetail(detail.value.sampleId)
+  await loadPending()
+}
 
 function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
   if (!label) return 'neutral'
@@ -516,7 +551,7 @@ onMounted(() => {
         </el-table-column>
         <el-table-column
           label="操作"
-          width="120"
+          width="250"
           fixed="right"
           align="center"
         >
@@ -528,6 +563,18 @@ onMounted(() => {
             >
               {{ isAuditTab ? '审核' : '签发' }}
             </el-button>
+            <el-button
+              type="primary"
+              link
+              @click="askAi(rowItem(row))"
+            >
+              问 AI
+            </el-button>
+            <RollbackEntryButton
+              :sample-id="rowItem(row).id"
+              :sample-no="rowItem(row).sampleNo"
+              @done="loadPending"
+            />
           </template>
         </el-table-column>
         <template #empty>
@@ -609,6 +656,28 @@ onMounted(() => {
             >
               <span>签发人：{{ detail.signBy }}</span>
               <span v-if="detail.signAt">签发时间：{{ detail.signAt }}</span>
+            </div>
+            <div class="head-tools">
+              <el-button
+                :icon="ChatDotRound"
+                @click="askAiDetail"
+              >
+                问 AI（带入当前样品）
+              </el-button>
+              <el-button
+                :icon="ChatDotRound"
+                @click="showFlowGuide"
+              >
+                下一步该做什么
+              </el-button>
+              <RollbackEntryButton
+                :sample-id="detail.sampleId"
+                :sample-no="detail.sampleNo"
+                label="回退"
+                :link="false"
+                size="default"
+                @done="onRollbackDone"
+              />
             </div>
           </AppCard>
 
@@ -1034,6 +1103,12 @@ onMounted(() => {
   flex-wrap: wrap;
   font-size: 12px;
   color: var(--lims-text-secondary);
+}
+.head-tools {
+  margin-top: var(--lims-r-sm);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .section-title {
   margin: 0 0 var(--lims-r-sm);

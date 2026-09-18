@@ -10,6 +10,7 @@ import com.lims.common.enums.ConclusionSource;
 import com.lims.common.enums.ResultConclusion;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.enums.SampleStatusTransition;
+import com.lims.common.enums.StatusEventType;
 import com.lims.common.exception.BizException;
 import com.lims.dto.AuditApproveDTO;
 import com.lims.dto.AuditReturnDTO;
@@ -24,6 +25,7 @@ import com.lims.mapper.SampleMapper;
 import com.lims.mapper.SampleResultMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.AuditService;
+import com.lims.service.SampleStatusLogService;
 import com.lims.service.result.ResultEntryPolicy;
 import com.lims.vo.AuditActionVO;
 import com.lims.vo.AuditDetailVO;
@@ -70,12 +72,17 @@ public class AuditServiceImpl extends ServiceImpl<SampleAuditLogMapper, SampleAu
     private final SampleMapper sampleMapper;
     private final SampleItemMapper sampleItemMapper;
     private final SampleResultMapper sampleResultMapper;
+    /** 统一状态流水写入口（feature B）：审核/退回/签发**双写**（sample_audit_log 保持不变） */
+    private final SampleStatusLogService statusLogService;
 
     private static final int REFERENCE_YES = 1;
     private static final int ABNORMAL_CONFIRMED = 1;
 
     private static final String TYPE_BLANK = "BLANK";
     private static final String TYPE_PENDING = "PENDING";
+
+    /** 状态流水来源：审核域（双写统一流水用） */
+    private static final String SOURCE_AUDIT = "AUDIT";
 
     // =========================================================================
     // 7.2 待审核 / 待签发列表
@@ -221,6 +228,9 @@ public class AuditServiceImpl extends ServiceImpl<SampleAuditLogMapper, SampleAu
                 ? ABNORMAL_CONFIRMED : 0;
         insertLog(sample, AuditAction.APPROVE, SampleStatus.S60, SampleStatus.S70,
                 dto.getOpinion(), confirmed, operator, now);
+        // 双写统一流水（feature B）：sample_audit_log 保持不变，另追加一条 S60→S70 正向事件
+        statusLogService.append(sample, StatusEventType.FORWARD, SampleStatus.S60, SampleStatus.S70,
+                "审核通过", dto.getOpinion(), SOURCE_AUDIT, null, null);
 
         return buildActionVO(sample, SampleStatus.S70, AuditAction.APPROVE,
                 dto.getOpinion(), confirmed, operator, now);
@@ -261,6 +271,9 @@ public class AuditServiceImpl extends ServiceImpl<SampleAuditLogMapper, SampleAu
 
         insertLog(sample, AuditAction.RETURN, SampleStatus.S60, SampleStatus.S50,
                 dto.getReason(), 0, operator, now);
+        // 双写统一流水（feature B）：退回用独立 event_type=2（与正向/回退事件区分留痕）
+        statusLogService.append(sample, StatusEventType.RETURN, SampleStatus.S60, SampleStatus.S50,
+                "审核退回", dto.getReason(), SOURCE_AUDIT, null, null);
 
         return buildActionVO(sample, SampleStatus.S50, AuditAction.RETURN,
                 dto.getReason(), 0, operator, now);
@@ -294,6 +307,9 @@ public class AuditServiceImpl extends ServiceImpl<SampleAuditLogMapper, SampleAu
 
         insertLog(sample, AuditAction.SIGN, SampleStatus.S70, SampleStatus.S80,
                 dto.getOpinion(), ABNORMAL_CONFIRMED, operator, now);
+        // 双写统一流水（feature B）：签发 event_type=3
+        statusLogService.append(sample, StatusEventType.SIGN, SampleStatus.S70, SampleStatus.S80,
+                "签发", dto.getOpinion(), SOURCE_AUDIT, null, null);
 
         return buildActionVO(sample, SampleStatus.S80, AuditAction.SIGN,
                 dto.getOpinion(), ABNORMAL_CONFIRMED, operator, now);

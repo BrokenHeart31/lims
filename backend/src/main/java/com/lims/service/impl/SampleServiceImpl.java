@@ -11,6 +11,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.enums.SampleStatusTransition;
+import com.lims.common.enums.StatusEventType;
 import com.lims.common.exception.BizException;
 import com.lims.dto.SampleImportDTO;
 import com.lims.dto.SampleUpdateDTO;
@@ -21,6 +22,7 @@ import com.lims.mapper.SampleMapper;
 import com.lims.mapper.SuperviseTaskMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.SampleService;
+import com.lims.service.SampleStatusLogService;
 import com.lims.service.excel.SampleImportListener;
 import com.lims.vo.SampleImportResultVO;
 import lombok.RequiredArgsConstructor;
@@ -50,8 +52,13 @@ public class SampleServiceImpl extends ServiceImpl<SampleMapper, Sample> impleme
     /** 采样单数据行起始行号（说明书：数据自第 3 行开始，第 1 行文件标记、第 2 行列头） */
     private static final int HEAD_ROW_NUMBER = 2;
 
+    /** 状态流水来源：样品登记域 */
+    private static final String SOURCE_SAMPLE = "SAMPLE";
+
     private final SuperviseTaskMapper superviseTaskMapper;
     private final SampleImportBatchMapper sampleImportBatchMapper;
+    /** 统一状态流水写入口（feature B）：登记确认 S10→S20 埋点 */
+    private final SampleStatusLogService statusLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -165,6 +172,9 @@ public class SampleServiceImpl extends ServiceImpl<SampleMapper, Sample> impleme
             if (!ok) {
                 throw new BizException(400, "样品状态已变更，请刷新后重试：" + sample.getSampleNo());
             }
+            // 状态流水埋点（feature B）：正向推进 S10→S20（统一写入口，只追加不改写）
+            statusLogService.append(sample, StatusEventType.FORWARD, SampleStatus.S10, SampleStatus.S20,
+                    "登记确认", null, SOURCE_SAMPLE, null, null);
             confirmed++;
         }
         return confirmed;

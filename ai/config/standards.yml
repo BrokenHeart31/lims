@@ -1,0 +1,31 @@
+# =============================================================================
+# GB 标准知识库导入配置（feature A / T04）
+# -----------------------------------------------------------------------------
+# 供 ai/scripts/prepare-standards.py 与 ai/scripts/import-standards.ps1 参考的
+# 默认口径（脚本参数缺省即取此处的值）。目录均相对**仓库根**。
+# =============================================================================
+
+# 原始投放目录：把 PDF / txt / md 标准文件丢这里
+inbox_dir: ai/standards/inbox
+
+# 预处理产物目录：PDF 经 prepare-standards.py 转为 .txt 落这里，随后被后端建索引
+parsed_dir: ai/standards/parsed
+
+# 后端建索引接口（A7：扫描 parsed 目录批量导入）；前缀 /api + context-path
+import_scan_endpoint: /api/ai/kb/import/scan
+
+# 文档来源类型：1=GB 国标 2=行业标准 3=机构内部资料（写入 gb_document.source_type）
+source_type: 1
+
+# 切块目标长度（字符）：200~500 为宜——过短丢上下文，过长稀释检索精度。
+# 实际切块在 Java 侧 ChunkSplitter 完成，此处仅记录业务约定，供人工核对。
+chunk_min_chars: 200
+chunk_max_chars: 500
+
+# 允许的输入扩展名（PDF 必须经预处理转 .txt；后端拒绝 PDF，业务码 4211）
+allowed_extensions:
+  - .txt
+  - .md
+  - .html
+  - .htm
+  - .csv

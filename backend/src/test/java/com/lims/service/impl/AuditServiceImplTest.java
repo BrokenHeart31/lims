@@ -18,6 +18,7 @@ import com.lims.mapper.SampleAuditLogMapper;
 import com.lims.mapper.SampleItemMapper;
 import com.lims.mapper.SampleMapper;
 import com.lims.mapper.SampleResultMapper;
+import com.lims.service.SampleStatusLogService;
 import com.lims.vo.AuditActionVO;
 import com.lims.vo.AuditDetailVO;
 import com.lims.vo.AuditPendingVO;
@@ -62,6 +63,7 @@ class AuditServiceImplTest {
     private SampleItemMapper sampleItemMapper;
     private SampleResultMapper sampleResultMapper;
     private SampleAuditLogMapper auditLogMapper;
+    private SampleStatusLogService statusLogService;
 
     /** 内存流水表替身（验证「只追加」语义） */
     private final List<SampleAuditLog> logStore = new ArrayList<>();
@@ -84,9 +86,10 @@ class AuditServiceImplTest {
         sampleItemMapper = mock(SampleItemMapper.class);
         sampleResultMapper = mock(SampleResultMapper.class);
         auditLogMapper = mock(SampleAuditLogMapper.class);
+        statusLogService = mock(SampleStatusLogService.class);
         logStore.clear();
 
-        service = new AuditServiceImpl(sampleMapper, sampleItemMapper, sampleResultMapper);
+        service = new AuditServiceImpl(sampleMapper, sampleItemMapper, sampleResultMapper, statusLogService);
         try {
             java.lang.reflect.Field f = com.baomidou.mybatisplus.extension.service.impl.ServiceImpl.class
                     .getDeclaredField("baseMapper");

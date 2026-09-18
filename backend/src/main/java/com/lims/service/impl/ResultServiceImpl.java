@@ -8,6 +8,7 @@ import com.lims.common.PageResult;
 import com.lims.common.enums.ResultConclusion;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.enums.SampleStatusTransition;
+import com.lims.common.enums.StatusEventType;
 import com.lims.common.exception.BizException;
 import com.lims.dto.ResultSaveDTO;
 import com.lims.entity.Sample;
@@ -18,10 +19,12 @@ import com.lims.mapper.SampleMapper;
 import com.lims.mapper.SampleResultMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.ResultService;
+import com.lims.service.SampleStatusLogService;
 import com.lims.service.judge.JudgeEngine;
 import com.lims.service.judge.JudgeInput;
 import com.lims.service.judge.JudgeOutcome;
 import com.lims.service.result.ResultEntryPolicy;
+import com.lims.service.rollback.SampleDataDisposer;
 import com.lims.vo.ResultDetailVO;
 import com.lims.vo.ResultJudgeVO;
 import com.lims.vo.ResultPendingVO;
@@ -65,11 +68,18 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
     private final SampleMapper sampleMapper;
     private final SampleItemMapper sampleItemMapper;
     private final JudgeEngine judgeEngine;
+    /** 下游数据处置器（feature B）：覆盖式 upsert 前对旧结果做修订留档（解 Pit 2） */
+    private final SampleDataDisposer dataDisposer;
+    /** 统一状态流水写入口（feature B）：S40→S50 / S50→S60 埋点 */
+    private final SampleStatusLogService statusLogService;
 
     /** 允许录入的状态集合：已安排（尚未录）/ 检验中（录入未齐） */
     private static final Set<SampleStatus> ENTRY_STATUSES = Set.of(SampleStatus.S40, SampleStatus.S50);
 
     private static final int REFERENCE_YES = 1;
+
+    /** 状态流水来源：结果录入域 */
+    private static final String SOURCE_RESULT = "RESULT";
 
     // =========================================================================
     // 6.2 待录入列表 / 录入明细
@@ -250,6 +260,9 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
         if (updated == 0) {
             throw new BizException(400, "样品状态已变更，请刷新后重试");
         }
+        // 状态流水埋点（feature B）：提交录齐 S50→S60
+        statusLogService.append(sample, StatusEventType.FORWARD, SampleStatus.S50, SampleStatus.S60,
+                "提交检验结果", null, SOURCE_RESULT, null, null);
 
         List<ResultSaveVO.Item> itemVOs = items.stream()
                 .map(i -> toSaveItem(i, results.get(i.getId()).getTestValue(),
@@ -288,8 +301,14 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
             if (fresh == null || fresh.getStatus() != SampleStatus.S50) {
                 throw new BizException(400, "样品状态已变更，请刷新后重试");
             }
+            // 并发场景：S40→S50 流水由真正推进成功的一方写入，本事务不重复写（保证唯一）
+            sample.setStatus(SampleStatus.S50);
+            return SampleStatus.S50.getCode();
         }
         sample.setStatus(SampleStatus.S50);
+        // 状态流水埋点（feature B）：首次录入 S40→S50（仅在本事务真正推进成功时写一条）
+        statusLogService.append(sample, StatusEventType.FORWARD, SampleStatus.S40, SampleStatus.S50,
+                "首次录入", null, SOURCE_RESULT, null, null);
         return SampleStatus.S50.getCode();
     }
 
@@ -326,6 +345,11 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
             baseMapper.insert(r);
             return;
         }
+
+        // ⚠️ feature B（设计 §2.9 Pit 2）：覆盖式 upsert 会丢掉旧 test_value，
+        //    更新前先把整行旧值留档（archive_reason=2 保存前修订留档，只增不删），
+        //    使「回退到重新录入」时旧值仍可取证。无变化也照留（判定依据/结论可能已老）。
+        dataDisposer.archiveResultRevision(existing, null);
 
         SampleResult upd = new SampleResult();
         upd.setId(existing.getId());

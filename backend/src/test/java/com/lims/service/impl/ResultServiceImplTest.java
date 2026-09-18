@@ -13,7 +13,9 @@ import com.lims.entity.SampleResult;
 import com.lims.mapper.SampleItemMapper;
 import com.lims.mapper.SampleMapper;
 import com.lims.mapper.SampleResultMapper;
+import com.lims.service.SampleStatusLogService;
 import com.lims.service.judge.JudgeEngine;
+import com.lims.service.rollback.SampleDataDisposer;
 import com.lims.vo.ResultDetailVO;
 import com.lims.vo.ResultJudgeVO;
 import com.lims.vo.ResultSaveVO;
@@ -56,6 +58,8 @@ class ResultServiceImplTest {
     private SampleMapper sampleMapper;
     private SampleItemMapper sampleItemMapper;
     private SampleResultMapper resultMapper;
+    private SampleDataDisposer dataDisposer;
+    private SampleStatusLogService statusLogService;
 
     /** 内存结果表（替身），模拟 sample_result 的 upsert 持久化 */
     private final List<SampleResult> resultStore = new ArrayList<>();
@@ -78,7 +82,10 @@ class ResultServiceImplTest {
         resultMapper = mock(SampleResultMapper.class);
         resultStore.clear();
 
-        service = new ResultServiceImpl(sampleMapper, sampleItemMapper, new JudgeEngine());
+        dataDisposer = mock(SampleDataDisposer.class);
+        statusLogService = mock(SampleStatusLogService.class);
+        service = new ResultServiceImpl(sampleMapper, sampleItemMapper, new JudgeEngine(),
+                dataDisposer, statusLogService);
         try {
             java.lang.reflect.Field f = com.baomidou.mybatisplus.extension.service.impl.ServiceImpl.class
                     .getDeclaredField("baseMapper");

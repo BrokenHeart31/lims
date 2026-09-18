@@ -21,7 +21,7 @@ export const vPermission: Directive<HTMLElement, string | string[]> = {
     const need = Array.isArray(required) ? required : [required]
     const permitted = need.some((code) => authStore.hasPermission(code))
     if (!permitted) {
-      el.parentNode?.removeChild(el)
+      el.style.display = 'none'
     }
   },
 }

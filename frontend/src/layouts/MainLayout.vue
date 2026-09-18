@@ -50,6 +50,7 @@ import { pagePendingItemApi } from '@/api/item'
 import { pagePendingAssignApi } from '@/api/assign'
 import { pageOperationLogApi, type OperationLogRow } from '@/api/system'
 import AppBreadcrumb from '@/components/common/AppBreadcrumb.vue'
+import AiFloatingAssistant from '@/components/ai/AiFloatingAssistant.vue'
 import { confirm } from '@/utils/confirm'
 
 const route = useRoute()
@@ -486,7 +487,7 @@ async function submitPassword(): Promise<void> {
         <span
           v-show="!collapsed"
           class="brand-text lims-text-gradient"
-        >LIMS 实验室</span>
+        >LIMS 系统</span>
       </div>
 
       <!-- 分组导航：由 /me 菜单树驱动（与动态路由同源） -->
@@ -984,6 +985,9 @@ async function submitPassword(): Promise<void> {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- AI 助手悬浮窗：唯一宿主（自身 Teleport 到 body，不影响三区布局） -->
+    <AiFloatingAssistant />
   </div>
 </template>
 

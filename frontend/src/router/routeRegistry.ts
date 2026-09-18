@@ -60,6 +60,17 @@ export interface RouteEntry {
    * 默认 true；设为 false 的页面只能通过代码跳转到达（如报告审核详情）。
    */
   navVisible?: boolean
+  /**
+   * 无侧栏菜单入口、但需可路由（由页面内跳转到达）。
+   *
+   * 背景：本项目的业务路由一律由 `/me` 菜单树驱动（菜单与路由同源）。但个别页面
+   * 在权限种子里**只有权限位、没有目录/菜单节点**（如 AI 会话审计 `/ai/conversations`，
+   * seed 中挂 menu_type=3 的 `ai:log:view`，不生成侧栏菜单，见 db/seed 注释）。
+   * 若不做处理，该页无法被动态路由注册，页面内跳转会命中 404。
+   * 置 `autoRegister: true` 即：只要当前用户命中其 `permissions`，就主动注册该路由
+   * （与菜单驱动并行，仍保持「注册表 = 组件来源唯一真相」）。
+   */
+  autoRegister?: boolean
 }
 
 /**
@@ -219,6 +230,38 @@ export const ROUTE_REGISTRY: RouteEntry[] = [
     component: () => import('@/views/system/dept.vue'),
     title: '部门管理',
     permissions: ['sys:dept:list'],
+  },
+
+  // ---------------- AI 助手（feature A，seed 菜单 12） ----------------
+  {
+    // seed 中目录 id=12（menu_type=1）path=/ai/kb，前端以它为「标准库」页；
+    // 其子节点 121/122/123/124 均为按钮（不进 /me 菜单树），故此处登记路由权限：
+    //   任一命中即可见（R3 只有 ai:kb:query，仍能看到本页）。
+    path: '/ai/kb',
+    name: 'ai-kb',
+    component: () => import('@/views/ai/kb.vue'),
+    title: 'AI 助手',
+    permissions: ['ai:kb:query', 'ai:kb:import'],
+  },
+  {
+    // 会话审计：seed 仅挂 123 按钮权限（ai:log:view），无独立侧栏菜单；
+    // 由标准库页「会话审计」入口进入，故 navVisible=false + autoRegister=true。
+    path: '/ai/conversations',
+    name: 'ai-conversations',
+    component: () => import('@/views/ai/conversations.vue'),
+    title: 'AI 会话审计',
+    permissions: ['ai:log:view'],
+    navVisible: false,
+    autoRegister: true,
+  },
+
+  // ---------------- 流程回溯（feature B，seed 菜单 13） ----------------
+  {
+    path: '/rollback',
+    name: 'rollback',
+    component: () => import('@/views/rollback/index.vue'),
+    title: '流程回溯',
+    permissions: ['rollback:view'],
   },
 
   // ---------------- 布局之外的独立页面 ----------------

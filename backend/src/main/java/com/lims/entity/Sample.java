@@ -154,6 +154,15 @@ public class Sample extends BaseEntity {
     /** 报告生成人（sys_user.id） */
     private Long reportGeneratedBy;
 
+    // ---------------------------------------------------------------------
+    // 作废 / 召回标记（feature B，2026-09-17）
+    // S80/S90 的专门治理动作：报告已对外生效（PRD Q2），**不改 status**，
+    // 只在 void_status 上打标记（1=已作废 2=已召回），并写 report_void + 流水。
+    // ---------------------------------------------------------------------
+
+    /** 作废/召回标记：0=正常 1=已作废 2=已召回（不改状态机取值域） */
+    private Integer voidStatus;
+
     /** 状态中文名（非持久化，出网供前端展示，避免前端维护 code→label 字典） */
     public String getStatusLabel() {
         return status == null ? null : status.getLabel();

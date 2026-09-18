@@ -15,6 +15,7 @@ import com.lims.mapper.SampleMapper;
 import com.lims.mapper.SysUserMapper;
 import com.lims.mapper.TesterMethodMapper;
 import com.lims.mapper.UserMethodMapper;
+import com.lims.service.SampleStatusLogService;
 import com.lims.vo.AssignAutoResultVO;
 import com.lims.vo.AssignDetailVO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -64,6 +65,7 @@ class AssignServiceImplTest {
     private UserMethodMapper userMethodMapper;
     private TesterMethodMapper testerMethodMapper;
     private SampleItemMapper sampleItemMapper;
+    private SampleStatusLogService statusLogService;
 
     private AssignServiceImpl service;
 
@@ -88,7 +90,9 @@ class AssignServiceImplTest {
         userMethodMapper = mock(UserMethodMapper.class);
         testerMethodMapper = mock(TesterMethodMapper.class);
         sampleItemMapper = mock(SampleItemMapper.class);
-        service = new AssignServiceImpl(sampleMapper, sysUserMapper, userMethodMapper, testerMethodMapper);
+        statusLogService = mock(SampleStatusLogService.class);
+        service = new AssignServiceImpl(sampleMapper, sysUserMapper, userMethodMapper, testerMethodMapper,
+                statusLogService);
         Field f = com.baomidou.mybatisplus.extension.service.impl.ServiceImpl.class.getDeclaredField("baseMapper");
         f.setAccessible(true);
         f.set(service, sampleItemMapper);

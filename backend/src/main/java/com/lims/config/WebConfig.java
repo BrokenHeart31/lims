@@ -7,6 +7,7 @@ import org.springframework.lang.NonNull;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -32,6 +33,22 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
         registry.addInterceptor(operationLogInterceptor).addPathPatterns("/**");
+    }
+
+    /**
+     * SSE 异步支持（feature A，T03）。
+     *
+     * <p>AI 流式对话（{@code POST /api/ai/chat/stream}）返回 {@code SseEmitter}，请求会进入
+     * Servlet 异步模式。默认异步超时 30s，而 CPU 推理一条长回答可能数分钟，故显式放宽到
+     * **300s**（与 {@code lims.ai.timeout-ms} 同量级）；超时后由容器完成 emitter，前端在
+     * {@code fetch} 流上收到结束即可，不会挂死连接。</p>
+     *
+     * <p>注意：这里只放宽 MVC 异步超时，**不改**拦截器路径，日志规则仍集中在
+     * {@link OperationLogInterceptor} 一处可读。</p>
+     */
+    @Override
+    public void configureAsyncSupport(@NonNull AsyncSupportConfigurer configurer) {
+        configurer.setDefaultTimeout(300_000L);
     }
 
     @Bean

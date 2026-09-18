@@ -15,11 +15,21 @@ import {
 } from '@/api/item'
 import { confirm } from '@/utils/confirm'
 import PageHeader from '@/components/common/PageHeader.vue'
+import { useAiAssistantStore } from '@/stores/aiAssistant'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
 import DataTable from '@/components/common/DataTable.vue'
+
+// ---------------- AI 助手只读联动（事实层确定性，不代操作） ----------------
+/** 只读：查看「项目分解」这一步的流程引导 */
+const aiAssistant = useAiAssistantStore()
+
+function showFlowGuide(): void {
+  void aiAssistant.openFlowGuide({ pageKey: 'item-index' })
+  aiAssistant.expand()
+}
 
 // ---------------- 待分解样品列表 ----------------
 const queryRef = ref<FormInstance>()
@@ -300,7 +310,14 @@ onMounted(() => {
       title="项目分解"
       subtitle="从项目标准库自动套用或人工编辑检测单项，确认后样品进入任务安排流程（S20 → S30）"
       :icon="Operation"
-    />
+    >
+      <el-button
+        v-if="aiAssistant.available"
+        @click="showFlowGuide"
+      >
+        下一步该做什么
+      </el-button>
+    </PageHeader>
 
     <!-- 查询区 -->
     <AppCard

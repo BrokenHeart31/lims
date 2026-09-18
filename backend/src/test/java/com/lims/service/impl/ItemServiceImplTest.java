@@ -14,6 +14,8 @@ import com.lims.mapper.ProductLibItemMapper;
 import com.lims.mapper.ProductLibMapper;
 import com.lims.mapper.SampleItemMapper;
 import com.lims.mapper.SampleMapper;
+import com.lims.service.SampleStatusLogService;
+import com.lims.service.rollback.SampleDataDisposer;
 import com.lims.vo.ItemMatchVO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -52,6 +54,8 @@ class ItemServiceImplTest {
     private ProductLibMapper productLibMapper;
     private ProductLibItemMapper productLibItemMapper;
     private SampleItemMapper sampleItemMapper;
+    private SampleDataDisposer dataDisposer;
+    private SampleStatusLogService statusLogService;
 
     private ItemServiceImpl service;
 
@@ -72,7 +76,10 @@ class ItemServiceImplTest {
         productLibMapper = mock(ProductLibMapper.class);
         productLibItemMapper = mock(ProductLibItemMapper.class);
         sampleItemMapper = mock(SampleItemMapper.class);
-        service = new ItemServiceImpl(sampleMapper, productLibMapper, productLibItemMapper);
+        dataDisposer = mock(SampleDataDisposer.class);
+        statusLogService = mock(SampleStatusLogService.class);
+        service = new ItemServiceImpl(sampleMapper, productLibMapper, productLibItemMapper,
+                dataDisposer, statusLogService);
         // 替换 ServiceImpl 的 baseMapper（受保护字段，测试内可见同包不可用 → 用反射）
         try {
             java.lang.reflect.Field f = com.baomidou.mybatisplus.extension.service.impl.ServiceImpl.class
@@ -231,8 +238,9 @@ class ItemServiceImplTest {
         int count = service.saveDecompose(dto);
 
         assertEquals(2, count);
-        // 覆盖式：先删后插
-        verify(sampleItemMapper, times(1)).delete(any());
+        // 覆盖式：先「失效」（feature B 起走 SampleDataDisposer，不再用 MP baseMapper.delete）后插入
+        verify(dataDisposer, times(1)).invalidateItems(SAMPLE_ID, null);
+        verify(sampleItemMapper, never()).delete(any());
         ArgumentCaptor<SampleItem> captor = ArgumentCaptor.forClass(SampleItem.class);
         verify(sampleItemMapper, times(2)).insert(captor.capture());
 
@@ -256,7 +264,7 @@ class ItemServiceImplTest {
 
         BizException ex = assertThrows(BizException.class, () -> service.saveDecompose(dto));
         assertTrue(ex.getMessage().contains("项次重复"), "错误信息应指明项次重复");
-        verify(sampleItemMapper, never()).delete(any());
+        verify(dataDisposer, never()).invalidateItems(any(), any());
         verify(sampleItemMapper, never()).insert(any(SampleItem.class));
     }
 

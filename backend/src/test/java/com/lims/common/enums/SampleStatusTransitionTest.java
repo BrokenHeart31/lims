@@ -147,4 +147,75 @@ class SampleStatusTransitionTest {
         assertDoesNotThrow(() -> SampleStatusTransition.assertReturn(60, 50));
         assertThrows(BizException.class, () -> SampleStatusTransition.assertReturn(70, 50));
     }
+
+    // =========================================================================
+    // 回退白名单（feature B，2026-09-17）：第三条独立白名单
+    //   三者语义不同：VALID=推进 / RETURN=否定 / ROLLBACK=纠错，不得互相替代。
+    // =========================================================================
+
+    @Test
+    @DisplayName("★回退：6 条逐级回退边合法（含唯一敏感边 S70→S60）")
+    void shouldAllowAllWhitelistedRollbacks() {
+        assertAll(
+                () -> assertDoesNotThrow(() -> SampleStatusTransition.assertRollback(SampleStatus.S20, SampleStatus.S10)),
+                () -> assertDoesNotThrow(() -> SampleStatusTransition.assertRollback(SampleStatus.S30, SampleStatus.S20)),
+                () -> assertDoesNotThrow(() -> SampleStatusTransition.assertRollback(SampleStatus.S40, SampleStatus.S30)),
+                () -> assertDoesNotThrow(() -> SampleStatusTransition.assertRollback(SampleStatus.S50, SampleStatus.S40)),
+                () -> assertDoesNotThrow(() -> SampleStatusTransition.assertRollback(SampleStatus.S60, SampleStatus.S50)),
+                () -> assertDoesNotThrow(() -> SampleStatusTransition.assertRollback(SampleStatus.S70, SampleStatus.S60)),
+                // 每条回退边恰好一个目标（逐级，每次退一步）
+                () -> assertEquals(1, SampleStatusTransition.rollbackAllowed(SampleStatus.S20).size()),
+                () -> assertTrue(SampleStatusTransition.rollbackAllowed(SampleStatus.S20).contains(SampleStatus.S10)),
+                () -> assertEquals(1, SampleStatusTransition.rollbackAllowed(SampleStatus.S70).size()),
+                () -> assertTrue(SampleStatusTransition.rollbackAllowed(SampleStatus.S70).contains(SampleStatus.S60))
+        );
+    }
+
+    @Test
+    @DisplayName("★回退：跨级 / S80→S70 / S90→S80 一律拒绝（4101），终态与首态无出边")
+    void shouldRejectIllegalRollbacks() {
+        assertAll(
+                // 跨级
+                () -> assertFalse(SampleStatusTransition.canRollback(SampleStatus.S60, SampleStatus.S40)),
+                () -> assertFalse(SampleStatusTransition.canRollback(SampleStatus.S50, SampleStatus.S30)),
+                // 被拒边（由 RollbackEdgePolicy 给专门业务码，白名单层面亦不承认）
+                () -> assertFalse(SampleStatusTransition.canRollback(SampleStatus.S80, SampleStatus.S70)),
+                () -> assertFalse(SampleStatusTransition.canRollback(SampleStatus.S90, SampleStatus.S80)),
+                () -> assertTrue(SampleStatusTransition.rollbackAllowed(SampleStatus.S10).isEmpty()),
+                () -> assertTrue(SampleStatusTransition.rollbackAllowed(SampleStatus.S80).isEmpty()),
+                () -> assertTrue(SampleStatusTransition.rollbackAllowed(SampleStatus.S90).isEmpty()),
+                // null 安全
+                () -> assertFalse(SampleStatusTransition.canRollback(null, SampleStatus.S10)),
+                () -> assertFalse(SampleStatusTransition.canRollback(SampleStatus.S20, null))
+        );
+    }
+
+    @Test
+    @DisplayName("★三表互不干扰：回退边不是正向边也不是退回边，正向/退回断言都拒绝它")
+    void rollbackTableIsIndependentFromForwardAndReturn() {
+        assertAll(
+                // 回退边不得被当成正向流转
+                () -> assertFalse(SampleStatusTransition.canTransition(SampleStatus.S20, SampleStatus.S10)),
+                () -> assertThrows(BizException.class,
+                        () -> SampleStatusTransition.assertTransition(SampleStatus.S20, SampleStatus.S10)),
+                // 回退边不得被当成退回（RETURN 只有 S60→S50）
+                () -> assertFalse(SampleStatusTransition.canReturn(SampleStatus.S20, SampleStatus.S10)),
+                // 退回边 S60→S50 同时也在 ROLLBACK 白名单里——但语义不同（事件类型/权限/留痕不同），
+                // 这正是「三条白名单」而非「两条」的原因
+                () -> assertTrue(SampleStatusTransition.canRollback(SampleStatus.S60, SampleStatus.S50)),
+                () -> assertTrue(SampleStatusTransition.canReturn(SampleStatus.S60, SampleStatus.S50))
+        );
+    }
+
+    @Test
+    @DisplayName("回退：非法回退抛业务异常，业务码 4101 且消息带「回退」字样")
+    void shouldThrowBizExceptionOnIllegalRollback() {
+        BizException ex = assertThrows(BizException.class,
+                () -> SampleStatusTransition.assertRollback(SampleStatus.S90, SampleStatus.S80));
+        assertEquals(4101, ex.getCode());
+        assertTrue(ex.getMessage().contains("回退"), ex.getMessage());
+
+        assertDoesNotThrow(() -> SampleStatusTransition.assertRollback(60, 50));
+        assertThrows(BizException.class, () -> SampleStatusTransition.assertRollback(90, 80));
+    }
 }

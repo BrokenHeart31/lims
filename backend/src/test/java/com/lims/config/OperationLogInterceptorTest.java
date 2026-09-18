@@ -104,4 +104,39 @@ class OperationLogInterceptorTest {
                 () -> assertEquals("新增", OperationLogInterceptor.resolveAction("POST", "/task"))
         );
     }
+
+    // =========================================================================
+    // 2026-09-17 增量（feature A/B）：流程回溯 / AI / 报告作废
+    // =========================================================================
+
+    @Test
+    @DisplayName("模块识别：增量路径（回溯 / AI / 报告作废）；/ai/kb 先于 /ai（顺序敏感）")
+    void resolveModuleForRollbackAndAiPaths() {
+        assertAll(
+                () -> assertEquals("流程回溯", OperationLogInterceptor.resolveModule("/rollback/execute")),
+                () -> assertEquals("流程回溯", OperationLogInterceptor.resolveModule("/rollback/recover")),
+                () -> assertEquals("流程回溯", OperationLogInterceptor.resolveModule("/rollback/history")),
+                () -> assertEquals("报告作废", OperationLogInterceptor.resolveModule("/report/void")),
+                // /ai/kb 必须排在 /ai 之前，否则知识库动作会被记成「AI 助手」
+                () -> assertEquals("AI 知识库", OperationLogInterceptor.resolveModule("/ai/kb/import/scan")),
+                () -> assertEquals("AI 助手", OperationLogInterceptor.resolveModule("/ai/chat")),
+                () -> assertEquals("AI 助手", OperationLogInterceptor.resolveModule("/ai/chat/stream")),
+                // 既有报告域三拆不被新前缀影响（回归护栏）
+                () -> assertEquals("报告审核", OperationLogInterceptor.resolveModule("/report/audit/approve")),
+                () -> assertEquals("报告生成", OperationLogInterceptor.resolveModule("/report/generate"))
+        );
+    }
+
+    @Test
+    @DisplayName("动作派生：回退 / 恢复 / 作废；/kb/import 优先于 /import（顺序回归护栏）")
+    void resolveActionForRollbackAndAi() {
+        assertAll(
+                () -> assertEquals("回退", OperationLogInterceptor.resolveAction("POST", "/rollback/execute")),
+                () -> assertEquals("恢复", OperationLogInterceptor.resolveAction("POST", "/rollback/recover")),
+                () -> assertEquals("作废", OperationLogInterceptor.resolveAction("POST", "/report/void")),
+                () -> assertEquals("导入标准", OperationLogInterceptor.resolveAction("POST", "/ai/kb/import/scan")),
+                // 既有 /sample/import 仍是通用「导入」（证明新关键词未误伤旧路径）
+                () -> assertEquals("导入", OperationLogInterceptor.resolveAction("POST", "/sample/import"))
+        );
+    }
 }

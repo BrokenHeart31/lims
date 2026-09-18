@@ -16,6 +16,7 @@ backend/src/main/resources/application-dev.yaml
 # ============ 前端 ============
 frontend/node_modules/
 frontend/dist/
+frontend/dist-*/
 frontend/.vite/
 frontend/npm-debug.log*
 frontend/yarn-error.log*
@@ -27,6 +28,8 @@ frontend/.env.*.local
 .workbuddy/
 .shots/
 lims.sql
+# 本机构建/门禁辅助脚本与日志（含 run-mvn.sh 环境包装，非项目产物）
+_logs/
 
 # ============ 通用 ============
 *.log
@@ -39,3 +42,24 @@ Thumbs.db
 *.env
 *.pem
 *.key
+
+# ============ AI 运行时与模型权重（体积大，禁止入库） ============
+# qwen3:4b-instruct 约 2.5GB、Ollama 便携包约数百 MB，远超 Git 合理体积；
+# 二进制/大文件一旦入库会永久膨胀历史（不可回收）。
+ai/runtime/
+ai/models/
+ai/scripts/ollama.env
+# Python 预处理脚本（prepare-standards.py）运行产生的字节码缓存
+__pycache__/
+*.pyc
+
+# ============ GB 标准原始文件与解析产物（版权 + 体积，禁止入库） ============
+# ① 版权：GB 标准文本有著作权，公开仓库转载有合规风险；
+# ② 体积：累计 ≥1GB，且属「用户投放的输入数据」而非代码。
+# 目录用 .gitkeep 占位，保证「整体搬走仓库」后目录结构仍在。
+ai/standards/inbox/*
+ai/standards/parsed/*
+!ai/standards/inbox/.gitkeep
+!ai/standards/parsed/.gitkeep
+# OCR 侧车位（逐页片段 page-XXXX.txt + progress.json）：运行时产物，非代码，禁止入库
+ai/standards/.scan/

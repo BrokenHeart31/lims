@@ -1,0 +1,14 @@
+# GB 标准预处理依赖（feature A / T04；增量 ai_flow_assistant 新增 OCR）
+# 固定小版本，避免解析行为随上游漂移（预处理的产物要能复现）。
+# 安装： pip install -r ai/scripts/requirements.txt
+#
+# 说明（设计 §8.3）：
+#   · pypdf            —— 抽文字层 + 取页内嵌 JPEG（**复用/升级固定版本**，实测 6.19.0）
+#   · rapidocr-onnxruntime —— **新增**：扫描件 OCR（ONNX Runtime + 内置 PP-OCR 检测/识别模型）
+#        实测：`pip install rapidocr-onnxruntime` 成功、`from rapidocr_onnxruntime import RapidOCR`
+#        导入 OK；入参接受 str/bytes/Path/ndarray（**不接受 PIL.Image**，故直接喂页内嵌 JPEG bytes）。
+#        以下为其传递依赖，随本包自动安装，无需单列：
+#          onnxruntime / opencv-python / pyclipper / shapely / pillow / numpy
+#   ⚠️ 均为**环境级**依赖，不进 Maven/npm（后端零新增依赖、前端零新增 npm）。
+pypdf>=6.0,<7.0
+rapidocr-onnxruntime>=1.3,<2.0

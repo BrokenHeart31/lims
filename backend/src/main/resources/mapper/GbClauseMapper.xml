@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  GB 标准条款：ngram 全文检索 + 批量插入（feature A，T03）。
+
+  ⚠️ 硬约束（设计 §2.4）：MATCH(content) 的列清单必须与 FULLTEXT 索引列完全一致
+     （DDL：FULLTEXT KEY ft_gbc_content(content) WITH PARSER ngram），否则报 1191。
+     因此本文件只用 MATCH(content)，std_no 过滤放 WHERE。
+
+  ⚠️ ngram 行为：ngram_token_size=2 —— 检索词需 ≥2 字（单字被忽略）；
+     innodb_ft_min_token_size=3 对 ngram 解析器不生效（别误判 3 字以下搜不到）。
+     BOOLEAN MODE：`+词` = 必须包含；`"词 词"` = 相邻短语；默认 `+`，0 命中再降级 OR
+     （查询串由 GbRetriever 构造，本文件只做执行与排序）。
+
+  ⚠️ 只查倒排索引：JOIN gb_document 仅取 source_file 用于引用卡片，**绝不读磁盘文件**。
+     过滤 d.deleted=0 与 d.status=1，保证失效文档不参与检索。
+
+  ⚠️ 排序（2026-09-18 改进）：**先按「标题是否命中」再按正文相关度**。
+     为什么：OCR 正文里有大量「检测方法清单」式超长块，同一块提到几十种农药名，
+     单看正文相关度它们会盖过真正的条款块（实测：问「毒死蜱」首位竟是「异狄氏剂」块，
+     4.121 毒死蜱 的条款块被挤出前列 ⇒ 引用卡片指向无关条款）。
+     条款标题才是「这条讲什么」的权威信号，故：
+       (MATCH(clause_title) AGAINST(q) > 0) DESC, score DESC, c.id ASC
+     两个 MATCH 分别对应两个 FULLTEXT 索引（ft_gbc_content / ft_gbc_title），不可交叉。
+-->
+<mapper namespace="com.lims.mapper.GbClauseMapper">
+
+    <!-- ngram 布尔检索：score 降序取 top-N -->
+    <select id="searchByNgram" resultType="com.lims.vo.GbSearchHitVO">
+        SELECT
+            c.std_no        AS stdNo,
+            c.clause_no     AS clauseNo,
+            c.clause_title  AS clauseTitle,
+            c.content       AS snippet,
+            c.document_id   AS docId,
+            d.source_file   AS sourceFile,
+            d.source_type   AS sourceType,
+            d.ocr_derived   AS ocrDerived,
+            MATCH(c.content) AGAINST(#{query} IN BOOLEAN MODE) AS score
+        FROM gb_clause c
+        JOIN gb_document d ON d.id = c.document_id
+        WHERE c.deleted = 0
+          AND d.deleted = 0
+          AND d.status = 1
+          AND MATCH(c.content) AGAINST(#{query} IN BOOLEAN MODE)
+        <if test="stdNo != null and stdNo != ''">
+          AND c.std_no LIKE CONCAT('%', #{stdNo}, '%')
+        </if>
+        ORDER BY (MATCH(c.clause_title) AGAINST(#{query} IN BOOLEAN MODE) > 0) DESC,
+                 score DESC, c.id ASC
+        LIMIT #{topN}
+    </select>
+
+    <!--
+      自然语言模式检索（BOOLEAN 无命中时的兜底层）。
+      ⚠️ 为什么必须有这一层（实测踩坑）：
+        BOOLEAN 模式下，一个**不含空格的整句中文**会被当成「短语」（要求词序邻接），于是必然 0 命中；
+        而用户提问天然是整句（"毒死蜱在黄瓜上的限量是多少"），不会自己分词。
+        自然语言模式会按 ngram 把整句切成 2-gram 并按**相关度**排序，这才是「自然语句检索」的正确语义。
+        实测（GB 2763-2021，1269 条 clause）：
+          同一整句 → `+整句`(BOOLEAN) = 0 条；`整句`(BOOLEAN) = 0 条；**自然语言 = 844 条**。
+          两词空格分隔（"毒死蜱 黄瓜"）在 BOOLEAN 下 = 138 条，故 BOOLEAN 层对「已分词」的输入仍然有效，
+          两者是互补而非替代关系。
+    -->
+    <select id="searchByNatural" resultType="com.lims.vo.GbSearchHitVO">
+        SELECT
+            c.std_no        AS stdNo,
+            c.clause_no     AS clauseNo,
+            c.clause_title  AS clauseTitle,
+            c.content       AS snippet,
+            c.document_id   AS docId,
+            d.source_file   AS sourceFile,
+            d.source_type   AS sourceType,
+            d.ocr_derived   AS ocrDerived,
+            MATCH(c.content) AGAINST(#{query}) AS score
+        FROM gb_clause c
+        JOIN gb_document d ON d.id = c.document_id
+        WHERE c.deleted = 0
+          AND d.deleted = 0
+          AND d.status = 1
+          AND MATCH(c.content) AGAINST(#{query})
+        <if test="stdNo != null and stdNo != ''">
+          AND c.std_no LIKE CONCAT('%', #{stdNo}, '%')
+        </if>
+        ORDER BY (MATCH(c.clause_title) AGAINST(#{query}) > 0) DESC,
+                 score DESC, c.id ASC
+        LIMIT #{topN}
+    </select>
+
+    <!--
+      批量插入条款块（派生索引，不回填自增主键）。
+      审计人由 # {operator} 显式传入：原生批量 SQL 不触发 AuditMetaObjectHandler，
+      且导入在 @Async 线程执行（无 SecurityContext）；与 SampleItemMapper 的原生 SQL 同口径。
+    -->
+    <insert id="insertBatch">
+        INSERT INTO gb_clause
+            (document_id, std_no, clause_no, clause_title, content, content_len,
+             page_no, chunk_order, created_by, created_at, updated_by, updated_at, deleted)
+        VALUES
+        <foreach collection="list" item="it" separator=",">
+            (#{it.documentId}, #{it.stdNo}, #{it.clauseNo}, #{it.clauseTitle}, #{it.content},
+             #{it.contentLen}, #{it.pageNo}, #{it.chunkOrder},
+             #{operator}, NOW(), #{operator}, NOW(), 0)
+        </foreach>
+    </insert>
+
+</mapper>

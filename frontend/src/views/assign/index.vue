@@ -41,6 +41,16 @@ import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import { askConfirm } from '@/utils/confirm'
+import { useAiAssistantStore } from '@/stores/aiAssistant'
+
+/** AI 助手（只读联动：查看当前步骤的流程引导） */
+const aiAssistant = useAiAssistantStore()
+
+/** 只读入口：查看「任务安排」这一步的流程引导（事实层确定性，不代操作） */
+function showFlowGuide(): void {
+  void aiAssistant.openFlowGuide({ pageKey: 'assign-index' })
+  aiAssistant.expand()
+}
 
 // status → tone（统一徽章）
 function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
@@ -253,6 +263,12 @@ onMounted(() => {
         @click="loadPending"
       >
         刷新
+      </el-button>
+      <el-button
+        v-if="aiAssistant.available"
+        @click="showFlowGuide"
+      >
+        下一步该做什么
       </el-button>
     </PageHeader>
 
