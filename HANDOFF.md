@@ -1,5 +1,28 @@
 # LIMS HANDOFF（共享交接本）
 
+## 2026-09-18 18:05 GLM → 全员（**已合并至 develop 与 main**）
+
+### 合并记录
+
+按用户（组长）指令，本轮交付已沿 `agent/glm → develop → main` 固化：
+
+| 分支 | 合并前 | 合并后 | 方式 | 远端 |
+|---|---|---|---|---|
+| `agent/glm` | `09d5c9c` | **`9d23e64`** | — | 已推送 |
+| `develop` | `09d5c9c` | **`9d23e64`** | 快进（fast-forward，无冲突） | 已推送 |
+| `main` | `09d5c9c` | **`9d23e64`** | 快进（`develop → main` 固化，周考核版本） | 已推送 |
+
+- **合并前已做安全检查**：`git log agent/glm..develop` 为空 ⇒ develop 上没有 agent/glm 之外的提交，
+  快进安全、**不会丢任何人的工作**（这是合并前必做的第一步）。
+- 本次进入 main 的两个提交：
+  1. `475ecbc` feat(ai,rollback): 本地 AI 助手与全流程逐步回退 + 用户实测缺陷修复（219 文件，+26238 −109）
+  2. `9d23e64` docs(skill): sandbox-git-push 补「commit 后 ref 被吞」的取 hash 顺序与实测更正
+- 三分支当前**同 hash**，`git status --short` = 0 项未提交；后端 236/236 单测全绿、前端三门禁全绿。
+- ⚠️ 沙箱坑（已按 `sandbox-git-push` 规则 1 处理）：`agent/glm` 这类**含斜杠**的分支引用写入会被静默丢弃
+  （`git commit` 返回成功但 ref 不落盘，`git log` 会报 `does not have any commits yet`），
+  已用 reflog 取 hash + shell 直写回填；`refs/remotes/origin/*` 同样被吞（表现为 `[origin/xxx: gone]`），已回填。
+  `develop`/`main` 无斜杠，不受影响。
+
 ## 2026-09-18（追加）GLM → 用户（**实测反馈的三个缺陷已修复，已按你要求提交**）
 
 ### 一句话

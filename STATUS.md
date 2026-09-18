@@ -2,6 +2,16 @@
 
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
+## 2026-09-18 18:05 合并固化（GLM / 用户指令）
+
+- **`agent/glm` → `develop` → `main` 已全部合并并推送**，三分支同 hash **`9d23e64`**（父 `09d5c9c`）。
+- 方式：**快进（fast-forward）**；合并前已核对 `git log agent/glm..develop` 为空（无他人提交会被覆盖）。
+- 远端状态：`origin/agent/glm`、`origin/develop`、`origin/main` 均为 `9d23e64`；本地跟踪引用已回填。
+- 工作区：`git status --short` = 0 项未提交；后端 **236/236** 单测全绿、前端 `vue-tsc`/`eslint`/`vite build` 全绿。
+- 提交内容：
+  - `475ecbc` feat(ai,rollback)：本地 AI 助手 + 全流程逐步回退 + 用户实测缺陷修复（219 文件 / +26238 −109）
+  - `9d23e64` docs(skill)：sandbox-git-push 补「commit 后 ref 被吞」的取 hash 顺序与实测更正
+
 ## 2026-09-18 用户实测缺陷修复（GLM / 流式卡死 + 检索召回 + 审计口径）
 
 > 触发：用户反馈「问 GB 2762 铅的限量，AI 助手一直显示正在生成，关闭再打开才看到回答」。
