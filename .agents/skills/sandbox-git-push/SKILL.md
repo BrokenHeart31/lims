@@ -58,6 +58,22 @@ git log --oneline -1               # 校验
 > 判据：`.git/refs/heads/develop` 里没有换行符（`printf '%s'` 写的），
 > 所以补 ref 时也用 `printf '%s'`（不加 `\n`），避免与其他 ref 文件的格式不一致。
 
+**2026-09-18 复核（`git commit` 触发，含可复用的取 hash 顺序）**
+
+- **症状**：`git commit -F <msg>` 输出正常（打印了 `create mode ...` 一长串），但随后
+  `git rev-parse HEAD` → `fatal: ambiguous argument 'HEAD'`，
+  `git log` → `your current branch 'agent/glm' does not have any commits yet`，
+  `git status` 里那批文件又变回 `A `（已暂存未提交）。**看起来像「提交根本没成功」，其实提交对象已完好落盘。**
+- **关键区分（先别急着 `fsck`）**：被沙箱吞掉的是 **ref 文件写入**，
+  **reflog 写入是成功的** —— 本次 `git log` 已 unusable，但
+  `tail -1 .git/logs/refs/heads/agent/glm` 的**第 2 列**就是那个 commit hash。
+  **取 hash 的优先顺序：reflog 末行 → （reflog 也缺时）`git fsck --lost-found` 的 dangling commit
+  → （仍未找到）`git cat-file --batch-all-objects` 过滤 commit 后按时间比对。**
+- **shell `printf` 直写 ref 有效（本次复核）**：`git commit`/`update-ref` 的**内部**写入无效，
+  但 `mkdir -p .git/refs/heads/agent && printf '%s' <hash> > .git/refs/heads/agent/glm` 立刻生效
+  （写完 `cat` 即可读到；再用 `git log --oneline -1` + `git status --short` 双验）。
+- 推送到远端不受影响（远端分支是新 ref，无斜杠写入问题）。
+
 `refs/remotes/origin/*` 同样会被丢弃（表现为 `[origin/xxx: gone]`），纯显示问题，用 `ls-remote` 的真实结果回填：
 
 ```bash
