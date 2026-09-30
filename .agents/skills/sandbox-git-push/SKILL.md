@@ -124,6 +124,13 @@ GIT_TERMINAL_PROMPT=0 timeout 120 $GIT -c credential.helper= -c http.sslVerify=f
 - `-c credential.helper=`：置空 GCM，**这是"静默"的关键**——不经过 GCM UI 就不会弹窗。
 - `-c http.sslVerify=false`：绕过沙箱 MITM 代理（`127.0.0.1:2400`）的证书错误。**一次性用，勿写入 config。**
 - **`sed` 脱敏必加**，否则 PAT 会进工具日志。
+- 🔴 **URL 内嵌令牌 ≠ 可以不置空 credential.helper**（2026-09-30 实测）：
+  本次漏写 `-c credential.helper=`，push **两次都挂到 SIGTERM / `timeout` 124**（无任何输出），
+  而 `ls-remote -c http.sslVerify=false` 同一时刻**正常返回**（说明网络通、只有 push 挂）。
+  补上 `-c credential.helper= -c core.askPass=` 后**一条命令即成功**：
+  `06efa1b..fd91b08 agent/glm -> agent/glm`。
+  **结论**：带 token 的 URL 仍会触发 GCM 流程 → 必挂。**`credential.helper=` 不是可选优化，是必需项。**
+  配套排查顺序：① 先 `ls-remote` 探测（通 ⇒ 不是网络）② 再确认 helper 已置空 ③ 不要用 `--dry-run` 探路。
 - 代价：PAT 短暂出现在进程命令行。这是用户知情后接受的取舍（不打扰 > 该风险）。
 
 **备选：GCM 路径 —— 仅当静默路径取不到凭据时用**
