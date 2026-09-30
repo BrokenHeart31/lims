@@ -2,6 +2,7 @@ package com.lims.service.rollback;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lims.common.enums.ArchiveTarget;
+import com.lims.common.enums.RollbackEdgePolicy;
 import com.lims.common.enums.SampleStatus;
 import com.lims.entity.SampleItem;
 import com.lims.entity.SampleResult;
@@ -38,7 +39,22 @@ public class RollbackPlanner {
      * @return 各类下游数据的失效预览（可能为空列表）
      */
     public List<RollbackPreviewVO.Invalidation> invalidationList(Long sampleId, SampleStatus from, SampleStatus to) {
-        Set<ArchiveTarget> scope = RollbackScope.targets(null, from, to);
+        return invalidationList(sampleId, from, RollbackEdgePolicy.chain(from, to));
+    }
+
+    /**
+     * 计算**一条逐级链**的下游失效清单（跨级回退用，2026-09-30 新增）。
+     *
+     * <p>口径 = 链上各级失效范围的并集（{@link RollbackScope#chainTargets}）。
+     * 例：S40→S10 链为 [S30,S20,S10]，并集含 ASSIGN_FIELDS + ITEM + RESULT，
+     * 因此预览会同时列出「将被清空的指派」「将失效的明细」「将失效的结果」——
+     * 与执行时逐级真实发生的事一一对应。**预览与执行共用同一权威，禁止各算一遍。**</p>
+     *
+     * @param chain 逐级链（{@code RollbackEdgePolicy.chain} 的返回值）
+     */
+    public List<RollbackPreviewVO.Invalidation> invalidationList(Long sampleId, SampleStatus from,
+                                                                 List<SampleStatus> chain) {
+        Set<ArchiveTarget> scope = RollbackScope.chainTargets(from, chain);
         List<RollbackPreviewVO.Invalidation> list = new ArrayList<>();
 
         // 任务指派清空（S40→S30）：不失效行，只清空指派字段

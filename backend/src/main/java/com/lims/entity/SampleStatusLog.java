@@ -56,6 +56,14 @@ public class SampleStatusLog extends BaseEntity {
     /** 关联 sample_rollback.id（回退/恢复事件） */
     private Long rollbackId;
 
+    /**
+     * 回退批次号（回退/恢复事件非空）。
+     *
+     * <p>跨级回退的每一级各写 1 条 `event_type=4` 流水，同批次号把它们「圈」在一次回退操作内，
+     * 使时间线既能按级展示、也能按批次聚合（审计口径：1 批次 = 1 次用户操作）。</p>
+     */
+    private String batchNo;
+
     /** 下游数据处置摘要（如「失效 12 项结果、3 项明细」） */
     private String dataDisposition;
 

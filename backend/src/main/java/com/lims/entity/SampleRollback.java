@@ -31,11 +31,23 @@ public class SampleRollback extends BaseEntity {
     /** 样品编号 */
     private String sampleNo;
 
+    /**
+     * 回退批次号（一次回退操作 = 一个批次）。
+     *
+     * <p>跨级回退时本表**只落 1 行**（记录起点与最终目标步），逐级过程由
+     * `sample_status_log` 的 N 条 `event_type=4` 流水承载，二者以
+     * `(batch_no, rollback_id)` 关联——这就是「1 批次 + 每级 1 条流水」不变式的落地形态。</p>
+     */
+    private String batchNo;
+
     /** 回退前状态 code */
     private SampleStatus fromStatus;
 
-    /** 回退后状态 code */
+    /** 回退后状态 code（跨级回退时为**最终目标步**；中间落点见状态流水） */
     private SampleStatus toStatus;
+
+    /** 本次回退的级数（1 = 单级逐级回退；>1 = 跨级链式回退） */
+    private Integer stepCount;
 
     /** 回退分组（1 常规 / 2 敏感） */
     private RollbackGroup edgeGroup;

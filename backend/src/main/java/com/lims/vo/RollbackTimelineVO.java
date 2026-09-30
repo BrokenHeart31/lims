@@ -24,19 +24,19 @@ public class RollbackTimelineVO {
 
     private String currentStatusLabel;
 
-    /** 当前状态允许回退到的状态 code 列表（逐级） */
+    /** 当前状态沿 ROLLBACK 白名单**可达的全部目标步**（由近及远，含跨级；空 = 无可回退路径） */
     private List<Integer> canRollbackTo = new ArrayList<>();
 
-    /** 允许的回退边（供前端渲染「回退」目标） */
+    /** 允许的回退目标（供前端渲染「回退」目标步选择） */
     private List<Edge> rollbackEdges = new ArrayList<>();
 
-    /** 被拒的回退边（如 S80→S70、S90→S80），带业务码与说明 */
+    /** 被拒的回退说明（S80/S90 → 改走作废/召回），带业务码与说明 */
     private List<Rejected> rejectedEdges = new ArrayList<>();
 
     /** 全链路事件（按 id 升序 = 发生顺序） */
     private List<Event> events = new ArrayList<>();
 
-    /** 一条允许的回退边 */
+    /** 一条允许的回退目标（from → to；跨级时 to 为链终点） */
     @Data
     public static class Edge {
 
@@ -44,6 +44,10 @@ public class RollbackTimelineVO {
 
         private Integer to;
 
+        /** 级数（1 = 单级；>1 = 跨级链式） */
+        private int stepCount;
+
+        /** 链的整体分组（任一级敏感即整链敏感） */
         private Integer group;
 
         private String groupLabel;
@@ -89,6 +93,9 @@ public class RollbackTimelineVO {
         private String dataDisposition;
 
         private Long rollbackId;
+
+        /** 回退批次号（跨级回退的各级流水共用；一次用户操作一个批次） */
+        private String batchNo;
 
         /** 回退事件专用：是否可再撤销 */
         private Boolean canRecover;

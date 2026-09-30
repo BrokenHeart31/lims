@@ -1517,72 +1517,173 @@ event: error     data: {"code":4201,"msg":"..."}
 
 ---
 
-## 17. 流程回溯域 `/api/rollback`（feature B，T02 已落地）
+## 17. 流程回溯域 `/api/rollback`（feature B，2026-09-30 改造为「环节内嵌 + 可选目标步 + 批量」）
 
-> 状态机第三条独立白名单 `common/enums/SampleStatusTransition.ROLLBACK`；
-> 边策略唯一权威 `common/enums/RollbackEdgePolicy`。
-> **回退只允许逐级**（每次退一步）；跨级与 S80/S90 回退被显式拒绝并给出专门业务码。
+> 状态机第三条独立白名单 `common/enums/SampleStatusTransition.ROLLBACK`（**边集合保持不变**）；
+> 边策略与链推导的唯一权威 `common/enums/RollbackEdgePolicy`。
+>
+> **改造要点（用户 2026-09-30 指令）**：
+> 1. 「流程回溯」**不再是独立功能区**——独立页面（`views/rollback/index.vue`）、路由登记
+>    （`router/routeRegistry.ts`）与侧栏菜单（`sys_menu` 节点 13）**全部移除**；回退能力下沉到各业务页面**内嵌**：
+>    样品登记(S20) / 项目分解(S30) / 任务安排(S40) / 结果录入(S50) / 报告审核(S60,S70)。
+>    侧栏菜单节点 13 删除后，权限位 131~134 提升为**根级隐藏按钮行**保留（否则 R1/R2/R3 会全部 403），
+>    由 `db/migrations/V11__rollback_batch_and_menu.sql` 幂等落地。
+> 2. **可选目标步（跨级链式）**：目标步可以是当前状态沿 `ROLLBACK` 白名单**可达的任意步**
+>    （如 S40→S10）。跨级**不为状态机新增任何直接边**——服务端用 `RollbackEdgePolicy.chain()`
+>    把目标步拆成逐级链（S40→S30→S20→S10）后**逐级执行**，每一级仍走既有的白名单断言 +
+>    乐观条件 UPDATE + 下游失效处置 + 留档。原「跨级一律 4101」的语义**已作废**。
+> 3. **批量**：`execute` 入参由 `sampleId` 收敛为 `ids`（单条 = 长度 1），并可勾选**多个同状态**
+>    样品退到**同一目标步**；**逐条独立事务**，响应逐条给出成功/失败原因。
+> 4. **S80/S90 无回退路径不变**：从这两个状态出发的任何回退仍是 4102/4103，
+>    改走第 18 章「作废 / 召回」（该入口已于本轮补到「报告生成」页）。
+>
+> **⚠️ 不变式③的重新定义（链式回退的必然结果）**：
+> 原口径「一次回退恰好 1 条 `event_type=4` 流水」在跨级场景下不成立。新口径为
+> **「一次回退操作 = 1 个回退批次 + 每级各 1 条状态流水」**：
+> - `sample_rollback` **整批只落 1 行**：`from_status` = 起点、`to_status` = 最终目标步、
+>   `step_count` = 级数、`edge_group` = 整链分组（**任一级敏感即整链敏感**）；
+> - `sample_status_log` **每级各 1 条** `event_type=4`，`(rollback_id, batch_no)` 相同；
+> - 事务策略：**单条样品整链一个事务**（任一级失败整体回滚，不产生半程状态）；
+>   **批量逐条独立事务**（单条失败不影响其余）。
+> 不变式①②④逐级保持（每级都先乐观 UPDATE 再同事务处置下游；失效一律经 `SampleDataDisposer`
+> 显式 `set(deleted, id)`，绝不物理删除）。
 
 | # | 方法 | 路径 | 权限标识 | 说明 |
 |---|---|---|---|---|
-| B1 | GET | `/rollback/timeline/{sampleId}` | `rollback:view` | 该样品全链路事件时间线（正向+逆向，供回溯面板） |
-| B2 | POST | `/rollback/preview` | `rollback:view` | 回退前「下游影响预览」（不落库） |
-| B3 | POST | `/rollback/execute` | `rollback:execute`（敏感边再由服务层校验 `rollback:sensitive`） | 执行一次逐级回退 |
-| B4 | POST | `/rollback/recover` | `rollback:execute` | 恢复某次未产生新下游数据的回退 |
+| B1 | GET | `/rollback/timeline/{sampleId}` | `rollback:view` | 该样品全链路事件时间线（正向+逆向，供留痕抽屉 / 回退框） |
+| B7 | GET | `/rollback/targets/{sampleId}` | `rollback:view` | **可达目标步 + 每步影响预览**（2026-09-30 新增，内嵌入口的核心读接口） |
+| B2 | POST | `/rollback/preview` | `rollback:view` | 单个目标步的「下游影响预览」（不落库） |
+| B3 | POST | `/rollback/execute` | `rollback:execute`（敏感链路再由服务层校验 `rollback:sensitive`） | **批量 + 可选目标步**执行回退，返回逐条明细 |
+| B4 | POST | `/rollback/recover` | `rollback:execute` | 撤销某次未产生新下游数据的回退 |
 | B5 | GET | `/rollback/history` | `rollback:view` | 分页查询回退记录（跨样品） |
 
-**B1 响应示例（`RollbackTimelineVO`）**
+### 17.1 B7 目标步 + 影响预览（新增）
+
+**请求**：`GET /api/rollback/targets/{sampleId}`
+
+**响应 data（`RollbackTargetsVO`）**
 ```json
-{ "sampleId": 10, "sampleNo": "JK(2023)-SA-001", "currentStatus": 50, "currentStatusLabel": "检验中",
-  "canRollbackTo": [40], "rollbackEdges": [ { "from":50, "to":40, "group":1, "groupLabel":"常规", "reasonRequired":true } ],
-  "rejectedEdges": [ { "from":80, "to":70, "code":4102, "msg":"已签发样品不支持普通回退，请使用「作废/召回」" } ],
-  "events": [
-    { "id":41, "eventType":4, "eventTypeLabel":"回退", "fromStatus":60, "toStatus":50,
-      "fromStatusLabel":"检验完成", "toStatusLabel":"检验中", "actionLabel":"回退至检验中",
-      "reason":"误提交，尚有一个项目未录", "dataDisposition":"无下游数据",
-      "rollbackId":9, "canRecover":true, "recovered":false,
-      "source":"ROLLBACK_PANEL", "operatedBy":"njsa000", "operatedAt":"2026-09-17 15:31:02" } ] }
+{ "sampleId": 10, "sampleNo": "JK(2023)-SA-001",
+  "currentStatus": 40, "currentStatusLabel": "已安排",
+  "rollbackAvailable": true,
+  "targets": [
+    { "status": 30, "statusLabel": "已分解", "stepCount": 1,
+      "chainCodes": [30], "chainLabels": ["已分解"],
+      "chainText": "已安排 → 已分解",
+      "group": 1, "groupLabel": "常规", "needSensitive": false, "needSecondConfirm": false,
+      "invalidatedTotal": 2,
+      "invalidations": [
+        { "type": "assign_fields", "typeLabel": "任务指派（将被清空）", "count": 2,
+          "items": [ { "id": 91, "label": "1 铅 → NJSA000" } ] } ],
+      "hint": "回退后将失效上述下游数据（保留留档，可撤销）。" },
+    { "status": 10, "statusLabel": "已登记", "stepCount": 3,
+      "chainCodes": [30, 20, 10], "chainLabels": ["已分解", "登记确认", "已登记"],
+      "chainText": "已安排 → 已分解 → 登记确认 → 已登记",
+      "group": 1, "groupLabel": "常规", "needSensitive": false, "needSecondConfirm": false,
+      "invalidatedTotal": 14,
+      "invalidations": [
+        { "type": "assign_fields", "typeLabel": "任务指派（将被清空）", "count": 2, "items": [] },
+        { "type": "sample_item", "typeLabel": "检测单项(分解明细)", "count": 7, "items": [] },
+        { "type": "sample_result", "typeLabel": "检验结果", "count": 5, "items": [] } ],
+      "hint": "回退后将失效上述下游数据（保留留档，可撤销）。" } ],
+  "rejected": [] }
 ```
 
-**B2 请求 / 响应示例**
+**响应 data（S80/S90：无可退目标 + 治理指引）**
+```json
+{ "sampleId": 12, "sampleNo": "JK(2023)-SA-002",
+  "currentStatus": 80, "currentStatusLabel": "已签发",
+  "rollbackAvailable": false, "targets": [],
+  "rejected": [ { "from": 80, "code": 4102,
+    "msg": "已签发样品不支持普通回退；报告已对外生效，请使用「作废 / 召回」" } ] }
+```
+
+> 说明：目标步清单的**唯一来源**是 `RollbackEdgePolicy.reachableTargets`（沿白名单逐级推导）。
+> 前端**不得自行枚举状态**——否则状态机一改，前端就会给出后端不接受的选项。
+> `invalidations` 是**整链口径**（`chainScope` 的并集），例如 S40→S10 会同时列出
+> 「将清空的指派」「将失效的明细」「将失效的结果」——与执行时逐级真实发生的事一一对应。
+
+### 17.2 B3 批量执行（改造）
+
+**请求**
+```json
+{ "ids": [10, 11, 12], "targetStatus": 10, "reason": "分解错了，整批退回重做", "secondConfirmed": false }
+```
+> `ids` 内重复项按 **去重保序**处理（避免「1 成功 + 1 冲突失败」被误读为 bug）。
+> 允许 `ids` 内样品状态不同的请求送达，但**逐条独立校验**：不满足的会逐条回失败原因，不会被静默跳过。
+
+**响应 data（`RollbackBatchResultVO`）**
+```json
+{ "targetStatus": 10, "targetStatusLabel": "已登记", "total": 3, "successCount": 2, "failCount": 1,
+  "items": [
+    { "sampleId": 10, "sampleNo": "JK(2023)-SA-001", "success": true,
+      "result": { "sampleId": 10, "status": 10, "statusLabel": "已登记",
+                  "rollbackId": 31, "batchNo": "RB2026093014321077A1F", "stepCount": 3,
+                  "chainText": "已安排 → 已分解 → 登记确认 → 已登记",
+                  "canRecover": true, "affectedItemCount": 7, "affectedResultCount": 5,
+                  "invalidatedSummary": "清空 2 项任务指派；失效 7 项检测明细；失效 5 项检验结果" } },
+    { "sampleId": 11, "sampleNo": "JK(2023)-SA-002", "success": true, "result": { "status": 10 } },
+    { "sampleId": 12, "sampleNo": "JK(2023)-SA-003", "success": false,
+      "code": 4101, "reason": "样品状态不允许从「检验完成」回退至「已登记」（只能沿既有环节逐级向下回退）" } ] }
+```
+
+### 17.3 B2 单目标步预览（响应字段随链式扩展）
+
+在原 `RollbackPreviewVO` 上新增链式字段：`stepCount` / `chainCodes` / `chainLabels` / `chainText`，
+`invalidations` 改为**整链口径**。被拒目标仍返回 `allowed=false + code + msg`（不抛 HTTP 错误）。
+
 ```json
 // 请求
-{ "sampleId": 10, "targetStatus": 40 }
-// 响应 data（RollbackPreviewVO，允许）
-{ "sampleId":10, "sampleNo":"JK(2023)-SA-001", "fromStatus":50, "fromStatusLabel":"检验中",
-  "toStatus":40, "toStatusLabel":"已安排", "allowed":true, "group":1, "groupLabel":"常规",
+{ "sampleId": 10, "targetStatus": 30 }
+// 响应 data（允许）
+{ "sampleId":10, "sampleNo":"JK(2023)-SA-001", "fromStatus":40, "fromStatusLabel":"已安排",
+  "toStatus":30, "toStatusLabel":"已分解", "allowed":true, "group":1, "groupLabel":"常规",
   "reasonRequired":true, "needSensitive":false, "needSecondConfirm":false, "irreversible":false,
+  "stepCount":1, "chainCodes":[30], "chainLabels":["已分解"], "chainText":"已安排 → 已分解",
   "invalidations":[
-    { "type":"sample_result", "typeLabel":"检验结果", "count":9, "items":[ {"id":51,"label":"1 铅 0.12"} ] } ],
-  "hint":"回退后将失效上述下游数据（保留留档，可恢复）；请填写原因后确认。" }
-// 响应 data（被拒边：allowed=false，携带业务码，不抛 HTTP 错误）
-{ "sampleId":10, "fromStatus":80, "toStatus":70, "allowed":false,
-  "code":4102, "msg":"已签发样品不支持普通回退；报告已对外生效，请使用「作废 / 召回」" }
+    { "type":"assign_fields", "typeLabel":"任务指派（将被清空）", "count":2, "items":[ {"id":91,"label":"1 铅 → NJSA000"} ] } ],
+  "hint":"回退后将失效上述下游数据（保留留档，可撤销）；请填写原因后确认。" }
 ```
 
-**B3 请求示例**
+### 17.4 B1 时间线（`canRollbackTo` 语义扩展）
+
+`canRollbackTo` 由「上一级（1 个）」改为「**可达的全部目标步**（含跨级）」；
+`rollbackEdges[].stepCount` 给出每条目标的级数；`rejectedEdges` 仅在 S80/S90 出现（治理指引）；
+`events[].batchNo` 让前端可把跨级回退的多条流水聚合成「一次操作」。
+
 ```json
-{ "sampleId": 10, "targetStatus": 60, "reason": "审核人发现结论输入有误，需回退重审", "secondConfirmed": true }
-```
-**B4 请求示例**
-```json
-{ "rollbackId": 9, "reason": "复查后确认无需回退，恢复" }
+{ "sampleId": 10, "sampleNo": "JK(2023)-SA-001", "currentStatus": 50, "currentStatusLabel": "检验中",
+  "canRollbackTo": [10, 20, 30, 40],
+  "rollbackEdges": [
+    { "from":50, "to":40, "stepCount":1, "group":1, "groupLabel":"常规", "reasonRequired":true },
+    { "from":50, "to":10, "stepCount":4, "group":1, "groupLabel":"常规", "reasonRequired":true } ],
+  "rejectedEdges": [],
+  "events": [
+    { "id":41, "eventType":4, "eventTypeLabel":"回退", "fromStatus":40, "toStatus":30,
+      "fromStatusLabel":"已安排", "toStatusLabel":"已分解", "actionLabel":"回退至已分解",
+      "reason":"整批做错了，退回登记", "dataDisposition":"清空 2 项任务指派",
+      "rollbackId":31, "batchNo":"RB2026093014321077A1F", "canRecover":true, "recovered":false,
+      "source":"ROLLBACK_PANEL", "operatedBy":"nj003", "operatedAt":"2026-09-30 14:32:10" },
+    { "id":42, "eventType":4, "eventTypeLabel":"回退", "fromStatus":30, "toStatus":20,
+      "actionLabel":"回退至登记确认", "rollbackId":31, "batchNo":"RB2026093014321077A1F" } ] }
 ```
 
-**回退业务码（段 4100–4199）**
+### 17.5 回退业务码（段 4100–4199）
 
 | 场景 | code | msg |
 |---|---|---|
-| 边不在 `ROLLBACK` 白名单 / 跨级 | 4101 | 样品状态不允许从「已签发」回退至「已出报告」（回退仅支持逐级） |
-| 目标为 S80→S70 | 4102 | 已签发样品不支持普通回退；报告已对外生效，请使用「作废 / 召回」 |
-| 目标为 S90→S80 | 4103 | 已出报告不支持回退；数据已上报省平台，只能新增更正 / 作废记录 |
-| 敏感边（S70→S60）权限不足 | 4104 | 敏感回退需要「业务管理员 / 系统管理员」权限 |
-| 未二次确认 | 4105 | 敏感回退需二次确认 |
+| 目标步不可达（同级 / 逆向上行 / 非法状态组合） | 4101 | 样品状态不允许从「X」回退至「Y」（只能沿既有环节逐级向下回退） |
+| 从 S80 出发的任何回退 | 4102 | 已签发样品不支持普通回退；报告已对外生效，请使用「作废 / 召回」 |
+| 从 S90 出发的任何回退 | 4103 | 已出报告不支持回退；数据已上报省平台，只能新增更正 / 作废记录 |
+| 敏感链路（含 S70→S60 任一级）权限不足 | 4104 | 敏感回退需要「业务管理员 / 系统管理员」权限 |
+| 敏感链路未二次确认 | 4105 | 敏感回退需二次确认 |
 | 原因缺失 | 4106 | 回退原因不能为空 |
 | 该回退不可再撤销 | 4107 | 该回退已产生新的下游数据，无法原路恢复；请重新前进 |
-| 并发状态已变更 | 4108 | 样品状态已变更，请刷新后重试 |
+| 并发状态已变更（某级乐观 UPDATE 影响 0 行） | 4108 | 样品状态已变更，请刷新后重试 |
 
----
+> ⚠️ **跨级不再是 4101 的理由**（2026-09-30 起）——4101 现在只表示「不可达」。
+> 前端不得把 4101 渲染成「请改走作废/召回」：那是 4102/4103 的语义。
+
 
 ## 18. 报告作废/召回域 `/api/report/void`（feature B，T02 已落地）
 

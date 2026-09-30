@@ -25,6 +25,12 @@ public class RollbackHistoryVO {
 
     private String toStatusLabel;
 
+    /** 回退批次号（一次用户操作 = 一个批次；跨级回退的各级流水共用） */
+    private String batchNo;
+
+    /** 本次回退的级数（1 = 单级；>1 = 跨级链式） */
+    private Integer stepCount;
+
     private Integer edgeGroup;
 
     private String edgeGroupLabel;

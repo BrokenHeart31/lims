@@ -22,6 +22,7 @@ import {
   type ReportTypeCode,
 } from '@/api/report'
 import PageHeader from '@/components/common/PageHeader.vue'
+import ReportVoidButton from '@/components/rollback/ReportVoidButton.vue'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
@@ -29,6 +30,19 @@ import DataFilter from '@/components/common/DataFilter.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import { askConfirm } from '@/utils/confirm'
 import { sampleStatusInfo, type SampleTone } from '@/utils/sampleStatus'
+
+/**
+ * 状态范围说明（本页只出现本环节经手的两个状态，其余一律不出现）
+ * ----------------------------------------------------------------------------
+ *   本页 = S80 已签发 / S90 已出报告（由后端筛选，页面无状态筛选器，也不出现上游状态）。
+ * ⚠️ **本页刻意没有「回退」入口**：S80/S90 在状态机里**物理上没有回退出边**
+ * （`SampleStatusTransition.ROLLBACK` 不含这两个状态的出发边），能退回去就意味着
+ * 「已对外生效的报告被悄悄改写」，与资质合规冲突。本页提供的是**替代动作**：
+ * 「作废 / 召回」——`status` 不变、只写治理标记与一条状态流水（report:void 权限 + 二次确认）。
+ */
+function onVoidDone(): void {
+  void load()
+}
 
 const router = useRouter()
 
@@ -352,7 +366,7 @@ onMounted(() => {
           </el-table-column>
           <el-table-column
             label="操作"
-            width="130"
+            width="210"
             fixed="right"
             align="center"
           >
@@ -374,6 +388,12 @@ onMounted(() => {
               >
                 生成报告
               </el-button>
+              <!-- S80/S90 无回退路径：替代动作是「作废 / 召回」（治理标记，不改 status） -->
+              <ReportVoidButton
+                :sample-no="rowItem(row).sampleNo"
+                :status="rowItem(row).status"
+                @done="onVoidDone"
+              />
             </template>
           </el-table-column>
           <template #empty>

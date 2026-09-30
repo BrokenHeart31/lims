@@ -58,8 +58,12 @@ public final class SampleStatusTransition {
     /**
      * 回退白名单（纠错，独立于 {@link #VALID} 与 {@link #RETURN}，2026-09-17 新增）。
      *
-     * <p>只允许**逐级**回退（每次退一步，PRD T4）。被拒边（S80→S70、S90→S80）
-     * **不在此表**——它们由 {@link RollbackEdgePolicy#rejectReason} 给出专门业务码 4102/4103。</p>
+     * <p>只允许**逐级**回退（每次退一步，PRD T4）。被拒边（S80/S90 出发）**不在此表**——
+     * 它们由 {@link RollbackEdgePolicy#rejectReason} 给出专门业务码 4102/4103。</p>
+     *
+     * <p>⚠️ 2026-09-30：跨级回退（如 S40→S10）**不在此表新增任何直接边**——
+     * 它由 {@link RollbackEdgePolicy#chain} 沿本表逐级推导（S40→S30→S20→S10）后
+     * 由服务层逐级执行。本表始终是「一步」的权威，边集合保持恒定。</p>
      *
      * <pre>
      *   常规（未签发）  S20→S10、S30→S20、S40→S30、S50→S40、S60→S50
@@ -208,7 +212,7 @@ public final class SampleStatusTransition {
     public static void assertRollback(SampleStatus from, SampleStatus to) {
         if (!canRollback(from, to)) {
             throw new BizException(4101,
-                    "样品状态不允许从「" + label(from) + "」回退至「" + label(to) + "」（回退仅支持逐级）");
+                    "样品状态不允许从「" + label(from) + "」回退至「" + label(to) + "」（单次回退只能退一级）");
         }
     }
 

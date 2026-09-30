@@ -250,6 +250,37 @@ git commit -q -F /c/Users/Chen/AppData/Local/Temp/commit.msg
 > 会因「基于旧内容写回」互相覆盖，出现「Edit 报成功但改动消失」——本轮实测踩到，
 > 表现为编译报 `找不到符号 XXX`（常量声明被另一条 Edit 抹掉）。
 
+### 规则 7.5（🔴 本轮实测，极易造成大面积误删）：**禁用 `git rm`，改用普通 `rm`**
+
+**现象（2026-09-30 实测，两次复现）**：在 `D://lims` 执行
+
+```bash
+git rm -q -- "frontend/src/views/rollback/index.vue"
+```
+
+**返回 exit=0，却把 `frontend/src/` 下除 `views/` 外的全部文件删掉**
+（`App.vue`/`api/**`/`components/**`/`router/**`/`stores/**`/`styles/**`/`types/**`/`utils/**`/
+`directives/**`/`layouts/**`/`main.ts`/`vite-env.d.ts`）。`git status` 随后列出一大片 ` D`。
+第二次在 `git checkout HEAD -- <dir>` 恢复后再执行同一条 `git rm`，又把 `views/` 整个删掉。
+
+**根因**：本沙箱对 git 的**树/索引写入**存在拦截（同规则 1 的 ref 被吞、规则 8 的对象缺失同源），
+`git rm` 在改写索引与工作区时路径解析异常，把**父目录整棵**当成删除目标。
+
+**处理（强制）**：
+1. **删除文件一律用普通 `rm -f <精确文件路径>`**，不碰 git 的删除入口；
+   git 会自动把该文件识别为 ` D`，效果与 `git rm` 等价。
+2. 误删后的**唯一正确恢复**：`git checkout HEAD -- <目录>`（**不要**用 `git reset --hard`，那会连同本轮
+   未提交的正确改动一起丢）。恢复后立即 `git status --short | grep -c '^ D'` 应为 0。
+3. **任何 git 写操作后立刻验盘**（`ls` + `git status --short`）。本轮就是靠「Edit 报
+   File not found」才发现的——若当时直接提交，就会复刻 4070ea6 的 118 文件误删事故。
+
+```bash
+# ✅ 正确
+rm -f frontend/src/views/rollback/index.vue
+# ❌ 禁止
+git rm -q frontend/src/views/rollback/index.vue
+```
+
 ### 规则 8（🔴 高价值）：对象库损坏时 `git fetch` 修不好，必须「镜像克隆取 pack」
 
 **症状**：`git status` 报 `unable to read tree <hash>`；`git branch -v` 报

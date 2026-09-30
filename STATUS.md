@@ -2,6 +2,55 @@
 
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
+## 2026-09-30 回退机制改造 + 状态展示精简（GLM / 用户指令，**超出说明书范围的增量**）
+
+- **两条任务**：
+  1. **回退机制改造**（原「独立功能区」→ **环节内嵌 + 可选目标步（跨级链式） + 同环节批量**）：
+     独立页面/路由/侧栏菜单**全部移除**；回退入口下沉到 样品登记(S20) / 项目分解(S30) /
+     任务安排(S40) / 结果录入(S50) / 报告审核(S60·S70)；**S80/S90 依旧无回退入口**（只留作废/召回）。
+  2. **状态展示精简**：各业务页只展示本环节经手的状态；**第 9 章全局查询页为唯一有意例外**（已注释说明）。
+- **不变式③重新定义**（链式回退的必然结果，已落库成列）：
+  **一次回退操作 = 1 个回退批次（`sample_rollback` 1 行：from=起点 / to=最终目标步 / `step_count`=级数）
+  + 每级各 1 条 `sample_status_log(event_type=4)`，同 `batch_no`**。
+  事务：**单样品整链一个事务**（任一级失败整体回滚）；**批量逐条独立事务**（`RollbackExecutor` 独立 Bean + `REQUIRES_NEW`）。
+  不变式①②④逐级保持（每级先乐观 UPDATE 再同事务处置下游；失效一律 `SampleDataDisposer.set(deleted,id)`）。
+- **红线遵守**：状态机 `ROLLBACK` 白名单**一行未改**（边集合恒定，跨级靠 `RollbackEdgePolicy.chain()` 组合）；
+  未引入新依赖；AI 不碰判定引擎。
+- **本轮占用**：
+  - 后端**新增**：`service/rollback/{RollbackExecutor,SampleFieldSnapshot}.java`、
+    `vo/{RollbackTargetsVO,RollbackBatchResultVO}.java`、`src/test/.../rollback/RollbackExecutorTest.java`
+  - 后端**修改**：`common/enums/{RollbackEdgePolicy,SampleStatusTransition}.java`、`common/ResultCode.java`、
+    `controller/RollbackController.java`、`dto/RollbackExecuteDTO.java`、
+    `entity/{SampleRollback,SampleStatusLog}.java`、`service/{RollbackService,SampleStatusLogService}.java`、
+    `service/impl/{RollbackServiceImpl,SampleStatusLogServiceImpl}.java`、
+    `service/rollback/{RollbackPlanner,RollbackScope}.java`、
+    `vo/{RollbackActionResultVO,RollbackHistoryVO,RollbackPreviewVO,RollbackTimelineVO}.java`、
+    `src/test/.../{common/enums/RollbackEdgePolicyTest,service/impl/RollbackServiceImplTest}.java`
+  - 数据：**新增** `db/migrations/V11__rollback_batch_and_menu.sql`；**修改** `db/init/10_rollback_tables.sql`、
+    `db/seed/01_rbac_seed.sql`、`db/seed/04_rbac_ai_rollback_seed.sql`
+  - 前端**删除**：`views/rollback/index.vue`（+ `router/routeRegistry.ts` 登记移除）
+  - 前端**新增**：`components/rollback/{RollbackTraceDrawer,ReportVoidButton}.vue`
+  - 前端**修改**：`components/rollback/{RollbackDialog,RollbackEntryButton}.vue`、`api/rollback.ts`、
+    `types/rollback.ts`、`router/routeRegistry.ts`、
+    `views/{sample,item,assign,result}/index.vue`、`views/report/{audit,generate}.vue`、
+    `views/query/{testing,history,library}.vue`
+  - 资产：`docs/journal/2026-09-30-glm-rollback-embed-and-status-scope.md`、
+    `.agents/skills/sandbox-git-push/SKILL.md`（**+规则 7.5**）、契约第 17 章、治理文件
+- **质量门禁（自行复现）**：后端 `mvn -o test` **252/252 BUILD SUCCESS**；
+  前端 `vue-tsc` 0 错误 / `eslint` 0 错误 0 警告 / `vite build` 成功。
+- **活库已应用**：`V11` 执行并二次执行验证**幂等**；校验 SELECT 全中
+  （菜单 13 已删、无孤儿授权、131~134 根级隐藏保留、无 `/rollback` 路径残留）。
+- **⚠️ 本轮一起处理的两个「能力存在但入口缺失/将变死代码」**：
+  ① 作废/召回（`report:void`）此前**无任何页面调用** → 已补到「报告生成」页；
+  ② 时间线 + 撤销回退原只挂在被删的独立页 → 收进 `RollbackTraceDrawer`，由业务页「留痕」入口打开。
+- **🔴 本轮事故与修复**：`git rm` 在本沙箱会把**父目录整棵删掉**（实测两次，`frontend/src/**` 与 `views/`
+  各一次），已用 `git checkout HEAD -- frontend/src` **全量恢复并验盘（` D` 计数 = 0）**，
+  事故与防复发规则写入 skill `sandbox-git-push` 规则 7.5。**禁用 `git rm`**。
+- **⚠️ 需人工确认**：真实浏览器点一遍内嵌回退（含跨级、批量、S70 敏感二次确认、无权账号 403）。
+- **契约章节勘误**：用户指令写「第 16 章」，实际**流程回溯域是第 17 章**（第 16 章为 AI 助手域），
+  本轮更新的是第 17 章。
+- **进度**：**维持 99%**（增量改造按 DECISIONS 2026-09-17 口径不计入说明书完成度分母）。
+
 ## 2026-09-18 18:05 合并固化（GLM / 用户指令）
 
 - **`agent/glm` → `develop` → `main` 已全部合并并推送**，三分支同 hash **`9d23e64`**（父 `09d5c9c`）。

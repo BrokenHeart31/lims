@@ -255,14 +255,13 @@ export const ROUTE_REGISTRY: RouteEntry[] = [
     autoRegister: true,
   },
 
-  // ---------------- 流程回溯（feature B，seed 菜单 13） ----------------
-  {
-    path: '/rollback',
-    name: 'rollback',
-    component: () => import('@/views/rollback/index.vue'),
-    title: '流程回溯',
-    permissions: ['rollback:view'],
-  },
+  // ---------------- 流程回溯：**没有独立页面**（2026-09-30 改造） ----------------
+  // 回退能力已下沉到各业务页面**内嵌**（哪个环节能回退，入口就只出现在哪个环节）：
+  //   样品登记(S20) / 项目分解(S30) / 任务安排(S40) / 结果录入(S50) / 报告审核(S70)
+  // 因此这里**刻意不再登记** `/rollback` 路由——它与「独立功能区」一起被移除，
+  // 侧栏菜单节点 id=13 亦已在 db/migrations/V11 中删除（权限位 131~134 保留）。
+  // 留痕（时间线）与撤销回退由 components/rollback/RollbackTraceDrawer 就地提供。
+
 
   // ---------------- 布局之外的独立页面 ----------------
   {

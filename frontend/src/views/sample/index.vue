@@ -23,6 +23,8 @@ import {
 import { sampleStatusInfo } from '@/utils/sampleStatus'
 import { confirm } from '@/utils/confirm'
 import PageHeader from '@/components/common/PageHeader.vue'
+import RollbackEntryButton from '@/components/rollback/RollbackEntryButton.vue'
+import type { RollbackBatchResultVO } from '@/types/rollback'
 import { useAiAssistantStore } from '@/stores/aiAssistant'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
@@ -181,6 +183,25 @@ async function copyErrorList(): Promise<void> {
   } catch {
     ElMessage.warning('浏览器禁止剪贴板访问，请手动选择复制')
   }
+}
+
+// ---------------- 回退（S20 → S10，本环节内嵌） ----------------
+//
+// 状态范围说明（本页只出现本环节经手的两个状态，其余一律不出现）：
+//   S10 已登记（刚导入，待登记确认）→ S20 登记确认（已确认，待项目分解）
+// 回退入口**只对 S20 可见**：S10 是流程起点，物理上没有回退路径（RollbackEdgePolicy 白名单无出边），
+// 因此不给它渲染入口，而不是渲染一个点了必然失败的按钮。
+const rollbackRows = computed(() =>
+  selection.value.filter((row) => row.status === 20 && row.id != null),
+)
+
+function rollbackRefs(rows: Sample[]): { id: number; sampleNo?: string; status?: number }[] {
+  return rows.map((row) => ({ id: row.id as number, sampleNo: row.sampleNo ?? undefined, status: row.status }))
+}
+
+/** 回退后刷新列表（成功与部分失败都需要刷新：成功的行状态已变） */
+function onRollbackDone(_result: RollbackBatchResultVO): void {
+  void loadList()
 }
 
 // ---------------- 登记确认 (S10→S20) ----------------
@@ -428,6 +449,16 @@ onMounted(() => {
           >
             批量登记确认
           </el-button>
+          <!-- 批量回退（本环节：S20 → S10）。勾选项里没有 S20 时禁用并说明，不静默失败 -->
+          <RollbackEntryButton
+            :samples="rollbackRefs(rollbackRows)"
+            :disabled="rollbackRows.length === 0"
+            :link="false"
+            size="default"
+            label="批量回退"
+            :show-trace="false"
+            @done="onRollbackDone"
+          />
         </div>
       </div>
 
@@ -530,6 +561,13 @@ onMounted(() => {
               >
                 详情
               </el-button>
+              <!-- 回退入口只出现在「登记确认(S20)」行：本环节才可能退回到「已登记(S10)」 -->
+              <RollbackEntryButton
+                v-if="(row as Sample).status === 20"
+                :samples="rollbackRefs([row as Sample])"
+                :label="'回退'"
+                @done="onRollbackDone"
+              />
             </template>
           </el-table-column>
           <template #empty>

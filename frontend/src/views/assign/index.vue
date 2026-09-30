@@ -35,6 +35,8 @@ import {
   type AssignPendingRow,
 } from '@/api/assign'
 import PageHeader from '@/components/common/PageHeader.vue'
+import RollbackEntryButton from '@/components/rollback/RollbackEntryButton.vue'
+import type { RollbackBatchResultVO } from '@/types/rollback'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
@@ -67,6 +69,28 @@ const query = reactive({ sampleNo: '', sampleName: '' })
 const loading = ref(false)
 const tableData = ref<AssignPendingRow[]>([])
 const total = ref(0)
+const selectedRows = ref<AssignPendingRow[]>([])
+
+/**
+ * 状态范围说明（本页只出现「已分解(S30)」这一种状态，其余一律不出现）
+ * ----------------------------------------------------------------------------
+ * 列表由后端 `/assign/pending` 收敛为「待安排」= S30；S20 尚在分解环节、S40 之后已离开本环节。
+ * 故本页不存在状态筛选器与跨环节状态统计；回退入口只对 S30 行渲染（本环节可退回到 S20）。
+ * 退到更早的 S10 属于**分解环节**的语义（用户在「项目分解」页把 S20 退到 S10），
+ * 从而保证「哪个环节能回退，入口就只出现在哪个环节」。
+ */
+function rollbackRefs(rows: AssignPendingRow[]): { id: number; sampleNo?: string; status?: number }[] {
+  return rows.map((row) => ({ id: row.id, sampleNo: row.sampleNo, status: row.status }))
+}
+
+function handleSelectionChange(rows: AssignPendingRow[]): void {
+  selectedRows.value = rows
+}
+
+/** 回退后刷新待安排列表 */
+function onRollbackDone(_result: RollbackBatchResultVO): void {
+  void loadPending()
+}
 const current = ref(1)
 const size = ref(10)
 
@@ -322,6 +346,24 @@ onMounted(() => {
       variant="panel"
       :padding="16"
     >
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <span class="toolbar-title">待安排样品（已分解 S30）</span>
+          <span class="toolbar-sub">共 {{ total }} 条 · 已选 {{ selectedRows.length }} 条</span>
+        </div>
+        <div class="toolbar-right">
+          <!-- 批量回退（本环节：S30 → S20）。未勾选时禁用 -->
+          <RollbackEntryButton
+            :samples="rollbackRefs(selectedRows)"
+            :disabled="selectedRows.length === 0"
+            :link="false"
+            size="default"
+            label="批量回退"
+            :show-trace="false"
+            @done="onRollbackDone"
+          />
+        </div>
+      </div>
       <DataTable
         :rows="tableData"
         :loading="loading"
@@ -337,7 +379,13 @@ onMounted(() => {
         <el-table
           :data="tableData"
           stripe
+          @selection-change="handleSelectionChange"
         >
+          <el-table-column
+            type="selection"
+            width="46"
+            reserve-selection
+          />
           <el-table-column
             prop="sampleNo"
             label="样品编号"
@@ -383,7 +431,7 @@ onMounted(() => {
           </el-table-column>
           <el-table-column
             label="操作"
-            width="110"
+            width="190"
             fixed="right"
             align="center"
           >
@@ -395,6 +443,12 @@ onMounted(() => {
               >
                 任务安排
               </el-button>
+              <!-- 回退入口只出现在本环节：已分解（S30）可退回到「登记确认(S20)」 -->
+              <RollbackEntryButton
+                v-if="(row as AssignPendingRow).status === 30"
+                :samples="rollbackRefs([row as AssignPendingRow])"
+                @done="onRollbackDone"
+              />
             </template>
           </el-table-column>
           <template #empty>
@@ -719,6 +773,33 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 400;
   color: var(--lims-text-secondary);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lims-sp-3);
+  padding: 4px 0 12px;
+}
+.toolbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar-title {
+  color: var(--lims-ink);
+  font-size: var(--lims-fs-sm);
+  font-weight: 600;
+}
+.toolbar-sub {
+  color: var(--lims-text-secondary);
+  font-size: 12px;
 }
 
 .tester-cell {

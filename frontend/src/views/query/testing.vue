@@ -18,6 +18,19 @@ import DataFilter from '@/components/common/DataFilter.vue'
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'pending' | 'neutral'
 
 /** 在检样品可选状态（10..70，排除已签发/已出报告） */
+/**
+ * ⚠️ **本页是「状态展示收敛」原则的**唯一有意例外**（2026-09-30，需求原文允许）**
+ * ----------------------------------------------------------------------------
+ * 其余业务页一律只展示本环节经手的状态（哪个环节能回退，入口就只出现在哪个环节；
+ * 与环节无关的状态不得出现在筛选器/统计/标签里）。但**本页（第 9 章全局查询域）的定位是
+ * 「跨环节追溯查询」**——它的用途恰恰是「一个样品从 S10 一路走到 S70 现在卡在哪一步」，
+ * 因此必须保留跨环节的状态筛选，否则这个页面的存在意义就被抽掉了。
+ *
+ * 为把「有意例外」与「漏收敛」区分开，这里两条硬约束：
+ *   ① 选项只能来自 `SAMPLE_STATUS_OPTIONS`（后端 SampleStatus 的镜像），不得手写状态；
+ *   ② 范围由本接口的语义决定：在检 = status ≤ 70（未出报告），与后端 `/query/testing`
+ *      的筛选口径逐字对应——状态选项范围与接口范围**必须同源**，不允许各写一套。
+ */
 const INSPECTING_STATUS_OPTIONS = SAMPLE_STATUS_OPTIONS.filter((o) => o.code <= 70)
 
 const query = reactive({

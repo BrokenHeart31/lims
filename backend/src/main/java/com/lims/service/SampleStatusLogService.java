@@ -19,7 +19,11 @@ import java.util.List;
 public interface SampleStatusLogService {
 
     /**
-     * 追加一条状态流水（调用方须在**同一事务**内、且状态 UPDATE 已成功之后调用）。
+     * 追加一条状态流水（**无回退批次号**的便捷重载）。
+     *
+     * <p>既有 9 处状态流转（正向 / 退回 / 签发 / 报告）没有「批次」概念，直接走本重载
+     * （内部转调带 {@code batchNo} 的实现并传 {@code null}），因此本次回退改造
+     * **零改动既有调用点**。</p>
      *
      * @param sample      样品（取 id / sampleNo；须非空）
      * @param eventType   事件类型（正向/退回/签发/回退/恢复/作废/报告）
@@ -31,8 +35,20 @@ public interface SampleStatusLogService {
      * @param rollbackId  关联 sample_rollback.id（回退/恢复事件），其余传 null
      * @param disposition 下游数据处置摘要，无则传 null
      */
+    default void append(Sample sample, StatusEventType eventType, SampleStatus from, SampleStatus to,
+                        String actionLabel, String reason, String source, Long rollbackId, String disposition) {
+        append(sample, eventType, from, to, actionLabel, reason, source, rollbackId, null, disposition);
+    }
+
+    /**
+     * 追加一条状态流水（调用方须在**同一事务**内、且状态 UPDATE 已成功之后调用）。
+     *
+     * @param batchNo 回退批次号（仅回退/恢复事件非空；同一次回退的各级流水共用，
+     *                用于把跨级回退的 N 条流水圈成「一次用户操作」）
+     */
     void append(Sample sample, StatusEventType eventType, SampleStatus from, SampleStatus to,
-                String actionLabel, String reason, String source, Long rollbackId, String disposition);
+                String actionLabel, String reason, String source, Long rollbackId, String batchNo,
+                String disposition);
 
     /**
      * 按样品查询全链路事件（时间线），按 id 升序（发生顺序）。

@@ -15,6 +15,8 @@ import {
 } from '@/api/item'
 import { confirm } from '@/utils/confirm'
 import PageHeader from '@/components/common/PageHeader.vue'
+import RollbackEntryButton from '@/components/rollback/RollbackEntryButton.vue'
+import type { RollbackBatchResultVO } from '@/types/rollback'
 import { useAiAssistantStore } from '@/stores/aiAssistant'
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
@@ -37,6 +39,26 @@ const query = reactive({ sampleNo: '', sampleName: '' })
 const loading = ref(false)
 const tableData = ref<ItemPendingRow[]>([])
 const total = ref(0)
+const selectedRows = ref<ItemPendingRow[]>([])
+
+/**
+ * 状态范围说明（本页只出现「登记确认(S20)」这一种状态，其余一律不出现）
+ * ----------------------------------------------------------------------------
+ * 本页列表由后端 `/item/pending` 收敛为「待分解」= S20；S10 尚在登记环节、S30 之后已离开本环节，
+ * 故本页不存在状态筛选器与跨环节状态统计。回退入口只对 S20 行渲染（本环节可退回到 S10）。
+ */
+function rollbackRefs(rows: ItemPendingRow[]): { id: number; sampleNo?: string; status?: number }[] {
+  return rows.map((row) => ({ id: row.id, sampleNo: row.sampleNo, status: row.status }))
+}
+
+function handleSelectionChange(rows: ItemPendingRow[]): void {
+  selectedRows.value = rows
+}
+
+/** 回退后刷新待分解列表（成功的行已回到登记环节，不再属于本页） */
+function onRollbackDone(_result: RollbackBatchResultVO): void {
+  void loadPending()
+}
 const current = ref(1)
 const size = ref(10)
 
@@ -375,7 +397,19 @@ onMounted(() => {
       <div class="toolbar">
         <div class="toolbar-left">
           <span class="toolbar-title">待分解样品（登记确认 S20）</span>
-          <span class="toolbar-sub">共 {{ total }} 条</span>
+          <span class="toolbar-sub">共 {{ total }} 条 · 已选 {{ selectedRows.length }} 条</span>
+        </div>
+        <div class="toolbar-right">
+          <!-- 批量回退（本环节：S20 → S10）。未勾选时禁用 -->
+          <RollbackEntryButton
+            :samples="rollbackRefs(selectedRows)"
+            :disabled="selectedRows.length === 0"
+            :link="false"
+            size="default"
+            label="批量回退"
+            :show-trace="false"
+            @done="onRollbackDone"
+          />
         </div>
       </div>
       <DataTable
@@ -396,7 +430,13 @@ onMounted(() => {
           border
           stripe
           height="calc(100vh - 360px)"
+          @selection-change="handleSelectionChange"
         >
+          <el-table-column
+            type="selection"
+            width="46"
+            reserve-selection
+          />
           <el-table-column
             type="index"
             label="#"
@@ -470,7 +510,7 @@ onMounted(() => {
           </el-table-column>
           <el-table-column
             label="操作"
-            width="110"
+            width="190"
             fixed="right"
             align="center"
           >
@@ -482,6 +522,12 @@ onMounted(() => {
               >
                 项目分解
               </el-button>
+              <!-- 回退入口只出现在本环节：待分解（S20）可退回到「已登记(S10)」 -->
+              <RollbackEntryButton
+                v-if="(row as ItemPendingRow).status === 20"
+                :samples="rollbackRefs([row as ItemPendingRow])"
+                @done="onRollbackDone"
+              />
             </template>
           </el-table-column>
           <template #empty>

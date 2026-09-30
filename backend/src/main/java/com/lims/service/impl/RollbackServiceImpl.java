@@ -3,16 +3,11 @@ package com.lims.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lims.common.PageResult;
 import com.lims.common.ResultCode;
-import com.lims.common.enums.ArchiveTarget;
 import com.lims.common.enums.RollbackEdgePolicy;
 import com.lims.common.enums.RollbackGroup;
 import com.lims.common.enums.SampleStatus;
-import com.lims.common.enums.SampleStatusTransition;
-import com.lims.common.enums.StatusEventType;
 import com.lims.common.exception.BizException;
 import com.lims.dto.RollbackExecuteDTO;
 import com.lims.dto.RollbackHistoryQueryDTO;
@@ -30,14 +25,18 @@ import com.lims.mapper.SampleRollbackMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.RollbackService;
 import com.lims.service.SampleStatusLogService;
+import com.lims.service.rollback.RollbackExecutor;
 import com.lims.service.rollback.RollbackPlanner;
-import com.lims.service.rollback.RollbackScope;
 import com.lims.service.rollback.SampleDataDisposer;
+import com.lims.service.rollback.SampleFieldSnapshot;
 import com.lims.vo.RollbackActionResultVO;
+import com.lims.vo.RollbackBatchResultVO;
 import com.lims.vo.RollbackHistoryVO;
 import com.lims.vo.RollbackPreviewVO;
+import com.lims.vo.RollbackTargetsVO;
 import com.lims.vo.RollbackTimelineVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -45,36 +44,35 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
 
 /**
- * 流程回溯服务实现（feature B，T02）。
+ * 流程回溯服务实现（feature B，2026-09-30 改造为「环节内嵌 + 可选目标步 + 批量」）。
  *
- * <p><b>四条不变式（本类实现的全部依据，设计 §0 / §10-R3）</b>：</p>
- * <ol>
- *   <li>状态变更用**乐观条件 UPDATE**（{@code WHERE id=? AND status=旧值}），{@code updated==0} → 4108；</li>
- *   <li>下游**失效处置在状态 UPDATE 之后、同一事务内**（先锁定状态再处置下游）；</li>
- *   <li>一次回退后 {@code sample_status_log} **新增且仅新增 1 条** {@code event_type=4} 记录，
- *       其 {@code (from_status,to_status,rollback_id)} 与 {@code sample_rollback} 行一致；</li>
- *   <li>**绝不物理删除**任何业务历史；{@code sample_audit_log}/{@code sys_operation_log} 只增不改。</li>
- * </ol>
+ * <p><b>职责边界</b>：本类只做「读路径 + 批量编排」——目标步推导、影响预览、时间线、历史分页、
+ * 批量循环与逐条结果汇总。**真正的每次回退写操作在 {@link RollbackExecutor}**
+ * （独立 Bean，`REQUIRES_NEW` 事务），原因见该类注释（自调用不会开启新事务）。</p>
  *
- * <p><b>执行顺序</b>：白名单/策略校验 → 快照 sample_info → 插入 sample_rollback（取 rollbackId）
- * → 状态乐观 UPDATE（4108）→ 失效处置 → 回写失效摘要 → 追加流水。任一步失败整事务回滚。</p>
+ * <p><b>四条不变式的落点</b>：
+ * <ul>
+ *   <li>①②（乐观 UPDATE / 失效处置在状态变更之后且同事务）→ {@link RollbackExecutor}；</li>
+ *   <li>③（**每级恰好 1 条** {@code event_type=4} 流水 + 整批 1 行 {@code sample_rollback}）→ 同上；</li>
+ *   <li>④（绝不物理删除）→ {@link SampleDataDisposer}（本类不直接写明细/结果表）。</li>
+ * </ul>
+ * 本类**不持有** {@code SampleItemMapper}/{@code SampleResultMapper} 的写路径，只用于恢复前的
+ * 一致性护栏读取（{@link #hasNewDownstreamData}）。</p>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RollbackServiceImpl implements RollbackService {
 
-    /** 流水来源：回溯面板（与 SAMPLE/ITEM/ASSIGN/RESULT/AUDIT/REPORT 区分） */
-    private static final String SOURCE_ROLLBACK = "ROLLBACK_PANEL";
     /** can_recover = 是 */
     private static final int CAN_RECOVER = 1;
-    /** 已恢复 = 是 */
+    /** recovered = 是 */
     private static final int RECOVERED = 1;
 
     private final SampleMapper sampleMapper;
@@ -84,10 +82,70 @@ public class RollbackServiceImpl implements RollbackService {
     private final SampleDataDisposer disposer;
     private final SampleStatusLogService statusLogService;
     private final RollbackPlanner rollbackPlanner;
-    private final ObjectMapper objectMapper;
+    private final RollbackExecutor rollbackExecutor;
+    private final SampleFieldSnapshot sampleFieldSnapshot;
 
     // =========================================================================
-    // B2 预览（纯读，不落库）
+    // B7 可回退目标步 + 影响预览（纯读，不落库）
+    // =========================================================================
+
+    @Override
+    public RollbackTargetsVO targets(Long sampleId) {
+        Sample sample = requireSample(sampleId);
+        SampleStatus from = sample.getStatus();
+
+        RollbackTargetsVO vo = new RollbackTargetsVO();
+        vo.setSampleId(sample.getId());
+        vo.setSampleNo(sample.getSampleNo());
+        vo.setCurrentStatus(from.getCode());
+        vo.setCurrentStatusLabel(from.getLabel());
+
+        List<SampleStatus> reachable = RollbackEdgePolicy.reachableTargets(from);
+        vo.setRollbackAvailable(!reachable.isEmpty());
+        for (SampleStatus target : reachable) {
+            vo.getTargets().add(buildTarget(sample.getId(), from, target));
+        }
+
+        // 被拒说明：S80/S90 无任何回退路径，引导用户改走「作废 / 召回」
+        RollbackEdgePolicy.noPathHint(from).ifPresent(reject -> {
+            RollbackTargetsVO.Rejected item = new RollbackTargetsVO.Rejected();
+            item.setFrom(from.getCode());
+            item.setCode(reject.code());
+            item.setMsg(reject.msg());
+            vo.getRejected().add(item);
+        });
+        return vo;
+    }
+
+    private RollbackTargetsVO.Target buildTarget(Long sampleId, SampleStatus from, SampleStatus target) {
+        List<SampleStatus> chain = RollbackEdgePolicy.chain(from, target);
+        RollbackGroup group = RollbackEdgePolicy.chainGroup(from, chain);
+
+        RollbackTargetsVO.Target item = new RollbackTargetsVO.Target();
+        item.setStatus(target.getCode());
+        item.setStatusLabel(target.getLabel());
+        item.setStepCount(chain.size());
+        item.setChainCodes(RollbackEdgePolicy.chainCodes(chain));
+        item.setChainLabels(RollbackEdgePolicy.chainLabels(chain));
+        item.setChainText(RollbackEdgePolicy.chainText(from, chain));
+        item.setGroup(group == null ? null : group.getCode());
+        item.setGroupLabel(group == null ? null : group.getLabel());
+        item.setNeedSensitive(group == RollbackGroup.SENSITIVE);
+        item.setNeedSecondConfirm(group == RollbackGroup.SENSITIVE);
+
+        List<RollbackPreviewVO.Invalidation> invalidations =
+                rollbackPlanner.invalidationList(sampleId, from, chain);
+        item.setInvalidations(invalidations);
+        int total = invalidations.stream().mapToInt(RollbackPreviewVO.Invalidation::getCount).sum();
+        item.setInvalidatedTotal(total);
+        item.setHint(total == 0
+                ? "该回退仅回退状态，无下游数据需要处置。"
+                : "回退后将失效上述下游数据（保留留档，可撤销）。");
+        return item;
+    }
+
+    // =========================================================================
+    // B2 单目标步预览（纯读，不落库）
     // =========================================================================
 
     @Override
@@ -104,132 +162,78 @@ public class RollbackServiceImpl implements RollbackService {
         vo.setToStatus(to.getCode());
         vo.setToStatusLabel(to.getLabel());
 
-        RollbackGroup group = RollbackEdgePolicy.groupOf(from, to);
-        if (group == null) {
-            // 被拒边：allowed=false + code/msg（不抛 HTTP 错误，前端据此改走作废/召回）
-            RollbackEdgePolicy.RollbackReject reject = RollbackEdgePolicy.rejectReason(from, to)
-                    .orElse(new RollbackEdgePolicy.RollbackReject(
-                            ResultCode.ROLLBACK_ILLEGAL.getCode(), ResultCode.ROLLBACK_ILLEGAL.getMsg()));
+        var reject = RollbackEdgePolicy.rejectReason(from, to);
+        if (reject.isPresent()) {
+            // 被拒：allowed=false + code/msg（不抛 HTTP 错误，前端据此改走作废/召回）
             vo.setAllowed(false);
-            vo.setCode(reject.code());
-            vo.setMsg(reject.msg());
+            vo.setCode(reject.get().code());
+            vo.setMsg(reject.get().msg());
             vo.setIrreversible(from == SampleStatus.S80 || from == SampleStatus.S90);
-            vo.setHint(reject.msg());
+            vo.setHint(reject.get().msg());
             return vo;
         }
 
+        List<SampleStatus> chain = RollbackEdgePolicy.chain(from, to);
+        RollbackGroup group = RollbackEdgePolicy.chainGroup(from, chain);
         vo.setAllowed(true);
-        vo.setGroup(group.getCode());
-        vo.setGroupLabel(group.getLabel());
+        vo.setGroup(group == null ? null : group.getCode());
+        vo.setGroupLabel(group == null ? null : group.getLabel());
         vo.setReasonRequired(true);
         vo.setNeedSensitive(group == RollbackGroup.SENSITIVE);
-        vo.setNeedSecondConfirm(RollbackEdgePolicy.needSecondConfirm(from, to));
+        vo.setNeedSecondConfirm(group == RollbackGroup.SENSITIVE);
         vo.setIrreversible(false);
-        vo.setInvalidations(rollbackPlanner.invalidationList(sample.getId(), from, to));
+        vo.setStepCount(chain.size());
+        vo.setChainCodes(RollbackEdgePolicy.chainCodes(chain));
+        vo.setChainLabels(RollbackEdgePolicy.chainLabels(chain));
+        vo.setChainText(RollbackEdgePolicy.chainText(from, chain));
+        vo.setInvalidations(rollbackPlanner.invalidationList(sample.getId(), from, chain));
         vo.setHint(vo.getInvalidations().isEmpty()
                 ? "该回退仅回退状态，无下游数据需要处置；请填写原因后确认。"
-                : "回退后将失效上述下游数据（保留留档，可恢复）；请填写原因后确认。");
+                : "回退后将失效上述下游数据（保留留档，可撤销）；请填写原因后确认。");
         return vo;
     }
 
     // =========================================================================
-    // B3 执行回退
+    // B3 批量执行回退（逐条独立事务）
     // =========================================================================
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public RollbackActionResultVO execute(RollbackExecuteDTO dto) {
-        Sample sample = requireSample(dto.getSampleId());
-        SampleStatus from = sample.getStatus();
-        SampleStatus to = requireStatus(dto.getTargetStatus());
+    public RollbackBatchResultVO execute(RollbackExecuteDTO dto) {
+        SampleStatus target = requireStatus(dto.getTargetStatus());
+        List<Long> ids = dedupe(dto.getIds());
 
-        // ① 白名单（非法/跨级 → 4101）
-        SampleStatusTransition.assertRollback(from, to);
-        // ② 专门拒绝码（4102/4103）双保险：白名单已挡 S80/S90，此处再次显式拒绝
-        Optional<RollbackEdgePolicy.RollbackReject> reject = RollbackEdgePolicy.rejectReason(from, to);
-        if (reject.isPresent()) {
-            throw new BizException(reject.get().code(), reject.get().msg());
-        }
-        RollbackGroup group = RollbackEdgePolicy.groupOf(from, to);
+        RollbackBatchResultVO vo = new RollbackBatchResultVO();
+        vo.setTargetStatus(target.getCode());
+        vo.setTargetStatusLabel(target.getLabel());
+        vo.setTotal(ids.size());
 
-        // ③ 敏感边：权限 + 二次确认；④ 原因必填
-        if (group == RollbackGroup.SENSITIVE) {
-            if (!SecurityUtils.hasAuthority(RollbackEdgePolicy.PERM_SENSITIVE)) {
-                throw new BizException(ResultCode.ROLLBACK_SENSITIVE_FORBIDDEN.getCode(),
-                        ResultCode.ROLLBACK_SENSITIVE_FORBIDDEN.getMsg());
+        int success = 0;
+        int fail = 0;
+        for (Long sampleId : ids) {
+            try {
+                RollbackActionResultVO result = rollbackExecutor.executeOne(
+                        sampleId, target, dto.getReason(), dto.getSecondConfirmed());
+                vo.getItems().add(RollbackBatchResultVO.Item.ok(result.getSampleId(), result.getSampleNo(), result));
+                success++;
+            } catch (BizException e) {
+                // 业务失败：逐条留痕并回传可展示原因（绝不静默跳过）
+                vo.getItems().add(RollbackBatchResultVO.Item.fail(sampleId, null, e.getCode(), e.getMessage()));
+                fail++;
+            } catch (Exception e) {
+                // 非预期失败：同样逐条回传（否则用户会以为这条「没反应」）
+                log.warn("回退失败（非业务异常）：sampleId={}", sampleId, e);
+                vo.getItems().add(RollbackBatchResultVO.Item.fail(
+                        sampleId, null, ResultCode.ERROR.getCode(), "回退失败：" + e.getMessage()));
+                fail++;
             }
-            if (!Boolean.TRUE.equals(dto.getSecondConfirmed())) {
-                throw new BizException(ResultCode.ROLLBACK_SECOND_CONFIRM_REQUIRED.getCode(),
-                        ResultCode.ROLLBACK_SECOND_CONFIRM_REQUIRED.getMsg());
-            }
         }
-        if (!StringUtils.hasText(dto.getReason())) {
-            throw new BizException(ResultCode.ROLLBACK_REASON_REQUIRED.getCode(),
-                    ResultCode.ROLLBACK_REASON_REQUIRED.getMsg());
-        }
-
-        String operator = SecurityUtils.getUsername().orElse("system");
-        LocalDateTime now = LocalDateTime.now();
-
-        // ⑤ 快照 sample_info 相关字段（用于恢复）
-        String restoredJson = snapshotSample(sample);
-
-        // ⑥ 先插入 sample_rollback 取 rollbackId（供留档关联；状态 UPDATE 失败时整事务回滚）
-        SampleRollback rollback = new SampleRollback();
-        rollback.setSampleId(sample.getId());
-        rollback.setSampleNo(sample.getSampleNo());
-        rollback.setFromStatus(from);
-        rollback.setToStatus(to);
-        rollback.setEdgeGroup(group);
-        rollback.setReason(dto.getReason());
-        rollback.setSecondConfirmed(group == RollbackGroup.SENSITIVE && Boolean.TRUE.equals(dto.getSecondConfirmed()) ? 1 : 0);
-        rollback.setAffectedItemCount(0);
-        rollback.setAffectedResultCount(0);
-        rollback.setRestoredSampleJson(restoredJson);
-        rollback.setCanRecover(CAN_RECOVER);
-        rollback.setRecovered(0);
-        rollback.setOperatedBy(operator);
-        rollback.setOperatedAt(now);
-        rollbackMapper.insert(rollback);
-        Long rollbackId = rollback.getId();
-
-        // ⑦ 状态乐观 UPDATE（WHERE id=? AND status=旧值；updated==0 → 4108）
-        int updated = updateStatusOptimistic(sample, from, to);
-        if (updated == 0) {
-            throw new BizException(ResultCode.ROLLBACK_CONFLICT.getCode(),
-                    ResultCode.ROLLBACK_CONFLICT.getMsg());
-        }
-
-        // ⑧ 失效处置（必须在状态 UPDATE 之后、同一事务内）
-        Set<ArchiveTarget> scope = RollbackScope.targets(group, from, to);
-        SampleDataDisposer.DispositionResult disposition = new SampleDataDisposer.DispositionResult(0, 0, null);
-        if (RollbackScope.invalidatesItems(scope)) {
-            disposition = disposition.plus(disposer.invalidateItems(sample.getId(), rollbackId));
-        }
-        if (RollbackScope.invalidatesResults(scope)) {
-            disposition = disposition.plus(disposer.invalidateResults(sample.getId(), rollbackId));
-        }
-        if (RollbackScope.resetsAssignFields(scope)) {
-            disposition = disposition.plus(disposer.resetAssignFields(sample.getId(), rollbackId));
-        }
-
-        // ⑨ 回写失效摘要与计数
-        SampleRollback patch = new SampleRollback();
-        patch.setId(rollbackId);
-        patch.setAffectedItemCount(disposition.itemCount());
-        patch.setAffectedResultCount(disposition.resultCount());
-        patch.setInvalidatedSummary(disposition.summary());
-        rollbackMapper.updateById(patch);
-
-        // ⑩ 追加流水（恰好 1 条 event_type=ROLLBACK）
-        statusLogService.append(sample, StatusEventType.ROLLBACK, from, to,
-                "回退至" + to.getLabel(), dto.getReason(), SOURCE_ROLLBACK, rollbackId, disposition.summary());
-
-        return buildActionVO(sample, to, rollbackId, Boolean.TRUE, disposition);
+        vo.setSuccessCount(success);
+        vo.setFailCount(fail);
+        return vo;
     }
 
     // =========================================================================
-    // B4 恢复（撤销一次回退）
+    // B4 撤销回退（恢复）
     // =========================================================================
 
     @Override
@@ -239,11 +243,8 @@ public class RollbackServiceImpl implements RollbackService {
         if (rollback == null) {
             throw new BizException(400, "回退记录不存在: id=" + dto.getRollbackId());
         }
-        if (Objects.equals(rollback.getRecovered(), RECOVERED)) {
-            throw new BizException(ResultCode.ROLLBACK_NOT_RECOVERABLE.getCode(),
-                    ResultCode.ROLLBACK_NOT_RECOVERABLE.getMsg());
-        }
-        if (!Objects.equals(rollback.getCanRecover(), CAN_RECOVER)) {
+        if (Objects.equals(rollback.getRecovered(), RECOVERED)
+                || !Objects.equals(rollback.getCanRecover(), CAN_RECOVER)) {
             throw new BizException(ResultCode.ROLLBACK_NOT_RECOVERABLE.getCode(),
                     ResultCode.ROLLBACK_NOT_RECOVERABLE.getMsg());
         }
@@ -262,7 +263,9 @@ public class RollbackServiceImpl implements RollbackService {
         String operator = SecurityUtils.getUsername().orElse("system");
         LocalDateTime now = LocalDateTime.now();
 
-        // 状态从 to 回到 from（乐观条件）
+        // 状态从 to 一步回到 from（乐观条件）。
+        // 说明：跨级回退的「撤销」也是一步复位——它的语义是「把快照放回去」，不是业务推进，
+        // 因此不走 VALID 正向白名单，也不产生 N 条中间态流水（中间态从未被业务观察过）。
         Sample upd = new Sample();
         upd.setStatus(rollback.getFromStatus());
         int updated = sampleMapper.update(upd, new LambdaUpdateWrapper<Sample>()
@@ -276,7 +279,7 @@ public class RollbackServiceImpl implements RollbackService {
         // 恢复下游数据（deleted 复位 + 指派字段回填）
         SampleDataDisposer.DispositionResult disposition = disposer.restoreByRollback(rollback.getId());
         // 恢复被清空的 sample_info 字段（登记确认 / 审核信息）
-        restoreSampleFields(sample, rollback.getRestoredSampleJson());
+        sampleFieldSnapshot.restore(sample, rollback.getRestoredSampleJson());
 
         // 标记已恢复
         SampleRollback patch = new SampleRollback();
@@ -286,13 +289,28 @@ public class RollbackServiceImpl implements RollbackService {
         patch.setRecoverAt(now);
         rollbackMapper.updateById(patch);
 
-        // 追加流水（恢复事件）
-        statusLogService.append(sample, StatusEventType.RECOVER, rollback.getToStatus(), rollback.getFromStatus(),
-                "恢复至" + rollback.getFromStatus().getLabel(),
+        // 追加流水（恢复事件；与回退批次同批次号，便于时间线按批次聚合）
+        statusLogService.append(sample, com.lims.common.enums.StatusEventType.RECOVER,
+                rollback.getToStatus(), rollback.getFromStatus(),
+                "撤销回退至" + rollback.getFromStatus().getLabel(),
                 StringUtils.hasText(dto.getReason()) ? dto.getReason() : "撤销回退",
-                SOURCE_ROLLBACK, rollback.getId(), disposition.summary());
+                RollbackExecutor.SOURCE_ROLLBACK, rollback.getId(), rollback.getBatchNo(),
+                disposition.summary());
 
-        return buildActionVO(sample, rollback.getFromStatus(), rollback.getId(), Boolean.FALSE, disposition);
+        RollbackActionResultVO vo = new RollbackActionResultVO();
+        vo.setSampleId(sample.getId());
+        vo.setSampleNo(sample.getSampleNo());
+        vo.setStatus(rollback.getFromStatus().getCode());
+        vo.setStatusLabel(rollback.getFromStatus().getLabel());
+        vo.setRollbackId(rollback.getId());
+        vo.setBatchNo(rollback.getBatchNo());
+        vo.setStepCount(rollback.getStepCount());
+        vo.setChainText(rollback.getFromStatus().getLabel());
+        vo.setCanRecover(false);
+        vo.setAffectedItemCount(disposition.itemCount());
+        vo.setAffectedResultCount(disposition.resultCount());
+        vo.setInvalidatedSummary(disposition.summary());
+        return vo;
     }
 
     // =========================================================================
@@ -310,22 +328,24 @@ public class RollbackServiceImpl implements RollbackService {
         vo.setCurrentStatus(current.getCode());
         vo.setCurrentStatusLabel(current.getLabel());
 
-        Set<SampleStatus> allowed = SampleStatusTransition.rollbackAllowed(current);
-        vo.setCanRollbackTo(allowed.stream().map(SampleStatus::getCode).sorted().toList());
-        for (SampleStatus target : allowed) {
+        // 可达目标步（含跨级）：与 B7 同源，避免两处口径漂移
+        List<SampleStatus> reachable = RollbackEdgePolicy.reachableTargets(current);
+        vo.setCanRollbackTo(reachable.stream().map(SampleStatus::getCode).sorted().toList());
+        for (SampleStatus target : reachable) {
+            List<SampleStatus> chain = RollbackEdgePolicy.chain(current, target);
+            RollbackGroup group = RollbackEdgePolicy.chainGroup(current, chain);
             RollbackTimelineVO.Edge edge = new RollbackTimelineVO.Edge();
             edge.setFrom(current.getCode());
             edge.setTo(target.getCode());
-            RollbackGroup group = RollbackEdgePolicy.groupOf(current, target);
+            edge.setStepCount(chain.size());
             edge.setGroup(group == null ? null : group.getCode());
             edge.setGroupLabel(group == null ? null : group.getLabel());
             edge.setReasonRequired(true);
             vo.getRollbackEdges().add(edge);
         }
 
-        // 被拒边（静态参考列表，与样例一致）：S80→S70、S90→S80
-        addRejected(vo, SampleStatus.S80, SampleStatus.S70);
-        addRejected(vo, SampleStatus.S90, SampleStatus.S80);
+        // 被拒说明（静态参考）：S80/S90 出发
+        addRejected(vo, current);
 
         // 事件（按 id 升序）；回退/恢复事件补 canRecover/recovered
         List<SampleStatusLog> logs = statusLogService.timeline(sampleId);
@@ -366,28 +386,7 @@ public class RollbackServiceImpl implements RollbackService {
     // 内部实现
     // =========================================================================
 
-    /**
-     * 状态乐观条件 UPDATE；并清空该回退需要清空的「当前有效值」字段。
-     *
-     * <p>清空规则：回退到 S10 → 清 {@code confirmed_*}；S70→S60（敏感）→ 清 {@code audit_*}。
-     * MP 实体式 update 忽略 null 字段，故「清空」必须显式 {@code set(...)}。</p>
-     */
-    private int updateStatusOptimistic(Sample sample, SampleStatus from, SampleStatus to) {
-        LambdaUpdateWrapper<Sample> wrapper = new LambdaUpdateWrapper<Sample>()
-                .eq(Sample::getId, sample.getId())
-                .eq(Sample::getStatus, from);
-        if (to == SampleStatus.S10) {
-            wrapper.set(Sample::getConfirmedBy, null).set(Sample::getConfirmedAt, null);
-        }
-        if (from == SampleStatus.S70 && to == SampleStatus.S60) {
-            wrapper.set(Sample::getAuditBy, null).set(Sample::getAuditAt, null).set(Sample::getAuditOpinion, null);
-        }
-        Sample upd = new Sample();
-        upd.setStatus(to);
-        return sampleMapper.update(upd, wrapper);
-    }
-
-    /** 回退后又是否新建了明细 / 结果（恢复前的一致性护栏） */
+    /** 回退后又是否新建了明细 / 结果（撤销回退前的一致性护栏） */
     private boolean hasNewDownstreamData(SampleRollback rollback) {
         LocalDateTime since = rollback.getOperatedAt();
         Long newItems = sampleItemMapper.selectCount(new LambdaQueryWrapper<SampleItem>()
@@ -399,46 +398,14 @@ public class RollbackServiceImpl implements RollbackService {
         return (newItems != null && newItems > 0) || (newResults != null && newResults > 0);
     }
 
-    /** 快照 sample_info 中被回退可能覆盖的字段（JSON 文本） */
-    private String snapshotSample(Sample sample) {
-        SampleSnapshot snap = new SampleSnapshot();
-        snap.setStatus(sample.getStatus() == null ? null : sample.getStatus().getCode());
-        snap.setConfirmedBy(sample.getConfirmedBy());
-        snap.setConfirmedAt(sample.getConfirmedAt());
-        snap.setAuditBy(sample.getAuditBy());
-        snap.setAuditAt(sample.getAuditAt());
-        snap.setAuditOpinion(sample.getAuditOpinion());
-        snap.setSignBy(sample.getSignBy());
-        snap.setSignAt(sample.getSignAt());
-        snap.setVoidStatus(sample.getVoidStatus());
-        try {
-            return objectMapper.writeValueAsString(snap);
-        } catch (JsonProcessingException e) {
-            throw new BizException(500, "样品字段快照序列化失败：" + e.getOriginalMessage());
-        }
-    }
-
-    /** 恢复被回退清空的 sample_info 字段（登记确认 / 审核信息） */
-    private void restoreSampleFields(Sample sample, String restoredJson) {
-        if (!StringUtils.hasText(restoredJson)) {
-            return;
-        }
-        SampleSnapshot snap;
-        try {
-            snap = objectMapper.readValue(restoredJson, SampleSnapshot.class);
-        } catch (JsonProcessingException e) {
-            throw new BizException(500, "样品字段快照反序列化失败：" + e.getOriginalMessage());
-        }
-        sampleMapper.update(null, new LambdaUpdateWrapper<Sample>()
-                .eq(Sample::getId, sample.getId())
-                .set(Sample::getConfirmedBy, snap.getConfirmedBy())
-                .set(Sample::getConfirmedAt, snap.getConfirmedAt())
-                .set(Sample::getAuditBy, snap.getAuditBy())
-                .set(Sample::getAuditAt, snap.getAuditAt())
-                .set(Sample::getAuditOpinion, snap.getAuditOpinion())
-                .set(Sample::getSignBy, snap.getSignBy())
-                .set(Sample::getSignAt, snap.getSignAt())
-                .set(Sample::getVoidStatus, snap.getVoidStatus()));
+    private void addRejected(RollbackTimelineVO vo, SampleStatus current) {
+        RollbackEdgePolicy.noPathHint(current).ifPresent(reject -> {
+            RollbackTimelineVO.Rejected item = new RollbackTimelineVO.Rejected();
+            item.setFrom(current.getCode());
+            item.setCode(reject.code());
+            item.setMsg(reject.msg());
+            vo.getRejectedEdges().add(item);
+        });
     }
 
     private Map<Long, SampleRollback> loadRollbacks(List<SampleStatusLog> logs) {
@@ -456,17 +423,6 @@ public class RollbackServiceImpl implements RollbackService {
         return map;
     }
 
-    private void addRejected(RollbackTimelineVO vo, SampleStatus from, SampleStatus to) {
-        RollbackEdgePolicy.rejectReason(from, to).ifPresent(reject -> {
-            RollbackTimelineVO.Rejected item = new RollbackTimelineVO.Rejected();
-            item.setFrom(from.getCode());
-            item.setTo(to.getCode());
-            item.setCode(reject.code());
-            item.setMsg(reject.msg());
-            vo.getRejectedEdges().add(item);
-        });
-    }
-
     private RollbackTimelineVO.Event toEvent(SampleStatusLog log) {
         RollbackTimelineVO.Event event = new RollbackTimelineVO.Event();
         event.setId(log.getId());
@@ -480,6 +436,7 @@ public class RollbackServiceImpl implements RollbackService {
         event.setReason(log.getReason());
         event.setDataDisposition(log.getDataDisposition());
         event.setRollbackId(log.getRollbackId());
+        event.setBatchNo(log.getBatchNo());
         event.setSource(log.getSource());
         event.setOperatedBy(log.getOperatedBy());
         event.setOperatedAt(log.getOperatedAt());
@@ -495,6 +452,8 @@ public class RollbackServiceImpl implements RollbackService {
         vo.setFromStatusLabel(rollback.getFromStatusLabel());
         vo.setToStatus(rollback.getToStatus() == null ? null : rollback.getToStatus().getCode());
         vo.setToStatusLabel(rollback.getToStatusLabel());
+        vo.setBatchNo(rollback.getBatchNo());
+        vo.setStepCount(rollback.getStepCount());
         vo.setEdgeGroup(rollback.getEdgeGroup() == null ? null : rollback.getEdgeGroup().getCode());
         vo.setEdgeGroupLabel(rollback.getEdgeGroupLabel());
         vo.setReason(rollback.getReason());
@@ -510,19 +469,12 @@ public class RollbackServiceImpl implements RollbackService {
         return vo;
     }
 
-    private RollbackActionResultVO buildActionVO(Sample sample, SampleStatus status, Long rollbackId,
-                                                 Boolean canRecover, SampleDataDisposer.DispositionResult disposition) {
-        RollbackActionResultVO vo = new RollbackActionResultVO();
-        vo.setSampleId(sample.getId());
-        vo.setSampleNo(sample.getSampleNo());
-        vo.setStatus(status.getCode());
-        vo.setStatusLabel(status.getLabel());
-        vo.setRollbackId(rollbackId);
-        vo.setCanRecover(canRecover);
-        vo.setAffectedItemCount(disposition.itemCount());
-        vo.setAffectedResultCount(disposition.resultCount());
-        vo.setInvalidatedSummary(disposition.summary());
-        return vo;
+    /** 去重且保序：同一 id 出现两次会让「1 成功 + 1 失败(4108)」这种结果看起来像 bug */
+    private List<Long> dedupe(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BizException(400, "请至少选择一个样品");
+        }
+        return new ArrayList<>(new LinkedHashSet<>(ids));
     }
 
     private Sample requireSample(Long sampleId) {
@@ -542,28 +494,5 @@ public class RollbackServiceImpl implements RollbackService {
             throw new BizException(400, "非法的样品状态编码: " + code);
         }
         return status;
-    }
-
-    /** sample_info 关键字段快照（restored_sample_json 的结构） */
-    @lombok.Data
-    public static class SampleSnapshot {
-
-        private Integer status;
-
-        private String confirmedBy;
-
-        private LocalDateTime confirmedAt;
-
-        private String auditBy;
-
-        private LocalDateTime auditAt;
-
-        private String auditOpinion;
-
-        private String signBy;
-
-        private LocalDateTime signAt;
-
-        private Integer voidStatus;
     }
 }

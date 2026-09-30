@@ -172,7 +172,7 @@ class SampleStatusTransitionTest {
     }
 
     @Test
-    @DisplayName("★回退：跨级 / S80→S70 / S90→S80 一律拒绝（4101），终态与首态无出边")
+    @DisplayName("★回退（单步边）：跨级 / S80→S70 / S90→S80 均不在白名单（跨级由 RollbackEdgePolicy 链式组合），终态与首态无出边")
     void shouldRejectIllegalRollbacks() {
         assertAll(
                 // 跨级

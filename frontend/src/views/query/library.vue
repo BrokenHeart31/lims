@@ -15,6 +15,13 @@ import {
   type LibraryQueryRow,
 } from '@/api/query'
 import PageHeader from '@/components/common/PageHeader.vue'
+
+/**
+ * 状态范围说明：本页查询的是**项目标准库**（product_lib / product_lib_item），
+ * 与样品状态机无关，故页面内**不存在任何样品状态**（无筛选器、无状态标签、无统计）。
+ * 这与「每个业务页面只出现本环节可能经手的状态」是同一原则的两面：
+ * 无关的状态不得出现——哪怕只是「顺手多给一个下拉框」。
+ */
 import AppCard from '@/components/common/AppCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'

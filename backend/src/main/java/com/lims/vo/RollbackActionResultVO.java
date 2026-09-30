@@ -20,6 +20,15 @@ public class RollbackActionResultVO {
     /** 本次回退记录 id（恢复接口回传被恢复的 rollbackId） */
     private Long rollbackId;
 
+    /** 本次回退批次号（跨级回退时各级流水共用；与前端的「一次操作」一一对应） */
+    private String batchNo;
+
+    /** 本次回退实际执行的级数（1 = 单级；>1 = 跨级链式） */
+    private Integer stepCount;
+
+    /** 链路展示文案（如「已安排 → 已分解 → 已登记」） */
+    private String chainText;
+
     /** 本次回退是否仍可再撤销（未产生新下游数据时为 true） */
     private Boolean canRecover;
 

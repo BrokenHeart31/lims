@@ -19,6 +19,13 @@ import DataFilter from '@/components/common/DataFilter.vue'
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'pending' | 'neutral'
 
 /** 历史样品可选状态（80 已签发 / 90 已出报告） */
+/**
+ * ⚠️ **本页同属「状态展示收敛」的唯一有意例外（第 9 章全局查询域）**
+ * ----------------------------------------------------------------------------
+ * 历史查询的用途是「已交付样品的跨环节追溯」，保留全状态筛选是有意为之（见 testing.vue 同段说明）。
+ * 约束同源：选项只能来自 `SAMPLE_STATUS_OPTIONS`，范围与后端 `/query/history` 的筛选口径逐字对应
+ * （历史 = 已签发 / 已出报告，即 status ≥ 80）。
+ */
 const HISTORY_STATUS_OPTIONS = SAMPLE_STATUS_OPTIONS.filter((o) => o.code >= 80)
 
 const query = reactive({

@@ -1,32 +1,47 @@
 <script setup lang="ts">
 /**
- * RollbackDialog — 回退确认框（PRD B-05 / 设计 §5.5）。
+ * RollbackDialog — 环节内嵌回退确认框（PRD B-05 / 设计 §5.5，2026-09-30 改造）。
  *
- * 流程：打开 → 拉时间线取「可回退目标」→ 选目标 → 调 `preview`（下游影响）→ 填原因
- * → 必要时二次确认 → `execute`。确认框内**必须可见**：当前→目标、将失效的下游数据
- * （计数 + 清单）、原因必填、二次确认、不可逆提示；被拒边展示替代路径（作废/召回）。
+ * 改造要点：
+ *   1. **可选目标步**：不再只有「上一级」。目标步清单由后端
+ *      `GET /rollback/targets/{sampleId}` 一次返回（沿 ROLLBACK 白名单逐级可达的全部落点），
+ *      前端**不自行枚举状态**——否则状态机一改，前端就会给出后端不接受的选项。
+ *   2. **跨级链式**：选到跨级目标时，界面显式展示「检验中 → 已安排 → 已登记」这条链路与级数，
+ *      让用户知道系统会逐级执行（而不是「跳级」），避免对留痕形态产生误解。
+ *   3. **批量**：`samples` 可为多条样品；批量要求**同状态**（不同状态无法共用一个目标步），
+ *      状态不一致时前端直接阻断并说明原因（不猜、不静默丢）。
+ *   4. **影响预览来自后端**：`invalidations` 由 B7 接口给出（整链口径），前端只渲染不推算。
+ *   5. 敏感链路（含 S70→S60 任一级）需 `rollback:sensitive` + 二次确认；
+ *      前端 `v-permission` 只做显隐，**后端 `@PreAuthorize` 与服务层二次鉴权不变**。
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { getRollbackTimelineApi, previewRollbackApi } from '@/api/rollback'
-import { executeRollbackApi } from '@/api/rollback'
+import { executeRollbackApi, getRollbackTargetsApi } from '@/api/rollback'
 import type {
-  RollbackActionResultVO,
-  RollbackPreviewVO,
-  RollbackTimelineVO,
+  RollbackBatchResultVO,
+  RollbackSampleRef,
+  RollbackTarget,
+  RollbackTargetsVO,
 } from '@/types/rollback'
 import { sampleStatusInfo } from '@/utils/sampleStatus'
+import StatusBadge from '@/components/common/StatusBadge.vue'
 
-const props = defineProps<{
-  modelValue: boolean
-  sampleId: number
-  sampleNo?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    /** 批量入口：多条样品（单条回退传长度为 1 的数组） */
+    samples?: RollbackSampleRef[]
+    /** 单条入口的兼容写法（等价于 samples=[{id,sampleNo}]） */
+    sampleId?: number
+    sampleNo?: string
+  }>(),
+  { samples: undefined, sampleId: undefined, sampleNo: '' },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
-  (e: 'done', result: RollbackActionResultVO): void
+  (e: 'done', result: RollbackBatchResultVO): void
 }>()
 
 const authStore = useAuthStore()
@@ -36,74 +51,84 @@ const visible = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
-const timelineLoading = ref(false)
-const previewLoading = ref(false)
+/** 归一化后的待回退样品（单条写法 → 长度 1 的批量） */
+const items = computed<RollbackSampleRef[]>(() => {
+  if (props.samples && props.samples.length > 0) return props.samples
+  if (props.sampleId != null) return [{ id: props.sampleId, sampleNo: props.sampleNo }]
+  return []
+})
+
+/** 批量入口时参与的样品 id */
+const ids = computed(() => items.value.map((s) => s.id))
+
+/** 所选样品是否同状态（不同状态无法共用一个目标步） */
+const statuses = computed(() => Array.from(new Set(items.value.map((s) => s.status ?? -1))))
+const sameStatus = computed(() => statuses.value.length <= 1)
+
+const firstStatusLabel = computed(() => {
+  const s = items.value[0]?.status
+  return s == null ? '—' : sampleStatusInfo(s).label
+})
+
+const loading = ref(false)
 const submitting = ref(false)
-const timeline = ref<RollbackTimelineVO | null>(null)
+const targets = ref<RollbackTargetsVO | null>(null)
 const targetStatus = ref<number | undefined>(undefined)
-const preview = ref<RollbackPreviewVO | null>(null)
 const reason = ref('')
 const secondConfirmed = ref(false)
+/** 批量结果（仅在出现失败项时展示明细，成功项不打扰用户） */
+const batchResult = ref<RollbackBatchResultVO | null>(null)
+
+/** 当前选中的目标步 */
+const current = computed<RollbackTarget | undefined>(() =>
+  targets.value?.targets.find((t) => t.status === targetStatus.value),
+)
 
 /** 是否具备敏感回退权限 */
 const sensitiveAllowed = computed(() => authStore.hasPermission('rollback:sensitive'))
 
-/** 可回退目标（逐级） */
-const targets = computed(() => {
-  const tl = timeline.value
-  if (!tl) return []
-  return tl.canRollbackTo.map((code) => ({
-    code,
-    label: sampleStatusInfo(code).label,
-  }))
-})
+/** 是否必须二次确认（敏感链路） */
+const needSecond = computed(() => !!current.value && current.value.needSecondConfirm)
 
-/** 是否必须二次确认（敏感边 / 服务端要求） */
-const needSecond = computed(
-  () => !!preview.value && (preview.value.needSecondConfirm || preview.value.needSensitive),
-)
-
+/** 可提交：同状态 + 有目标步 + 原因非空 + 敏感项已确认且有权 */
 const canSubmit = computed(() => {
-  const p = preview.value
-  if (!p || !p.allowed || targetStatus.value == null) return false
-  if (p.reasonRequired && !reason.value.trim()) return false
-  if (needSecond.value && !secondConfirmed.value) return false
-  if (p.needSensitive && !sensitiveAllowed.value) return false
+  const t = current.value
+  if (!t || !sameStatus.value) return false
+  if (!reason.value.trim()) return false
+  if (t.needSensitive && !sensitiveAllowed.value) return false
+  if (t.needSecondConfirm && !secondConfirmed.value) return false
   return true
 })
 
-async function loadPreview(): Promise<void> {
-  if (targetStatus.value == null) return
-  previewLoading.value = true
-  try {
-    preview.value = await previewRollbackApi({
-      sampleId: props.sampleId,
-      targetStatus: targetStatus.value,
-    })
-  } catch {
-    preview.value = null
-  } finally {
-    previewLoading.value = false
-  }
-}
+/** 批量时的下游失效总量估算（单条影响 × 条数） */
+const totalInvalidated = computed(() => {
+  const t = current.value
+  if (!t) return 0
+  return t.invalidatedTotal * items.value.length
+})
 
 async function openLoad(): Promise<void> {
   reason.value = ''
   secondConfirmed.value = false
-  preview.value = null
-  timeline.value = null
+  batchResult.value = null
+  targets.value = null
   targetStatus.value = undefined
-  timelineLoading.value = true
+
+  if (items.value.length === 0) return
+  // 状态不一致：不请求，直接提示（见模板「状态不一致」分支）
+  if (!sameStatus.value) return
+
+  loading.value = true
   try {
-    const tl = await getRollbackTimelineApi(props.sampleId)
-    timeline.value = tl
-    targetStatus.value = tl.canRollbackTo.length > 0 ? tl.canRollbackTo[0] : undefined
+    const res = await getRollbackTargetsApi(items.value[0].id)
+    targets.value = res
+    // 默认落在最近的一步（最常见的「退一级改一改」场景）
+    targetStatus.value = res.targets.length > 0 ? res.targets[0].status : undefined
   } catch {
-    timeline.value = null
+    targets.value = null
   } finally {
-    timelineLoading.value = false
+    loading.value = false
   }
-  if (targetStatus.value != null) await loadPreview()
 }
 
 watch(visible, (open) => {
@@ -111,37 +136,48 @@ watch(visible, (open) => {
 })
 
 watch(targetStatus, () => {
-  if (visible.value && targetStatus.value != null) {
-    secondConfirmed.value = false
-    void loadPreview()
-  }
+  secondConfirmed.value = false
 })
 
 async function submit(): Promise<void> {
-  const p = preview.value
-  if (!p || !p.allowed || targetStatus.value == null) return
-  if (p.reasonRequired && !reason.value.trim()) {
-    ElMessage.warning('请填写回退原因（不少于 4 字，便于审计追溯）')
+  const t = current.value
+  if (!t) return
+  if (!sameStatus.value) {
+    ElMessage.warning('所选样品状态不一致，请只勾选同一环节的样品')
     return
   }
-  if (needSecond.value && !secondConfirmed.value) {
-    ElMessage.warning('该回退需二次确认，请勾选确认项')
+  if (!reason.value.trim()) {
+    ElMessage.warning('请填写回退原因（将写入审计流水，不可为空）')
     return
   }
-  if (p.needSensitive && !sensitiveAllowed.value) {
+  if (t.needSensitive && !sensitiveAllowed.value) {
     ElMessage.warning('敏感回退需要「业务管理员 / 系统管理员」权限')
+    return
+  }
+  if (t.needSecondConfirm && !secondConfirmed.value) {
+    ElMessage.warning('该回退含敏感环节（撤销审核），请勾选二次确认')
     return
   }
   submitting.value = true
   try {
     const res = await executeRollbackApi({
-      sampleId: props.sampleId,
-      targetStatus: targetStatus.value,
+      ids: ids.value,
+      targetStatus: t.status,
       reason: reason.value.trim(),
       secondConfirmed: secondConfirmed.value,
     })
-    ElMessage.success(`回退成功：${res.statusLabel ?? ''}`)
-    visible.value = false
+    if (res.failCount === 0) {
+      ElMessage.success(
+        items.value.length > 1
+          ? `回退完成：${res.successCount} 条全部成功（目标步「${res.targetStatusLabel ?? ''}」）`
+          : `回退成功：${res.items[0]?.result?.statusLabel ?? ''}`,
+      )
+      visible.value = false
+    } else {
+      // 部分/全部失败：不关闭弹窗，把逐条原因摆在用户面前（不得静默跳过）
+      batchResult.value = res
+      ElMessage.warning(`回退部分失败：成功 ${res.successCount} 条 / 失败 ${res.failCount} 条`)
+    }
     emit('done', res)
   } catch {
     // 请求层已统一提示（4101~4108 业务码）
@@ -155,170 +191,223 @@ async function submit(): Promise<void> {
   <el-dialog
     v-model="visible"
     title="流程回退确认"
-    width="620px"
+    width="640px"
     align-center
     :close-on-click-modal="false"
   >
     <div
-      v-loading="timelineLoading"
+      v-loading="loading"
       class="rbd"
     >
-      <!-- 无可用回退路径 -->
-      <template v-if="timeline && timeline.canRollbackTo.length === 0">
-        <p class="rbd__blocked">
-          样品「{{ timeline.sampleNo }}」当前状态为「{{ timeline.currentStatusLabel }}」，无可用普通回退路径。
-        </p>
-        <div
-          v-if="timeline.rejectedEdges.length > 0"
-          class="rbd__alt"
-        >
-          <p
-            v-for="(rej, i) in timeline.rejectedEdges"
-            :key="i"
-            class="rbd__alt-item"
-          >
-            {{ rej.msg }} —— 替代动作：报告作废 / 召回（需 report:void 权限）。
-          </p>
-        </div>
-      </template>
+      <!-- ① 批量但状态不一致：直接阻断并说明（不同状态无法共用一个目标步） -->
+      <p
+        v-if="items.length > 0 && !sameStatus"
+        class="rbd__danger"
+      >
+        所选 {{ items.length }} 条样品状态不一致（{{ statuses.map((s) => sampleStatusInfo(s).label).join(' / ') }}）。
+        回退必须针对<strong>同一环节</strong>的样品，请只勾选状态相同的记录后重试。
+      </p>
 
       <template v-else>
-        <!-- 目标选择 -->
+        <!-- ② 选中样品 + 当前状态 -->
         <div class="rbd__section">
-          <span class="rbd__label">回退目标（仅支持逐级）</span>
-          <el-radio-group
-            v-model="targetStatus"
-            class="rbd__targets"
-          >
-            <el-radio
-              v-for="t in targets"
-              :key="t.code"
-              :value="t.code"
+          <span class="rbd__label">待回退样品（{{ items.length }} 条）</span>
+          <div class="rbd__flow">
+            <span class="rbd__status">{{ items[0]?.sampleNo || `#${items[0]?.id}` }}</span>
+            <span
+              v-if="items.length > 1"
+              class="rbd__more"
+            >等 {{ items.length }} 条</span>
+            <StatusBadge
+              v-if="items[0]?.status != null"
+              :tone="sampleStatusInfo(items[0].status).tone"
             >
-              {{ t.label }}
-            </el-radio>
-          </el-radio-group>
+              {{ firstStatusLabel }}
+            </StatusBadge>
+          </div>
+          <ul
+            v-if="items.length > 1"
+            class="rbd__list"
+          >
+            <li
+              v-for="s in items.slice(0, 20)"
+              :key="s.id"
+            >
+              {{ s.sampleNo || `#${s.id}` }}
+            </li>
+            <li v-if="items.length > 20">
+              … 等共 {{ items.length }} 条
+            </li>
+          </ul>
         </div>
 
-        <!-- 预览：当前 → 目标 + 下游失效 -->
-        <div
-          v-loading="previewLoading"
-          class="rbd__section"
-        >
-          <template v-if="preview">
-            <template v-if="preview.allowed">
-              <div class="rbd__flow">
-                <span class="rbd__status">{{ preview.fromStatusLabel }}</span>
-                <span class="rbd__arrow">→</span>
-                <span class="rbd__status is-target">{{ preview.toStatusLabel }}</span>
+        <!-- ③ 无可用回退路径（S80/S90 → 只保留作废/召回） -->
+        <template v-if="targets && !targets.rollbackAvailable">
+          <p class="rbd__blocked">
+            样品当前状态为「{{ targets.currentStatusLabel }}」，<strong>无可用回退路径</strong>。
+          </p>
+          <div
+            v-if="targets.rejected.length > 0"
+            class="rbd__alt"
+          >
+            <p
+              v-for="(rej, i) in targets.rejected"
+              :key="i"
+              class="rbd__alt-item"
+            >
+              {{ rej.msg }} —— 替代动作：报告<strong>作废 / 召回</strong>（在「报告生成」页操作，需 report:void 权限）。
+            </p>
+          </div>
+        </template>
+
+        <!-- ④ 目标步选择 -->
+        <template v-else-if="targets">
+          <div class="rbd__section">
+            <span class="rbd__label">回退目标步（可选任意可达步；跨级由系统逐级执行）</span>
+            <el-radio-group
+              v-model="targetStatus"
+              class="rbd__targets"
+            >
+              <el-radio
+                v-for="t in targets.targets"
+                :key="t.status"
+                :value="t.status"
+              >
+                {{ t.statusLabel }}
                 <span
-                  v-if="preview.groupLabel"
-                  class="rbd__group"
-                  :class="{ 'is-sensitive': preview.needSensitive || preview.needSecondConfirm }"
-                >
-                  {{ preview.groupLabel }}
+                  v-if="t.stepCount > 1"
+                  class="rbd__steps"
+                >（{{ t.stepCount }} 级）</span>
+              </el-radio>
+            </el-radio-group>
+          </div>
+
+          <!-- ⑤ 链路 + 影响预览（数据来自后端 B7，前端不推算） -->
+          <div
+            v-if="current"
+            class="rbd__section"
+          >
+            <div class="rbd__flow">
+              <span class="rbd__status">{{ current.chainText }}</span>
+              <span
+                v-if="current.groupLabel"
+                class="rbd__group"
+                :class="{ 'is-sensitive': current.needSensitive }"
+              >
+                {{ current.groupLabel }}
+              </span>
+            </div>
+
+            <p
+              v-if="current.hint"
+              class="rbd__hint"
+            >
+              {{ current.hint }}
+            </p>
+
+            <div
+              v-if="current.invalidations.length > 0"
+              class="rbd__invalid"
+            >
+              <p class="rbd__invalid-title">
+                回退到该步将失效的下游数据（保留留档，可撤销）：
+              </p>
+              <div
+                v-for="inv in current.invalidations"
+                :key="inv.type"
+                class="rbd__invalid-group"
+              >
+                <span class="rbd__invalid-type">{{ inv.typeLabel }}（{{ inv.count }}）</span>
+                <span class="rbd__invalid-items">
+                  {{ inv.items.slice(0, 12).map((it) => it.label).join('、') }}
+                  <template v-if="inv.count > inv.items.length">… 等 {{ inv.count }} 项</template>
                 </span>
               </div>
-
               <p
-                v-if="preview.hint"
+                v-if="items.length > 1"
                 class="rbd__hint"
               >
-                {{ preview.hint }}
+                以上为单个样品的影响；本次共 {{ items.length }} 条，合计约
+                {{ totalInvalidated }} 条下游数据将失效（逐条独立执行、逐条留痕）。
               </p>
-
-              <!-- 将失效的下游数据 -->
-              <div
-                v-if="preview.invalidations.length > 0"
-                class="rbd__invalid"
-              >
-                <p class="rbd__invalid-title">
-                  将失效的下游数据（保留留档，可恢复）：
-                </p>
-                <div
-                  v-for="inv in preview.invalidations"
-                  :key="inv.type"
-                  class="rbd__invalid-group"
-                >
-                  <span class="rbd__invalid-type">{{ inv.typeLabel }}（{{ inv.count }}）</span>
-                  <span class="rbd__invalid-items">
-                    {{ inv.items.slice(0, 12).map((it) => it.label).join('、') }}
-                    <template v-if="inv.count > inv.items.length">… 等 {{ inv.count }} 项</template>
-                  </span>
-                </div>
-              </div>
-              <p
-                v-else
-                class="rbd__hint"
-              >
-                本次回退不失效任何下游数据。
-              </p>
-
-              <!-- 不可逆提示 -->
-              <p
-                v-if="preview.irreversible"
-                class="rbd__danger"
-              >
-                该回退不可逆，请谨慎操作。
-              </p>
-
-              <!-- 敏感权限不足 -->
-              <p
-                v-if="preview.needSensitive && !sensitiveAllowed"
-                class="rbd__danger"
-              >
-                敏感回退需要「业务管理员 / 系统管理员」权限，当前账号无此权限，无法提交。
-              </p>
-            </template>
-
-            <!-- 被拒边：allowed=false，携带业务码与说明（不抛 HTTP 错误） -->
+            </div>
             <p
               v-else
-              class="rbd__blocked"
+              class="rbd__hint"
             >
-              该回退路径被系统拒绝：{{ preview.msg || '（无说明，请刷新后重试）' }}
+              本次回退不失效任何下游数据（仅回退状态）。
             </p>
-          </template>
-          <p
-            v-else-if="!previewLoading"
-            class="rbd__blocked"
+
+            <p
+              v-if="current.needSensitive && !sensitiveAllowed"
+              class="rbd__danger"
+            >
+              该回退链路包含「撤销审核」（S70→S60），需要「业务管理员 / 系统管理员」权限，
+              当前账号无此权限，无法提交。
+            </p>
+          </div>
+
+          <!-- ⑥ 原因（必填） -->
+          <div class="rbd__section">
+            <span class="rbd__label">
+              回退原因<em class="rbd__required">必填</em>
+            </span>
+            <el-input
+              v-model="reason"
+              type="textarea"
+              :rows="3"
+              maxlength="500"
+              show-word-limit
+              placeholder="请说明为何回退（将写入审计流水，不可为空）"
+            />
+          </div>
+
+          <!-- ⑦ 敏感链路二次确认 -->
+          <div
+            v-if="needSecond"
+            class="rbd__section"
           >
-            未能获取回退预览，请刷新后重试。
-          </p>
-        </div>
+            <el-checkbox v-model="secondConfirmed">
+              我已确认，执行含敏感环节的回退（需二次确认）
+            </el-checkbox>
+          </div>
+        </template>
 
-        <!-- 原因（必填） -->
-        <div class="rbd__section">
-          <span class="rbd__label">
-            回退原因<em class="rbd__required">必填</em>
-          </span>
-          <el-input
-            v-model="reason"
-            type="textarea"
-            :rows="3"
-            maxlength="500"
-            show-word-limit
-            placeholder="请说明为何回退（将写入审计流水，不可为空）"
-          />
-        </div>
+        <p
+          v-else-if="!loading"
+          class="rbd__blocked"
+        >
+          未能获取可回退目标步，请刷新后重试。
+        </p>
 
-        <!-- 二次确认 -->
+        <!-- ⑧ 批量逐条结果（仅失败项需要解释） -->
         <div
-          v-if="needSecond"
+          v-if="batchResult && batchResult.failCount > 0"
           class="rbd__section"
         >
-          <el-checkbox v-model="secondConfirmed">
-            我已确认，执行敏感回退（需二次确认）
-          </el-checkbox>
+          <p class="rbd__invalid-title">
+            逐条结果（成功 {{ batchResult.successCount }} / 失败 {{ batchResult.failCount }}）：
+          </p>
+          <ul class="rbd__list">
+            <li
+              v-for="it in batchResult.items"
+              :key="it.sampleId"
+              :class="it.success ? 'is-ok' : 'is-fail'"
+            >
+              {{ it.sampleNo || `#${it.sampleId}` }}：
+              {{ it.success ? `成功（${it.result?.statusLabel ?? ''}）` : `失败 —— ${it.reason ?? '未知原因'}（${it.code ?? '-'}）` }}
+            </li>
+          </ul>
         </div>
       </template>
     </div>
 
     <template #footer>
       <el-button @click="visible = false">
-        取消
+        {{ batchResult && batchResult.failCount > 0 ? '关闭' : '取消' }}
       </el-button>
       <el-button
+        v-if="!targets || targets.rollbackAvailable"
         type="danger"
         :disabled="!canSubmit"
         :loading="submitting"
@@ -357,11 +446,18 @@ async function submit(): Promise<void> {
 
 .rbd__targets {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--lims-sp-4);
+}
+
+.rbd__steps {
+  color: var(--lims-warning);
+  font-size: 11px;
 }
 
 .rbd__flow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -374,14 +470,9 @@ async function submit(): Promise<void> {
   font-size: 13px;
 }
 
-.rbd__status.is-target {
-  border-color: var(--lims-danger-line);
-  background: var(--lims-danger-soft);
-  color: var(--lims-danger);
-}
-
-.rbd__arrow {
-  color: var(--lims-faint);
+.rbd__more {
+  color: var(--lims-muted);
+  font-size: var(--lims-fs-xs);
 }
 
 .rbd__group {
@@ -403,6 +494,24 @@ async function submit(): Promise<void> {
   color: var(--lims-muted);
   font-size: var(--lims-fs-xs);
   line-height: 1.5;
+}
+
+.rbd__list {
+  max-height: 160px;
+  margin: 0;
+  padding-left: 18px;
+  overflow-y: auto;
+  color: var(--lims-muted);
+  font-size: var(--lims-fs-xs);
+  line-height: 1.7;
+}
+
+.rbd__list .is-fail {
+  color: var(--lims-danger);
+}
+
+.rbd__list .is-ok {
+  color: var(--lims-success);
 }
 
 .rbd__invalid {

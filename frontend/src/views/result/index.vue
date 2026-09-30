@@ -102,6 +102,22 @@ interface DraftItem {
 
 // ---------------- 待录入列表 ----------------
 const query = reactive({ sampleNo: '', sampleName: '' })
+/**
+ * 状态范围说明（本页只出现本环节经手的状态，其余一律不出现）
+ * ----------------------------------------------------------------------------
+ * 待录入列表由后端 `/result/pending` 收敛为「检验中(S50)」；S60 检验完成已交审核环节，
+ * 上游 S10~S40 更不会出现在本页。故本页**没有状态筛选器与跨环节状态统计**。
+ * 回退入口只对 S50 行渲染（本环节可退回到 S40）。审核退回（S60→S50）后样品回到本页，属正常路径。
+ */
+function rollbackRefs(row: { id?: number; sampleId?: number; sampleNo?: string; status?: number }): {
+  id: number
+  sampleNo?: string
+  status?: number
+}[] {
+  const id = row.id ?? row.sampleId
+  return id == null ? [] : [{ id, sampleNo: row.sampleNo, status: row.status }]
+}
+
 const loading = ref(false)
 const tableData = ref<ResultPendingRow[]>([])
 const total = ref(0)
@@ -566,9 +582,10 @@ onMounted(() => {
             >
               问 AI
             </el-button>
+            <!-- 回退入口只出现在本环节：检验中(S50) 可退回到「已安排(S40)」 -->
             <RollbackEntryButton
-              :sample-id="(row as ResultPendingRow).id"
-              :sample-no="(row as ResultPendingRow).sampleNo"
+              v-if="(row as ResultPendingRow).status === 50"
+              :samples="rollbackRefs(row as ResultPendingRow)"
               @done="loadPending"
             />
           </template>
@@ -666,8 +683,8 @@ onMounted(() => {
                     问 AI
                   </el-button>
                   <RollbackEntryButton
-                    :sample-id="detail.sampleId"
-                    :sample-no="detail.sampleNo"
+                    v-if="detail.status === 50"
+                    :samples="rollbackRefs(detail)"
                     label="回退"
                     :link="false"
                     size="default"

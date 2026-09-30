@@ -37,6 +37,7 @@ import StatCard from '@/components/common/StatCard.vue'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import DataFilter from '@/components/common/DataFilter.vue'
 import RollbackEntryButton from '@/components/rollback/RollbackEntryButton.vue'
+import type { RollbackBatchResultVO } from '@/types/rollback'
 import { useAiAssistantStore } from '@/stores/aiAssistant'
 import { askConfirm } from '@/utils/confirm'
 
@@ -67,11 +68,33 @@ function showFlowGuide(): void {
 }
 
 /** 回退完成后：刷新明细与列表（不改变既有审核/签发逻辑） */
-async function onRollbackDone(): Promise<void> {
+async function onRollbackDone(_result?: RollbackBatchResultVO): Promise<void> {
   if (!detail.value) return
   await loadDetail(detail.value.sampleId)
   await loadPending()
 }
+
+/**
+ * 状态范围说明（本页只出现本环节经手的两个状态，其余一律不出现）
+ * ----------------------------------------------------------------------------
+ *   待审核页签 = S60 检验完成；待签发页签 = S70 已审核。
+ * 上游 S10~S50 不出现（它们由登记/分解/安排/录入页各自承接），S80/S90 也不出现（已离开本环节，
+ * 属「报告生成」页）。**审核退回（S60→S50）后样品即离开本页回到录入页**，属正常路径。
+ * 回退入口只对 S60 / S70 行渲染：S80/S90 物理无回退边，本页也不存在这两个状态。
+ */
+function rollbackable(status?: number): boolean {
+  return status === 60 || status === 70
+}
+
+function rollbackRefs(row: { id?: number; sampleId?: number; sampleNo?: string; status?: number }): {
+  id: number
+  sampleNo?: string
+  status?: number
+}[] {
+  const id = row.id ?? row.sampleId
+  return id == null ? [] : [{ id, sampleNo: row.sampleNo, status: row.status }]
+}
+
 
 function statusTone(label?: string): 'success' | 'warning' | 'info' | 'neutral' | 'pending' | 'purple' {
   if (!label) return 'neutral'
@@ -570,9 +593,14 @@ onMounted(() => {
             >
               问 AI
             </el-button>
+            <!--
+              回退入口只出现在本环节（S60 待审核 / S70 待签发）。
+              S70 行退回到 S60 及更早时会自动命中**敏感链路**：RollbackDialog 会据后端返回的
+              needSecondConfirm 要求二次确认，服务层再校验 rollback:sensitive（前端只做显隐）。
+            -->
             <RollbackEntryButton
-              :sample-id="rowItem(row).id"
-              :sample-no="rowItem(row).sampleNo"
+              v-if="rollbackable(rowItem(row).status)"
+              :samples="rollbackRefs(rowItem(row))"
               @done="loadPending"
             />
           </template>
@@ -671,8 +699,8 @@ onMounted(() => {
                 下一步该做什么
               </el-button>
               <RollbackEntryButton
-                :sample-id="detail.sampleId"
-                :sample-no="detail.sampleNo"
+                v-if="rollbackable(detail.status)"
+                :samples="rollbackRefs(detail)"
                 label="回退"
                 :link="false"
                 size="default"

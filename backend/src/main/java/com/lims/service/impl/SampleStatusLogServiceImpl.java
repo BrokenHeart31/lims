@@ -32,7 +32,8 @@ public class SampleStatusLogServiceImpl implements SampleStatusLogService {
 
     @Override
     public void append(Sample sample, StatusEventType eventType, SampleStatus from, SampleStatus to,
-                       String actionLabel, String reason, String source, Long rollbackId, String disposition) {
+                       String actionLabel, String reason, String source, Long rollbackId, String batchNo,
+                       String disposition) {
         if (sample == null || sample.getId() == null) {
             throw new BizException(400, "状态流水写入失败：样品为空");
         }
@@ -48,6 +49,7 @@ public class SampleStatusLogServiceImpl implements SampleStatusLogService {
         log.setActionLabel(actionLabel);
         log.setReason(reason);
         log.setRollbackId(rollbackId);
+        log.setBatchNo(batchNo);
         log.setDataDisposition(disposition);
         log.setSource(source);
         log.setOperatedBy(operator);

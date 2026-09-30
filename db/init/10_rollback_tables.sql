@@ -39,6 +39,7 @@ CREATE TABLE `sample_status_log` (
 
   `reason`            VARCHAR(500)          DEFAULT NULL COMMENT '原因（回退/退回/作废必填，正向可空）',
   `rollback_id`       BIGINT                DEFAULT NULL COMMENT '关联 sample_rollback.id（回退/恢复事件）',
+  `batch_no`          VARCHAR(32)           DEFAULT NULL COMMENT '回退批次号（跨级回退的各级流水共用，一次用户操作=一个批次）',
   `data_disposition`  VARCHAR(500)          DEFAULT NULL COMMENT '下游数据处置摘要（如「失效 12 项结果、3 项明细」）',
   `source`            VARCHAR(32)           DEFAULT NULL COMMENT '入口/来源：SAMPLE/ITEM/ASSIGN/RESULT/AUDIT/REPORT/ROLLBACK_PANEL',
 
@@ -55,7 +56,8 @@ CREATE TABLE `sample_status_log` (
   KEY `idx_ssl_sample_id_id` (`sample_id`, `id`),   -- 支撑「按样品查全链路事件」（时间线）
   KEY `idx_ssl_operated_at`  (`operated_at`),        -- 支撑跨样品按时间检索
   KEY `idx_ssl_event_type`   (`event_type`),
-  KEY `idx_ssl_sample_no`    (`sample_no`)
+  KEY `idx_ssl_sample_no`    (`sample_no`),
+  KEY `idx_ssl_batch_no`     (`batch_no`)            -- 支撑「按批次聚合一次回退的全部级」
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='样品状态流水（统一正向+逆向，追加不改写）';
 
 -- -----------------------------------------------------------------------------
@@ -66,9 +68,11 @@ CREATE TABLE `sample_rollback` (
   `id`                    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
   `sample_id`             BIGINT       NOT NULL COMMENT '样品ID',
   `sample_no`             VARCHAR(50)  NOT NULL COMMENT '样品编号',
-  `from_status`           TINYINT      NOT NULL COMMENT '回退前状态 code',
-  `to_status`             TINYINT      NOT NULL COMMENT '回退后状态 code',
-  `edge_group`            TINYINT      NOT NULL COMMENT '回退分组 1=常规 2=敏感（见 RollbackGroup）',
+  `batch_no`              VARCHAR(32)           DEFAULT NULL COMMENT '回退批次号（一次回退操作=一个批次；跨级回退也只落本表 1 行）',
+  `from_status`           TINYINT      NOT NULL COMMENT '回退前状态 code（跨级时=起点）',
+  `to_status`             TINYINT      NOT NULL COMMENT '回退后状态 code（跨级时=最终目标步；中间落点见 sample_status_log）',
+  `step_count`            INT          NOT NULL DEFAULT 1 COMMENT '本次回退的级数 1=单级 >1=跨级链式',
+  `edge_group`            TINYINT      NOT NULL COMMENT '回退分组 1=常规 2=敏感（整链含敏感级即为敏感，见 RollbackGroup）',
 
   `reason`                VARCHAR(500) NOT NULL COMMENT '回退原因（必填）',
   `second_confirmed`      TINYINT      NOT NULL DEFAULT 0 COMMENT '是否完成二次确认 0=否 1=是',
@@ -93,7 +97,8 @@ CREATE TABLE `sample_rollback` (
 
   PRIMARY KEY (`id`),
   KEY `idx_sr_sample_id_id` (`sample_id`, `id`),
-  KEY `idx_sr_operated_at`  (`operated_at`)
+  KEY `idx_sr_operated_at`  (`operated_at`),
+  KEY `idx_sr_batch_no`     (`batch_no`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='样品回退记录（可恢复状态机）';
 
 -- -----------------------------------------------------------------------------
