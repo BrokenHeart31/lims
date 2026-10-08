@@ -22,6 +22,8 @@ export const TASK_REGION_OPTIONS = ['省级', '市级', '区级'] as const
 export const SAMPLING_STAGE_OPTIONS = ['生产', '流通', '餐饮'] as const
 /** 任务状态字典 */
 export const TASK_STATUS_OPTIONS = ['草稿', '进行中', '已完成', '已中止'] as const
+/** 任务等级字典（F9：由自由输入改为下拉选择） */
+export const TASK_PRIORITY_OPTIONS = ['重点', '常规'] as const
 
 /** 监抽任务（与后端 VO 对齐，camelCase） */
 export interface SuperviseTask {

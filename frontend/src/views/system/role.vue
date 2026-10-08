@@ -232,15 +232,6 @@ onMounted(() => {
       subtitle="定义角色并分配菜单与操作权限"
       icon="Avatar"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>系统管理</el-breadcrumb-item>
-          <el-breadcrumb-item>角色管理</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"
@@ -318,7 +309,7 @@ onMounted(() => {
               size="sm"
               class="tag"
             >
-              特权
+              综合管理员
             </StatusBadge>
           </template>
         </el-table-column>

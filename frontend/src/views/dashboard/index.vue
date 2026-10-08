@@ -161,7 +161,7 @@ const kpis = computed(() => {
         suffix: '份',
         icon: EditPen,
         iconTone: 'accent',
-        hint: '真实统计',
+        hint: '数据实时统计',
       },
       {
         label: '已完成样品',
@@ -185,9 +185,9 @@ const kpis = computed(() => {
 })
 
 const statusText: Record<StageStatus, string> = {
-  done: '已交付',
+  done: '已完成',
   active: '进行中',
-  todo: '待开发',
+  todo: '计划中',
 }
 
 interface RecentTask {
@@ -198,13 +198,24 @@ interface RecentTask {
   meta: string
 }
 
-const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
-  id: task.sampleId,
-  title: `${task.sampleNo} · ${task.itemName}`,
-  status: task.entered ? '已录入' : '未录入',
-  statusTone: task.entered ? 'success' : 'warning',
-  meta: `${task.sampleName ?? '未填写样品名'} · ${task.sampleStatusLabel ?? `S${task.sampleStatus}`}`,
-})))
+/**
+ * 最近的「活跃」检验任务（F5，2026-10-08）。
+ * ----------------------------------------------------------------------------
+ * 只保留仍处于「在检」阶段（S40 任务安排 → S70 审核）的任务：
+ * S80 待生成报告 / S90 已签发属于终态，已不在「当前任务」范畴，
+ * 既不再作为活跃任务出现，也不应再带绿点（已录入）状态。
+ */
+const ACTIVE_SAMPLE_STATUSES = new Set([40, 50, 60, 70])
+
+const recentTasks = computed<RecentTask[]>(() => myTasks.value
+  .filter((task) => ACTIVE_SAMPLE_STATUSES.has(task.sampleStatus))
+  .map((task) => ({
+    id: task.sampleId,
+    title: `${task.sampleNo} · ${task.itemName}`,
+    status: task.entered ? '已录入' : '未录入',
+    statusTone: task.entered ? 'success' : 'warning',
+    meta: `${task.sampleName ?? '未填写样品名'} · ${task.sampleStatusLabel ?? `S${task.sampleStatus}`}`,
+  })))
 </script>
 
 <template>
@@ -296,7 +307,7 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
     >
       <AppEmpty
         title="当前账号没有工作台统计权限"
-        hint="你的业务功能在左侧菜单中（如「结果录入」「我的检验任务」）；如需查看统计概览，请联系管理员分配 stat:view 权限。"
+        hint="你的业务功能在左侧菜单中（如「结果录入」「我的检验任务」）；如需查看统计概览，请联系管理员开通相应权限。"
       />
     </section>
     <section
@@ -358,7 +369,7 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
             <h3 class="card-title">
               当前任务
             </h3>
-            <span class="card-sub">来自真实任务查询接口 · 最多展示 5 项</span>
+            <span class="card-sub">近期在检任务 · 最多展示 5 项</span>
           </div>
           <button
             class="card-refresh"
@@ -381,12 +392,12 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
         <AppEmpty
           v-else-if="!canViewMyTasks"
           title="当前账号没有检验任务权限"
-          hint="「我的检验任务」需要 result:entry 权限；请联系管理员分配。"
+          hint="「我的检验任务」需要相应权限；请联系管理员开通。"
         />
         <AppEmpty
           v-else-if="tasksError"
           title="任务数据暂时不可用"
-          hint="请刷新重试；页面不会用假数据替代真实业务数据。"
+          hint="请点击下方按钮重新加载。"
         >
           <el-button
             type="primary"
@@ -632,7 +643,7 @@ const recentTasks = computed<RecentTask[]>(() => myTasks.value.map((task) => ({
   transform: translateY(-2px);
 }
 
-/* 已交付：青调描边 + 左侧发光条 */
+/* 已完成：青调描边 + 左侧发光条 */
 .stage-item.is-done {
   border-color: rgba(var(--lims-success-rgb), 0.24);
 }

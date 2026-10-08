@@ -67,17 +67,7 @@ function handleReset(): void {
       title="导出数据"
       subtitle="汇总已完成检验的样品结果，生成农、畜、水省平台上报对接数据（Excel）"
       icon="Download"
-    >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>查询统计</el-breadcrumb-item>
-          <el-breadcrumb-item>导出数据</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
-    </PageHeader>
+    />
 
     <DataFilter>
       <el-form inline>
@@ -119,7 +109,7 @@ function handleReset(): void {
       <ul class="notice-list">
         <li>数据范围：<b>已完成检验</b>的样品（状态为「已签发」或「已出报告」）。</li>
         <li>粒度：一行 = 一个<b>样品 × 检验单项</b>；同一样品的 N 个项目占 N 行，样品头信息在每行重复。</li>
-        <li>文件标题栏显示为「系统导出数据&lt;导出的年月日时分秒&gt;.xlsx」。</li>
+        <li>文件标题栏显示为「省平台上报数据&lt;导出的年月日时分秒&gt;.xlsx」。</li>
         <li>单项评价取自判定结论（合格 / 不合格 / 待判定），如实输出、不静默改判。</li>
         <li>可按任务编号筛选；留空则导出全部符合范围的样品。</li>
       </ul>

@@ -23,6 +23,7 @@ import com.lims.service.SampleStatusLogService;
 import com.lims.service.judge.JudgeEngine;
 import com.lims.service.judge.JudgeInput;
 import com.lims.service.judge.JudgeOutcome;
+import com.lims.service.result.OverallConclusionPolicy;
 import com.lims.service.result.ResultEntryPolicy;
 import com.lims.service.rollback.SampleDataDisposer;
 import com.lims.vo.ResultDetailVO;
@@ -40,7 +41,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -75,8 +75,6 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
 
     /** 允许录入的状态集合：已安排（尚未录）/ 检验中（录入未齐） */
     private static final Set<SampleStatus> ENTRY_STATUSES = Set.of(SampleStatus.S40, SampleStatus.S50);
-
-    private static final int REFERENCE_YES = 1;
 
     /** 状态流水来源：结果录入域 */
     private static final String SOURCE_RESULT = "RESULT";
@@ -147,7 +145,7 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
         vo.setItemTotal(items.size());
         vo.setEnteredCount(countEntered(items, results));
         // 整体结论为派生值：GET 时按当前结果实时重算，不写库（保持读接口无副作用）
-        ResultConclusion overall = computeOverall(items, results);
+        ResultConclusion overall = OverallConclusionPolicy.computeOverall(items, results);
         vo.setConclusion(overall.getCode());
         vo.setConclusionLabel(overall.getLabel());
         vo.setAllowEdit(sample.getStatus() != null && ENTRY_STATUSES.contains(sample.getStatus()));
@@ -245,7 +243,7 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
             throw new BizException(400, "仍有 " + missing + " 个检测单项未录入结果，请先完成录入");
         }
 
-        ResultConclusion overall = computeOverall(items, results);
+        ResultConclusion overall = OverallConclusionPolicy.computeOverall(items, results);
 
         // S40（尚未首次保存，直接一次性录齐）→ 先补 S50，再 S50→S60，两步都走白名单
         advanceToInputting(sample);
@@ -373,7 +371,7 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
      */
     private ResultConclusion recomputeAndPersistConclusion(Sample sample) {
         List<SampleItem> items = listItems(sample.getId());
-        ResultConclusion overall = computeOverall(items, resultsByItem(sample.getId()));
+        ResultConclusion overall = OverallConclusionPolicy.computeOverall(items, resultsByItem(sample.getId()));
 
         Sample upd = new Sample();
         upd.setConclusion(overall);
@@ -383,47 +381,8 @@ public class ResultServiceImpl extends ServiceImpl<SampleResultMapper, SampleRes
         return overall;
     }
 
-    /**
-     * 整体结论聚合（纯函数）。
-     *
-     * <pre>
-     * 存在未录入项                      → 待判定
-     * 无非参考项（全部是参考项）          → 待判定（D3 补充，禁自动合格）
-     * 存在非参考项不合格                → 不合格
-     * 存在非参考项待判定                → 待判定
-     * 其余（非参考项全部合格）           → 合格
-     * </pre>
-     */
-    private ResultConclusion computeOverall(List<SampleItem> items, Map<Long, SampleResult> results) {
-        List<SampleItem> nonReference = items.stream().filter(i -> !isReference(i)).toList();
-        if (nonReference.isEmpty()) {
-            // 全为参考项：整体结论交给人工（参考项不作放行依据）
-            return ResultConclusion.PENDING;
-        }
-        boolean anyUnqualified = false;
-        boolean anyPending = false;
-        for (SampleItem item : nonReference) {
-            SampleResult r = results.get(item.getId());
-            // 未有效录入（无结果行 / 空值行）→ 未录齐 → 待判定
-            if (!ResultEntryPolicy.isEntered(item.getJudgeType(), r)) {
-                return ResultConclusion.PENDING;
-            }
-            ResultConclusion c = r.getConclusion();
-            if (c == null || c == ResultConclusion.PENDING) {
-                anyPending = true;
-            } else if (c == ResultConclusion.UNQUALIFIED) {
-                anyUnqualified = true;
-            }
-        }
-        if (anyUnqualified) {
-            return ResultConclusion.UNQUALIFIED;
-        }
-        return anyPending ? ResultConclusion.PENDING : ResultConclusion.QUALIFIED;
-    }
-
-    private boolean isReference(SampleItem item) {
-        return Objects.equals(item.getIsReference(), REFERENCE_YES);
-    }
+    // 整体结论聚合已抽到共享策略类 OverallConclusionPolicy（T-912 唯一口径 / F20）：
+    // 录入域与审核裁决域共同委托，禁止在本类或 AuditServiceImpl 内复制聚合逻辑。
 
     /** 已**有效录入**项数（T-912 口径：空值行不计入） */
     private int countEntered(List<SampleItem> items, Map<Long, SampleResult> results) {

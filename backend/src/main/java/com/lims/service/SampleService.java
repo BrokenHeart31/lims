@@ -25,10 +25,13 @@ public interface SampleService extends IService<Sample> {
     /**
      * 分页查询样品。
      *
-     * @param status 状态 code（可空）
+     * @param status   状态 code（可空，单状态精确匹配）
+     * @param statuses 状态 code 集合（可空，多状态 IN 匹配；F11「本环节」= [10,20]）
+     *                 与 {@code status} 同时为空时不过滤状态；两者都传时取交集语义（IN）。
      */
     Page<Sample> pageQuery(long pageNum, long pageSize,
-                           String sampleNo, String sampleName, String taskNo, Integer status);
+                           String sampleNo, String sampleName, String taskNo,
+                           Integer status, List<Integer> statuses);
 
     /**
      * 登记信息维护（仅 S10 可改）。

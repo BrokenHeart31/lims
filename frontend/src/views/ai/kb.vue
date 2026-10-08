@@ -26,6 +26,7 @@ import {
   uploadKbFileApi,
 } from '@/api/ai'
 import type { GbDocumentVO, GbImportJobVO, GbSearchHitVO, ScanOcrRetry, ScanOcrJob } from '@/types/ai'
+import { useAuthStore } from '@/stores/auth'
 import { confirm } from '@/utils/confirm'
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppCard from '@/components/common/AppCard.vue'
@@ -34,6 +35,13 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 import AiCitationCard from '@/components/ai/AiCitationCard.vue'
 
 // ---------------- 导入任务 ----------------
+const authStore = useAuthStore()
+/**
+ * 是否可管理知识库——F31（2026-10-08）。
+ * 仅 `ai:kb:import` 用户看到运维脚本路径；只读用户（如检验员仅有 ai:kb:query）
+ * 只应看到友好说明，不暴露服务器脚本路径。
+ */
+const canManageAi = computed(() => authStore.hasPermission('ai:kb:import'))
 const jobs = ref<GbImportJobVO[]>([])
 const jobsLoading = ref(false)
 const uploading = ref(false)
@@ -52,6 +60,22 @@ function jobPercent(job: GbImportJobVO): number {
   const total = job.totalClauses ?? 0
   if (total <= 0) return job.status === 3 ? 100 : 0
   return Math.min(100, Math.round(((job.doneClauses ?? 0) / total) * 100))
+}
+
+/**
+ * 任务「文件 / 目录」与来源文件的友好显示名（F27，2026-10-08）。
+ *
+ * <p>扫描任务后端落库为 {@code scan:<服务器绝对路径>}（如 {@code scan:D:\lims\ai\standards\parsed}），
+ * 若直接展示会把服务器目录结构暴露给普通用户，既不美观也不安全。统一转换：</p>
+ *   · {@code scan:} 前缀 → 「标准解析目录（批量扫描）」
+ *   · 其余（上传文件名 / 来源文件）→ 仅保留最后一段文件名，去掉任何路径前缀
+ */
+function friendlyFileLabel(raw: string | null | undefined): string {
+  const text = (raw ?? '').trim()
+  if (!text) return ''
+  if (text.startsWith('scan:')) return '标准解析目录（批量扫描）'
+  const idx = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'))
+  return idx >= 0 ? text.slice(idx + 1) : text
 }
 
 async function loadJobs(): Promise<void> {
@@ -330,15 +354,6 @@ onBeforeUnmount(() => {
       subtitle="导入 GB 标准文本并建立 ngram 索引，供 AI 助手按标准号检索限量条款"
       icon="Monitor"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>AI 助手</el-breadcrumb-item>
-          <el-breadcrumb-item>标准库</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         v-permission="'ai:log:view'"
         :icon="Document"
@@ -399,11 +414,14 @@ onBeforeUnmount(() => {
         border
       >
         <el-table-column
-          prop="fileName"
           label="文件 / 目录"
           min-width="200"
           show-overflow-tooltip
-        />
+        >
+          <template #default="{ row }">
+            {{ friendlyFileLabel(rowJob(row).fileName) }}
+          </template>
+        </el-table-column>
         <el-table-column
           label="状态"
           width="110"
@@ -489,7 +507,9 @@ onBeforeUnmount(() => {
       <div class="page__card-head">
         <h3 class="page__section-title">
           扫描件 OCR 进度
-          <span class="page__sub">离线预处理（ai/scripts/prepare-standards.py --ocr）的页级进度；本系统只读展示、不代跑</span>
+          <span class="page__sub">{{ canManageAi
+            ? '离线预处理（ai/scripts/prepare-standards.py --ocr）的页级进度；本系统只读展示、不代跑'
+            : '扫描件识别为离线预处理，本系统只读展示进度' }}</span>
         </h3>
         <el-button
           size="small"
@@ -513,7 +533,7 @@ onBeforeUnmount(() => {
           <template #default="{ row }">
             <div class="page__op">
               <span>{{ row.stdNo ?? row.stdKey }}</span>
-              <span class="page__time">{{ row.sourceFile ?? '' }}</span>
+              <span class="page__time">{{ friendlyFileLabel(rowOcr(row).sourceFile) }}</span>
             </div>
           </template>
         </el-table-column>
@@ -597,7 +617,9 @@ onBeforeUnmount(() => {
         <template #empty>
           <AppEmpty
             title="暂无扫描件 OCR 任务"
-            hint="把扫描版 PDF 投放 ai/standards/inbox 后运行：python ai/scripts/prepare-standards.py --ocr"
+            :hint="canManageAi
+              ? '把扫描版 PDF 投放 ai/standards/inbox 后运行：python ai/scripts/prepare-standards.py --ocr'
+              : '扫描件识别由管理员离线预处理，如需导入请联系管理员'"
           />
         </template>
       </el-table>
@@ -670,11 +692,14 @@ onBeforeUnmount(() => {
           show-overflow-tooltip
         />
         <el-table-column
-          prop="sourceFile"
           label="来源文件"
           min-width="170"
           show-overflow-tooltip
-        />
+        >
+          <template #default="{ row }">
+            {{ friendlyFileLabel((row as GbDocumentVO).sourceFile) }}
+          </template>
+        </el-table-column>
         <el-table-column
           label="格式"
           width="90"

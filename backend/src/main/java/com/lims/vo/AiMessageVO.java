@@ -1,5 +1,6 @@
 package com.lims.vo;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -44,5 +45,7 @@ public class AiMessageVO {
 
     private Integer elapsedMs;
 
+    /** 创建时间（F28：LocalDateTime 必须显式 @JsonFormat，否则输出 ISO-8601 与其余 VO 不一致） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 }

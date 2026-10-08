@@ -179,15 +179,6 @@ onMounted(() => {
       subtitle="按资质选择生成 CMA / CMA-CATL 检验报告并打印"
       icon="Printer"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
-          <el-breadcrumb-item>报告生成</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"

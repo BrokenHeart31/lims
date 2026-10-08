@@ -1,5 +1,6 @@
 package com.lims.vo;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -37,7 +38,11 @@ public class GbImportJobVO {
     /** 失败明细（逐条「文件 + 原因」） */
     private String errorMsg;
 
+    /** 开始时间（F28：LocalDateTime 必须显式 @JsonFormat，否则输出 ISO-8601 与其余 VO 不一致） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime startedAt;
 
+    /** 完成时间（F28：同上） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime finishedAt;
 }

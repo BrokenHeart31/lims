@@ -322,15 +322,6 @@ onMounted(() => {
       subtitle="维护产品应检项目与判定依据，供项目分解自动加载"
       icon="Files"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>基础数据</el-breadcrumb-item>
-          <el-breadcrumb-item>项目标准库</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Download"
         @click="downloadTemplate"

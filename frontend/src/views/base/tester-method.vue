@@ -215,15 +215,6 @@ onMounted(() => {
       subtitle="配置检验员对检验方法持有资质，供任务安排第三级规则匹配"
       icon="Medal"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>基础数据</el-breadcrumb-item>
-          <el-breadcrumb-item>方法资质</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Download"
         @click="downloadTemplate"

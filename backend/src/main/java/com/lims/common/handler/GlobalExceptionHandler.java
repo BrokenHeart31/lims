@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理器：所有异常统一转换为 {@link R}。
@@ -92,6 +93,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoHandlerFoundException.class)
     public R<Void> handleNoHandlerFound(NoHandlerFoundException e) {
         return R.fail(404, "接口不存在: " + e.getRequestURL());
+    }
+
+    /**
+     * 未匹配到接口/静态资源（F30，2026-10-08）。
+     *
+     * <p>Spring Boot 3.x 默认开启静态资源映射（{@code spring.web.resources.add-mappings}），
+     * 访问不存在的路径时抛的是 {@link NoResourceFoundException}（Spring 6.1+，继承
+     * {@code ErrorResponseException}），而非上面的 {@link NoHandlerFoundException}。
+     * 在此之前该异常会落到 {@link #handleException(Exception)} 兜底，被当成「系统异常」
+     * 打印整段堆栈（噪音大、且对 404 属误判）。此处单独命中：带真 HTTP 404，
+     * 只留一行 WARN，不打印堆栈。</p>
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public R<Void> handleNoResourceFound(NoResourceFoundException e) {
+        log.warn("接口不存在: {}", e.getResourcePath());
+        return R.fail(404, "接口不存在");
     }
 
     /** 系统异常兜底（不向前端暴露堆栈细节） */

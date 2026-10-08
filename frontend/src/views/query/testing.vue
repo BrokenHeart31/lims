@@ -6,6 +6,7 @@
  * 当前阶段停留时长；只读列表，无写入操作。</p>
  */
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { SAMPLE_STATUS_OPTIONS } from '@/api/sample'
 import { pageTestingQueryApi, type TestingQueryParams, type TestingQueryRow } from '@/api/query'
@@ -42,6 +43,8 @@ const query = reactive({
 })
 const dateRange = ref<string[]>([])
 
+const route = useRoute()
+
 const loading = ref(false)
 const tableData = ref<TestingQueryRow[]>([])
 const total = ref(0)
@@ -66,6 +69,19 @@ function conclusionTone(code?: number | null): Tone {
 /** el-table 插槽 row 为宽松类型，传入强类型函数前统一收窄 */
 function rowItem(row: unknown): TestingQueryRow {
   return row as TestingQueryRow
+}
+
+/**
+ * 停留时长格式化（F23，2026-10-08）。
+ * ≥24 小时按「x 天 y 小时」展示，避免出现「342 小时」这类难以换算的大数字；
+ * 不足 24 小时仍以「x 小时」展示；整天数不带 0 小时尾巴。
+ */
+function formatStayHours(hours: number | null | undefined): string {
+  if (hours == null) return ''
+  if (hours < 24) return `${hours} 小时`
+  const days = Math.floor(hours / 24)
+  const rest = hours % 24
+  return rest > 0 ? `${days} 天 ${rest} 小时` : `${days} 天`
 }
 
 function buildParams(): TestingQueryParams {
@@ -125,6 +141,11 @@ function handleSizeChange(s: number): void {
 }
 
 onMounted(() => {
+  // 支持外部带样品编号进入（如「我的检验任务」非本环节行点「查看」）——F29
+  const presetSampleNo = route.query.sampleNo
+  if (typeof presetSampleNo === 'string' && presetSampleNo) {
+    query.sampleNo = presetSampleNo
+  }
   void load()
 })
 </script>
@@ -136,15 +157,6 @@ onMounted(() => {
       subtitle="未出报告样品（已登记 → 已审核）的检测进度、处理人与停留时长"
       icon="Search"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>查询统计</el-breadcrumb-item>
-          <el-breadcrumb-item>在检样品</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"
@@ -363,11 +375,11 @@ onMounted(() => {
         </el-table-column>
         <el-table-column
           label="停留时长"
-          width="110"
+          width="140"
           align="center"
         >
           <template #default="{ row }">
-            <span v-if="rowItem(row).stageStayHours != null">{{ rowItem(row).stageStayHours }} 小时</span>
+            <span v-if="rowItem(row).stageStayHours != null">{{ formatStayHours(rowItem(row).stageStayHours) }}</span>
             <span
               v-else
               class="muted"

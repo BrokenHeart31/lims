@@ -9,7 +9,7 @@
  *   - 工具栏 / 分页 / 详情抽屉沿用 Element Plus 容器，但用 PageHeader 接管头部
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules, type TableInstance, type UploadRequestOptions } from 'element-plus'
 import { Document, Download, Upload } from '@element-plus/icons-vue'
 import {
   SAMPLE_STATUS_OPTIONS,
@@ -21,7 +21,6 @@ import {
   type SampleImportResult,
 } from '@/api/sample'
 import { sampleStatusInfo } from '@/utils/sampleStatus'
-import { confirm } from '@/utils/confirm'
 import PageHeader from '@/components/common/PageHeader.vue'
 import RollbackEntryButton from '@/components/rollback/RollbackEntryButton.vue'
 import type { RollbackBatchResultVO } from '@/types/rollback'
@@ -76,12 +75,28 @@ async function handleDownloadTemplate(): Promise<void> {
 
 // ---------------- 查询区 ----------------
 const queryRef = ref<FormInstance>()
+/**
+ * 样品登记「本环节」= 已登记(S10) + 登记确认(S20) 两个状态（F11，2026-10-08）。
+ * 登记页面的主职责就是处理这两个状态，故作为状态筛选默认项，进页面即可聚焦待办。
+ */
+const THIS_STAGE_STATUSES: number[] = [10, 20]
+/** 状态筛选哨兵值：本环节（多状态） */
+const STATUS_FILTER_THIS_STAGE = 'this_stage'
 const query = reactive({
   sampleNo: '',
   sampleName: '',
   taskNo: '',
-  status: undefined as number | undefined,
+  /** 状态筛选：'this_stage'=本环节(默认) | ''=全部状态 | 具体 code 字符串 */
+  statusFilter: STATUS_FILTER_THIS_STAGE as string,
 })
+
+/** 依据当前状态筛选值，构造分页请求的状态参数（F11） */
+function buildStatusParams(): { status?: number; statuses?: number[] } {
+  if (query.statusFilter === STATUS_FILTER_THIS_STAGE) return { statuses: THIS_STAGE_STATUSES }
+  if (query.statusFilter === '') return {}
+  const code = Number(query.statusFilter)
+  return Number.isFinite(code) ? { status: code } : {}
+}
 
 // ---------------- 表格 ----------------
 const loading = ref(false)
@@ -90,6 +105,8 @@ const total = ref(0)
 const pageNum = ref(1)
 const pageSize = ref(10)
 const selection = ref<Sample[]>([])
+/** el-table 实例：用于「清空选择」一键清空跨页/跨筛选保留的勾选（reserve-selection） */
+const tableRef = ref<TableInstance>()
 
 const listError = ref('')
 let listRequest = 0
@@ -105,7 +122,7 @@ async function loadList(): Promise<void> {
       sampleNo: query.sampleNo || undefined,
       sampleName: query.sampleName || undefined,
       taskNo: query.taskNo || undefined,
-      status: query.status,
+      ...buildStatusParams(),
     })
     if (request !== listRequest) return
     tableData.value = res.records
@@ -126,7 +143,7 @@ function handleReset(): void {
   query.sampleNo = ''
   query.sampleName = ''
   query.taskNo = ''
-  query.status = undefined
+  query.statusFilter = STATUS_FILTER_THIS_STAGE
   handleSearch()
 }
 
@@ -143,6 +160,22 @@ function handleSizeChange(s: number): void {
 
 function handleSelectionChange(rows: Sample[]): void {
   selection.value = rows
+}
+
+/** 当前列表（当前筛选 + 当前页）内的样品 id 集合 */
+const currentListIds = computed(() => new Set(tableData.value.map((row) => row.id)))
+/**
+ * 选中行中**不在当前列表内**的行数。
+ * reserve-selection 会跨页/跨筛选保留勾选，这些「看不见的勾选」必须显式可见，否则易误确认（F2）。
+ */
+const offFilterCount = computed(
+  () => selection.value.filter((row) => row.id != null && !currentListIds.value.has(row.id)).length,
+)
+
+/** 一键清空全部勾选（含跨页/跨筛选保留项） */
+function clearSelection(): void {
+  tableRef.value?.clearSelection()
+  selection.value = []
 }
 
 function statusLabelOf(row: Sample): string {
@@ -206,25 +239,42 @@ function onRollbackDone(_result: RollbackBatchResultVO): void {
 
 // ---------------- 登记确认 (S10→S20) ----------------
 const confirming = ref(false)
+const confirmDialogVisible = ref(false)
 
-async function handleConfirm(): Promise<void> {
-  const targets = selection.value.filter((row) => row.status === 10 && row.id != null)
-  if (targets.length === 0) {
+/**
+ * 待确认对象 = 勾选中处于「已登记(S10)」的行。
+ * ⚠️ 跨页/跨筛选保留的勾选（当前列表外）也会被纳入，因此必须逐条列出、可核对（F2）。
+ */
+const confirmTargets = computed(
+  () => selection.value.filter((row) => row.status === 10 && row.id != null),
+)
+/** 待确认对象中不在当前列表（当前筛选/当前页）内的行数 */
+const confirmOffFilterCount = computed(
+  () => confirmTargets.value.filter((row) => !currentListIds.value.has(row.id)).length,
+)
+
+/** 打开「登记确认」核对弹窗：先逐条展示将确认的样品编号，再由用户确认 */
+function openConfirmDialog(): void {
+  if (confirmTargets.value.length === 0) {
     ElMessage.warning('请先勾选「已登记」状态的样品')
     return
   }
-  const ok = await confirm({
-    title: '登记确认',
-    message: `确定对选中的 ${targets.length} 条样品进行登记确认？确认后状态由「已登记」转为「登记确认」，将进入项目分解流程。`,
-    tone: 'warning',
-    confirmText: '确认',
-  })
-  if (!ok) return
+  confirmDialogVisible.value = true
+}
+
+/** 执行登记确认（只对 S10 行生效，保持 status === 10 过滤） */
+async function submitConfirm(): Promise<void> {
+  const targets = confirmTargets.value
+  if (targets.length === 0) {
+    confirmDialogVisible.value = false
+    return
+  }
   confirming.value = true
   try {
     const ids = targets.map((row) => row.id as number)
     const res = await confirmSampleApi(ids)
     ElMessage.success(`登记确认完成，共 ${res.confirmedCount} 条`)
+    confirmDialogVisible.value = false
     await loadList()
   } catch {
     // 请求层已统一提示
@@ -397,16 +447,24 @@ onMounted(() => {
           </el-form-item>
           <el-form-item label="状态">
             <el-select
-              v-model="query.status"
+              v-model="query.statusFilter"
               placeholder="全部状态"
-              clearable
-              style="width: 140px"
+              style="width: 200px"
             >
+              <!-- F11：首项「本环节」默认选中（已登记/登记确认），聚焦登记页待办 -->
+              <el-option
+                label="本环节（已登记/登记确认）"
+                :value="STATUS_FILTER_THIS_STAGE"
+              />
+              <el-option
+                label="全部状态"
+                value=""
+              />
               <el-option
                 v-for="opt in SAMPLE_STATUS_OPTIONS"
                 :key="opt.code"
                 :label="opt.label"
-                :value="opt.code"
+                :value="String(opt.code)"
               />
             </el-select>
           </el-form-item>
@@ -437,15 +495,27 @@ onMounted(() => {
       <div class="toolbar">
         <div class="toolbar-left">
           <span class="toolbar-title">样品列表</span>
-          <span class="toolbar-sub">共 {{ total }} 条 · 已选 {{ selection.length }} 条</span>
+          <span class="toolbar-sub">
+            共 {{ total }} 条 · 已选 {{ selection.length }} 条<span
+              v-if="offFilterCount > 0"
+            >（含当前筛选外 {{ offFilterCount }} 条）</span>
+          </span>
         </div>
         <div class="toolbar-right">
+          <el-button
+            v-if="selection.length > 0"
+            link
+            type="primary"
+            @click="clearSelection"
+          >
+            清空选择
+          </el-button>
           <el-button
             v-permission="'sample:confirm'"
             type="success"
             :loading="confirming"
             :disabled="selection.length === 0 || loading || !!listError"
-            @click="handleConfirm"
+            @click="openConfirmDialog"
           >
             批量登记确认
           </el-button>
@@ -476,6 +546,7 @@ onMounted(() => {
         @size-change="handleSizeChange"
       >
         <el-table
+          ref="tableRef"
           :data="tableData"
           border
           stripe
@@ -588,11 +659,85 @@ onMounted(() => {
       </DataTable>
     </AppCard>
 
+    <!-- 登记确认核对对话框（F2）：逐条列出将确认的样品编号，跨筛选/跨页保留的勾选显式可见 -->
+    <el-dialog
+      v-model="confirmDialogVisible"
+      title="登记确认"
+      width="760px"
+      append-to-body
+    >
+      <el-alert
+        :title="`将确认以下 ${confirmTargets.length} 条样品：「已登记(S10)」→「登记确认(S20)」`"
+        :description="confirmOffFilterCount > 0
+          ? `其中 ${confirmOffFilterCount} 条不在当前筛选结果内（改筛选前的勾选被保留），请逐条核对后再确认。`
+          : '确认后样品将进入项目分解流程，操作不可逆。'"
+        :type="confirmOffFilterCount > 0 ? 'warning' : 'info'"
+        :closable="false"
+        show-icon
+      />
+      <el-table
+        :data="confirmTargets"
+        border
+        stripe
+        size="small"
+        max-height="320"
+      >
+        <el-table-column
+          type="index"
+          label="#"
+          width="55"
+          align="center"
+        />
+        <el-table-column
+          prop="sampleNo"
+          label="样品编号"
+          min-width="170"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="sampleName"
+          label="样品名称"
+          min-width="140"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="clientName"
+          label="受检单位"
+          min-width="160"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          label="状态"
+          width="120"
+          align="center"
+        >
+          <template #default="{ row }">
+            <StatusBadge :tone="sampleStatusInfo((row as Sample).status).tone">
+              {{ statusLabelOf(row as Sample) }}
+            </StatusBadge>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="confirmDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="success"
+          :loading="confirming"
+          @click="submitConfirm"
+        >
+          确认登记（{{ confirmTargets.length }} 条）
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 导入结果对话框 -->
     <el-dialog
       v-model="importDialogVisible"
       title="采样单导入结果"
       width="720px"
+      append-to-body
     >
       <el-alert
         :title="importSummary"
@@ -655,6 +800,7 @@ onMounted(() => {
       v-model="dialogVisible"
       title="登记信息维护"
       width="760px"
+      append-to-body
     >
       <el-form
         ref="formRef"
@@ -806,6 +952,7 @@ onMounted(() => {
       v-model="detailVisible"
       title="样品详情"
       width="720px"
+      append-to-body
     >
       <el-descriptions
         v-if="detailRow"
@@ -854,7 +1001,7 @@ onMounted(() => {
           </StatusBadge>
         </el-descriptions-item>
         <el-descriptions-item label="登记确认">
-          {{ detailRow.confirmedAt ? `${detailRow.confirmedBy ?? ''} ${detailRow.confirmedAt}` : '未确认' }}
+          {{ detailRow.confirmedAt ? `确认人 ${detailRow.confirmedBy ?? '-'}，确认时间 ${detailRow.confirmedAt}` : '未确认' }}
         </el-descriptions-item>
         <el-descriptions-item
           label="备注"

@@ -83,7 +83,14 @@ FROM `lib`
 WHERE TRIM(IFNULL(`productId`, '')) <> '';
 
 --    4.2 再迁检测项目明细
---        testItem '阿维菌素,mg/kg' → item_name='阿维菌素', unit='mg/kg'（按首个逗号切分）
+--        F17 修正（2026-10-08，取证见 _logs/f17-analysis-2026-10-08.md）：
+--          旧实现按【首个逗号】切分，当 testItem 的名称本身含逗号（出现多段）时切错，
+--          产生「item_name 只剩 1 个字符、unit 变成 '..., xxx' 两段」的坏行。
+--          改为按【最后一个逗号】切分 + 单位白名单：
+--            · 末段（最后一个逗号之后）命中单位白名单 → unit=末段、item_name=末段之前的整体
+--            · 否则（无逗号 / 末段不是合法单位）        → item_name=整串、unit=NULL
+--          单位白名单：mg/kg, μg/kg, mg/100g, CFU/g, g/kg, mg/L, μg/L, /
+--          末尾三条 fail-loud 断言（见 §6）兜底，任何切分/单位/乱码异常即中止。
 --        mathod 末尾 '#' 为方法分隔符残留，统一 TRIM TRAILING '#'
 --        stdValue '0.02*' → std_value='0.02', is_reference=1
 --        judge_type 推导（Copilot 终审规则）：去 * 后为纯数值 → 1 限量比较；
@@ -95,9 +102,24 @@ INSERT INTO `product_lib_item`
    `created_by`, `created_at`, `updated_by`, `updated_at`, `deleted`)
 SELECT pl.`id`,
        l.`xh`,
-       TRIM(SUBSTRING_INDEX(l.`testItem`, ',', 1))                         AS item_name,
-       NULLIF(TRIM(SUBSTRING(l.`testItem`,
-                  CHAR_LENGTH(SUBSTRING_INDEX(l.`testItem`, ',', 1)) + 2)), '') AS unit,
+       -- item_name：末段为合法单位时取「最后一个逗号之前的整体」，否则取整串
+       CASE
+            WHEN l.`testItem` LIKE '%,%'
+             AND TRIM(SUBSTRING_INDEX(l.`testItem`, ',', -1)) IN
+                 ('mg/kg', 'μg/kg', 'mg/100g', 'CFU/g', 'g/kg', 'mg/L', 'μg/L', '/')
+            THEN TRIM(SUBSTRING(l.`testItem`, 1,
+                     CHAR_LENGTH(l.`testItem`)
+                     - CHAR_LENGTH(SUBSTRING_INDEX(l.`testItem`, ',', -1)) - 1))
+            ELSE TRIM(l.`testItem`)
+       END                                                                AS item_name,
+       -- unit：仅当末段命中白名单才取值，否则 NULL
+       CASE
+            WHEN l.`testItem` LIKE '%,%'
+             AND TRIM(SUBSTRING_INDEX(l.`testItem`, ',', -1)) IN
+                 ('mg/kg', 'μg/kg', 'mg/100g', 'CFU/g', 'g/kg', 'mg/L', 'μg/L', '/')
+            THEN TRIM(SUBSTRING_INDEX(l.`testItem`, ',', -1))
+            ELSE NULL
+       END                                                                AS unit,
        NULLIF(TRIM(l.`basis`), '')                                        AS basis_code,
        NULLIF(TRIM(TRIM(TRAILING '#' FROM l.`mathod`)), '')               AS methods,
        CASE WHEN l.`stdValue` LIKE '%*'
@@ -132,3 +154,62 @@ SELECT COUNT(DISTINCT `code`) AS distinct_basis_code FROM `basis`;
 SELECT COUNT(*) AS ref_items FROM `product_lib_item` WHERE `is_reference` = 1;
 -- 抽查：判定类型分布（judge_type 1=限量比较 2=不得检出/不得使用 3=人工）
 SELECT `judge_type`, COUNT(*) AS cnt FROM `product_lib_item` GROUP BY `judge_type`;
+
+-- =============================================================================
+-- 6. 🔴 fail-loud 断言（F17 修正的兜底校验，2026-10-08；仿 V3 的 SIGNAL 写法）
+--    F17 修正把「按首个逗号切分」改为「按最后一个逗号切分 + 单位白名单」，
+--    这里独立重新统计三类异常行，任一 > 0 即 SIGNAL 报错并中止脚本，绝不静默通过：
+--      ① 切分缺陷签名：item_name 只剩 1 个字符 且 unit 里还含逗号（旧切法的残留形态）
+--      ② 单位越界：非空 unit 不在单位白名单内
+--      ③ 乱码特征：item_name/methods/basis_code 的 HEX 中出现 C1 控制符（C2 80~C2 9F，
+--         UTF-8 被 Latin-1 误读后重编码的签名，详见 _logs/f17-analysis-2026-10-08.md）
+--    ⚠️ 执行方式：DELIMITER 为 mysql 客户端指令，请用 mysql 客户端按序执行本文件。
+-- =============================================================================
+DELIMITER $$
+DROP PROCEDURE IF EXISTS `_v1_assert_item_split_ok`$$
+CREATE PROCEDURE `_v1_assert_item_split_ok`()
+BEGIN
+    DECLARE v_total     INT DEFAULT 0;
+    DECLARE v_bad_split INT DEFAULT 0;
+    DECLARE v_bad_unit  INT DEFAULT 0;
+    DECLARE v_mojibake  INT DEFAULT 0;
+    DECLARE v_msg       VARCHAR(128) DEFAULT '';
+
+    SELECT COUNT(*) INTO v_total FROM `product_lib_item`;
+
+    -- ① 切分缺陷签名
+    SELECT COUNT(*) INTO v_bad_split
+      FROM `product_lib_item`
+     WHERE CHAR_LENGTH(TRIM(IFNULL(`item_name`, ''))) = 1
+       AND `unit` LIKE '%,%';
+
+    -- ② 单位白名单
+    SELECT COUNT(*) INTO v_bad_unit
+      FROM `product_lib_item`
+     WHERE `unit` IS NOT NULL
+       AND `unit` NOT IN ('mg/kg', 'μg/kg', 'mg/100g', 'CFU/g', 'g/kg', 'mg/L', 'μg/L', '/');
+
+    -- ③ 乱码特征（C1 控制符签名 C2 80~C2 9F）
+    SELECT COUNT(*) INTO v_mojibake
+      FROM `product_lib_item`
+     WHERE HEX(IFNULL(`item_name`, ''))  REGEXP 'C2(8[0-9A-F]|9[0-9A-F])'
+        OR HEX(IFNULL(`methods`, ''))    REGEXP 'C2(8[0-9A-F]|9[0-9A-F])'
+        OR HEX(IFNULL(`basis_code`, '')) REGEXP 'C2(8[0-9A-F]|9[0-9A-F])';
+
+    IF v_bad_split > 0 OR v_bad_unit > 0 OR v_mojibake > 0 THEN
+        -- 先输出明细结果集（便于定位），再用 ≤128 字符的短消息中止
+        SELECT '❌ V1 4.2 切分断言失败' AS v1_assert_result,
+               v_total AS 总行数, v_bad_split AS 切分缺陷行数,
+               v_bad_unit AS 单位越界行数, v_mojibake AS 乱码行数;
+        SET v_msg = CONCAT('V1 fail-loud: 切分/单位校验未通过 (split=', v_bad_split,
+                           ', unit=', v_bad_unit, ', mojibake=', v_mojibake, ')');
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
+    END IF;
+
+    SELECT CONCAT('✅ V1 4.2 切分校验通过：', v_total,
+                  ' 行 item_name/unit 切分与单位白名单均符合口径') AS v1_assert_result;
+END$$
+DELIMITER ;
+
+CALL `_v1_assert_item_split_ok`();
+DROP PROCEDURE IF EXISTS `_v1_assert_item_split_ok`;

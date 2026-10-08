@@ -9,6 +9,7 @@ import {
   TASK_NATURE_OPTIONS,
   TASK_REGION_OPTIONS,
   TASK_STATUS_OPTIONS,
+  TASK_PRIORITY_OPTIONS,
   SAMPLING_STAGE_OPTIONS,
   type SuperviseTask,
 } from '@/api/task'
@@ -96,12 +97,16 @@ function statusTone(s: string | undefined): 'success' | 'warning' | 'info' | 'pe
   return 'info'
 }
 
-// ---------------- 新建/编辑弹窗 ----------------
+// ---------------- 新建/编辑/查看弹窗 ----------------
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const deletingId = ref<number | null>(null)
+/** F15：只读查看态——复用同一弹窗，置为 true 时表单整体禁用、仅保留「关闭」 */
+const readonly = ref(false)
+/** F9：表单分组折叠面板，必填组「基础信息」默认展开 */
+const activeFormGroups = ref<string[]>(['base'])
 
 const emptyForm = (): SuperviseTask => ({
   id: undefined,
@@ -133,6 +138,8 @@ const rules: FormRules = {
 
 function openCreate(): void {
   dialogTitle.value = '新建监抽任务'
+  readonly.value = false
+  activeFormGroups.value = ['base']
   // 编辑后再新建必须移除上一条 id，避免误调用更新接口。
   delete form.id
   Object.assign(form, emptyForm())
@@ -141,6 +148,17 @@ function openCreate(): void {
 
 function openEdit(row: SuperviseTask): void {
   dialogTitle.value = '编辑监抽任务'
+  readonly.value = false
+  activeFormGroups.value = ['base']
+  Object.assign(form, row)
+  dialogVisible.value = true
+}
+
+/** F15：只读查看——复用编辑弹窗，表单整体禁用，仅展示不落库 */
+function openView(row: SuperviseTask): void {
+  dialogTitle.value = '查看监抽任务'
+  readonly.value = true
+  activeFormGroups.value = ['base', 'sampling', 'other']
   Object.assign(form, row)
   dialogVisible.value = true
 }
@@ -198,15 +216,6 @@ onMounted(() => {
       subtitle="下达 / 维护食品质量监督抽检任务，作为后续采样的来源依据"
       icon="Notebook"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>业务管理</el-breadcrumb-item>
-          <el-breadcrumb-item>监抽任务</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         v-if="authStore.hasPermission('task:add')"
         type="primary"
@@ -353,10 +362,17 @@ onMounted(() => {
           </el-table-column>
           <el-table-column
             label="操作"
-            width="140"
+            width="180"
             fixed="right"
           >
             <template #default="{ row }">
+              <el-button
+                link
+                type="info"
+                @click="openView(row as SuperviseTask)"
+              >
+                查看
+              </el-button>
               <el-button
                 v-if="authStore.hasPermission('task:edit')"
                 link
@@ -384,183 +400,226 @@ onMounted(() => {
       </DataTable>
     </AppCard>
 
-    <!-- 新建/编辑弹窗 -->
+    <!-- 新建/编辑弹窗（append-to-body：确保遮罩挂到 body 根部，避免被页内层叠上下文困住，
+         固定右侧操作列在弹窗打开时被遮罩完整覆盖、不可点 — F10） -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
       width="640px"
       destroy-on-close
+      append-to-body
     >
       <el-form
         ref="formRef"
         :model="form"
         :rules="rules"
+        :disabled="readonly"
         label-width="100px"
       >
-        <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item
-              label="任务编号"
-              prop="taskNo"
-            >
-              <el-input
-                v-model="form.taskNo"
-                placeholder="如 RW-SA-20230101"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item
-              label="任务名称"
-              prop="taskName"
-            >
-              <el-input v-model="form.taskName" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item
-              label="任务性质"
-              prop="taskNature"
-            >
-              <el-select
-                v-model="form.taskNature"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="n in TASK_NATURE_OPTIONS"
-                  :key="n"
-                  :label="n"
-                  :value="n"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="任务来源">
-              <el-input
-                v-model="form.taskSource"
-                placeholder="下达单位"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="区域级别">
-              <el-select
-                v-model="form.regionLevel"
-                clearable
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="r in TASK_REGION_OPTIONS"
-                  :key="r"
-                  :label="r"
-                  :value="r"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="负责人">
-              <el-input v-model="form.leader" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="批次">
-              <el-input v-model="form.batchNo" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="任务等级">
-              <el-input v-model="form.priority" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="接受日期">
-              <el-date-picker
-                v-model="form.receiveDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="下达日期">
-              <el-date-picker
-                v-model="form.issueDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="完成日期">
-              <el-date-picker
-                v-model="form.completeDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="抽样环节">
-              <el-select
-                v-model="form.samplingStage"
-                clearable
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="s in SAMPLING_STAGE_OPTIONS"
-                  :key="s"
-                  :label="s"
-                  :value="s"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="阳性率要求">
-              <el-input v-model="form.positiveRateRequirement" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="检测范围">
-              <el-input v-model="form.testScope" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="状态">
-              <el-select
-                v-model="form.status"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="s in TASK_STATUS_OPTIONS"
-                  :key="s"
-                  :label="s"
-                  :value="s"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
-            <el-form-item label="任务说明">
-              <el-input
-                v-model="form.remark"
-                type="textarea"
-                :rows="3"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <!-- F9：按业务分组折叠，必填组「基础信息」默认展开，减少长表单认知负担 -->
+        <el-collapse
+          v-model="activeFormGroups"
+          class="task-form-groups"
+        >
+          <el-collapse-item
+            name="base"
+            title="基础信息（必填）"
+          >
+            <el-row :gutter="16">
+              <el-col :span="12">
+                <el-form-item
+                  label="任务编号"
+                  prop="taskNo"
+                >
+                  <el-input
+                    v-model="form.taskNo"
+                    placeholder="如 RW-SA-20230101"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item
+                  label="任务名称"
+                  prop="taskName"
+                >
+                  <el-input v-model="form.taskName" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item
+                  label="任务性质"
+                  prop="taskNature"
+                >
+                  <el-select
+                    v-model="form.taskNature"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="n in TASK_NATURE_OPTIONS"
+                      :key="n"
+                      :label="n"
+                      :value="n"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="任务来源">
+                  <el-input
+                    v-model="form.taskSource"
+                    placeholder="下达单位"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="区域级别">
+                  <el-select
+                    v-model="form.regionLevel"
+                    clearable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="r in TASK_REGION_OPTIONS"
+                      :key="r"
+                      :label="r"
+                      :value="r"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="负责人">
+                  <el-input v-model="form.leader" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="批次">
+                  <el-input v-model="form.batchNo" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="任务等级">
+                  <el-select
+                    v-model="form.priority"
+                    clearable
+                    placeholder="请选择任务等级"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="p in TASK_PRIORITY_OPTIONS"
+                      :key="p"
+                      :label="p"
+                      :value="p"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="状态">
+                  <el-select
+                    v-model="form.status"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="s in TASK_STATUS_OPTIONS"
+                      :key="s"
+                      :label="s"
+                      :value="s"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </el-collapse-item>
+
+          <el-collapse-item
+            name="sampling"
+            title="抽样信息"
+          >
+            <el-row :gutter="16">
+              <el-col :span="12">
+                <el-form-item label="接受日期">
+                  <el-date-picker
+                    v-model="form.receiveDate"
+                    type="date"
+                    value-format="YYYY-MM-DD"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="下达日期">
+                  <el-date-picker
+                    v-model="form.issueDate"
+                    type="date"
+                    value-format="YYYY-MM-DD"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="完成日期">
+                  <el-date-picker
+                    v-model="form.completeDate"
+                    type="date"
+                    value-format="YYYY-MM-DD"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="抽样环节">
+                  <el-select
+                    v-model="form.samplingStage"
+                    clearable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="s in SAMPLING_STAGE_OPTIONS"
+                      :key="s"
+                      :label="s"
+                      :value="s"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="阳性率要求">
+                  <el-input v-model="form.positiveRateRequirement" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="检测范围">
+                  <el-input v-model="form.testScope" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </el-collapse-item>
+
+          <el-collapse-item
+            name="other"
+            title="其他"
+          >
+            <el-row :gutter="16">
+              <el-col :span="24">
+                <el-form-item label="任务说明">
+                  <el-input
+                    v-model="form.remark"
+                    type="textarea"
+                    :rows="3"
+                  />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </el-collapse-item>
+        </el-collapse>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">
-          取消
+          {{ readonly ? '关闭' : '取消' }}
         </el-button>
         <el-button
+          v-if="!readonly"
           type="primary"
           :loading="submitting"
           @click="handleSubmit"
@@ -581,5 +640,14 @@ onMounted(() => {
 .pager {
   margin-top: var(--lims-r-sm);
   justify-content: flex-end;
+}
+
+/* F9：分组折叠面板——压缩头部留白，让弹窗更紧凑 */
+.task-form-groups :deep(.el-collapse-item__header) {
+  font-weight: 600;
+}
+
+.task-form-groups :deep(.el-collapse-item__content) {
+  padding-bottom: 4px;
 }
 </style>

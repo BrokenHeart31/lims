@@ -85,6 +85,20 @@ export interface AbnormalItem {
   reason: string
 }
 
+/**
+ * 待判定项人工裁决（F20 合规改造）。
+ * 审核人必须为每个「待判定」项给出确定结论（合格/不合格）+ 必填说明，
+ * 后端据此改写该单项为人工结论并要求整体结论聚合为确定值。
+ */
+export interface AuditAdjudication {
+  /** 检测单项ID（与异常项清单 itemId 同口径） */
+  itemId: number
+  /** 裁决结论：1=合格 / 2=不合格 */
+  conclusion: number
+  /** 裁决说明（必填，落 judge_basis 留痕） */
+  reason: string
+}
+
 /** 审核流水 */
 export interface AuditLogItem {
   id: number
@@ -165,13 +179,24 @@ export function getAuditDetailApi(sampleId: number): Promise<AuditDetail> {
   return get<AuditDetail>(`/report/detail/${sampleId}`)
 }
 
-/** 审核通过（S60→S70）：POST /report/audit/approve */
+/**
+ * 审核通过（S60→S70）：POST /report/audit/approve
+ *
+ * F20：存在「待判定」项时，`adjudications` 必须逐条给出裁决（合格/不合格 + 说明）；
+ * 存在「未录入」项时后端直接拒绝（须退回补录）。缺省空数组兼容无待判定项的场景。
+ */
 export function approveAuditApi(
   sampleId: number,
   opinion: string | null,
   abnormalConfirmed: boolean,
+  adjudications: AuditAdjudication[] = [],
 ): Promise<AuditActionResult> {
-  return post<AuditActionResult>('/report/audit/approve', { sampleId, opinion, abnormalConfirmed })
+  return post<AuditActionResult>('/report/audit/approve', {
+    sampleId,
+    opinion,
+    abnormalConfirmed,
+    adjudications,
+  })
 }
 
 /** 审核退回（S60→S50）：POST /report/audit/return */

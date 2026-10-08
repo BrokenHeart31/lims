@@ -223,6 +223,10 @@ html.dark {
   --el-table-text-color: var(--lims-ink);
   --el-table-header-font-weight: 600;
   --el-table-border: 1px solid var(--lims-hair);
+  /* 固定列的 EP 默认「内投影」在暗色下发灰，且会与穿透感叠加成鬼影（F1）。
+   * 置为 none，改用 --lims-hair 发丝线做固定列分隔（见下方 fixed 区块）。 */
+  --el-table-fixed-left-column: none;
+  --el-table-fixed-right-column: none;
 
   border-radius: var(--lims-r-card);
   font-size: var(--lims-fs-sm);
@@ -270,7 +274,7 @@ html.dark {
 }
 
 /* ---------------------------------------------------------------------------
- * 固定列（fixed="right" 的操作列）必须有不透明底色
+ * 固定列（fixed="right" 的操作列）必须有不透明底色 —— 覆盖**全部行态**（F1）
  * ---------------------------------------------------------------------------
  * 本主题把 --el-table-bg-color / --el-table-tr-bg-color 设为 transparent（让玻璃卡片透出底色），
  * 副作用是：**固定列失去不透明背板**。EP 2.9 的固定列用 `position: sticky` 实现
@@ -280,25 +284,51 @@ html.dark {
  *
  * 这里用 !important 强制实体底色：这是**主题必须压过基础变量**的场景
  * （基础变量被刻意设为 transparent，此处需要反向兜底），且所有含固定列的表格共用。
+ *
+ * ⚠️ 行态必须**逐个**显式覆盖，否则未覆盖的行态（斑马纹 / hover / 当前行）仍会透出：
+ *   ① 底色用 `--lims-layer-card` 实色；
+ *   ② 行态叠加层用「双层 background」——上层是 EP 的**半透明行态色**，
+ *      下层是实色卡片层。这样既保留 EP 的行态视觉，又保证任何情况下都不透明；
+ *      且全程引用令牌（--lims-* 与 --el-*），不新增硬编码色值。
+ *   顺序即优先级（同特异度下后者胜）：base → 表头 → 斑马纹 → 当前行 → hover。
  */
 .el-table .el-table-fixed-column--left,
 .el-table .el-table-fixed-column--right {
   background-color: var(--lims-layer-card) !important;
 }
 
+/* 表头：EP 的 header 底色是半透明 rgba，需叠加在卡片实色层上 */
 .el-table th.el-table-fixed-column--left,
 .el-table th.el-table-fixed-column--right {
-  background-color: #161e27 !important;
+  background:
+    linear-gradient(var(--el-table-header-bg-color), var(--el-table-header-bg-color)),
+    var(--lims-layer-card) !important;
 }
 
+/* 斑马纹行 */
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table-fixed-column--left,
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table-fixed-column--right {
-  background-color: #151c24 !important;
+  background:
+    linear-gradient(var(--el-fill-color-lighter), var(--el-fill-color-lighter)),
+    var(--lims-layer-card) !important;
 }
 
+/* 当前行 / 选中行（EP 用 --el-table-current-row-bg-color，半透明品牌色） */
+.el-table__body tr.current-row > td.el-table-fixed-column--left,
+.el-table__body tr.current-row > td.el-table-fixed-column--right {
+  background:
+    linear-gradient(var(--el-table-current-row-bg-color), var(--el-table-current-row-bg-color)),
+    var(--lims-layer-card) !important;
+}
+
+/* 悬停行（:hover 与 EP 自身加的 .hover-row 两种来源都要覆盖，放最后以保证优先级） */
+.el-table__body tr.hover-row > td.el-table-fixed-column--left,
+.el-table__body tr.hover-row > td.el-table-fixed-column--right,
 .el-table--enable-row-hover .el-table__body tr:hover > td.el-table-fixed-column--left,
 .el-table--enable-row-hover .el-table__body tr:hover > td.el-table-fixed-column--right {
-  background-color: #1a232d !important;
+  background:
+    linear-gradient(var(--el-table-row-hover-bg-color), var(--el-table-row-hover-bg-color)),
+    var(--lims-layer-card) !important;
 }
 
 /* 固定列边缘：EP 默认给灰白阴影，暗色下发灰；换成发丝线更贴合主题 */
@@ -310,6 +340,38 @@ html.dark {
 .el-table .el-table-fixed-column--left.is-last-column::before {
   border-left: none;
   border-right: 1px solid var(--lims-hair);
+}
+
+/* ---------------------------------------------------------------------------
+ * 宽表横向滚动可见化（F1 根因修复）
+ * ---------------------------------------------------------------------------
+ * EP 2.9 表格的横向滚动由**内部 <el-scrollbar>** 承担（overlay 细条，默认仅 hover 时
+ * 显现）。而外层 `.data-table__body { overflow-x:auto }` 因表体自身 width:100% 永不触发，
+ * 故 1366 下宽表（列 min-width 之和 > 容器）在视觉上「既看不到滚动条、右侧关键列也被固定列
+ * 压住」，用户无从滚动。
+ *
+ * 这里只对**确有横向溢出**的表格（EP 自动加 `.el-table--scrollable-x`）常驻显示一条
+ * 可拖拽的横向滚动条：真实滚动能力本来就存在（.el-scrollbar__wrap 的 overflow-x:auto），
+ * 缺的只是「让用户看见并抓得住」。范围严格限定为横向条，不影响纵向滚动体验。
+ * ------------------------------------------------------------------------- */
+.el-table.el-table--scrollable-x .el-scrollbar__bar.is-horizontal {
+  display: block !important;
+  height: 8px;
+  border-radius: var(--lims-r-pill);
+  background: var(--lims-hair);
+  opacity: 1;
+}
+
+.el-table.el-table--scrollable-x .el-scrollbar__bar.is-horizontal > div {
+  height: 100%;
+  border-radius: var(--lims-r-pill);
+  background: var(--lims-muted);
+  opacity: 0.55;
+}
+
+.el-table.el-table--scrollable-x .el-scrollbar__bar.is-horizontal > div:hover {
+  background: var(--lims-ink-2);
+  opacity: 0.8;
 }
 
 /* ---------------------------------------------------------------------------
@@ -494,4 +556,13 @@ html.dark {
 .el-radio__input.is-checked .el-radio__inner {
   border-color: transparent;
   background: var(--lims-accent-deep);
+}
+
+/* F12（2026-10-08）：
+ * 全局 --el-border-radius-small:6px 作用在约 14px 见方的 .el-checkbox__inner 上，
+ * 会被裁成近圆形，复选框看起来像单选按钮。这里单独把复选框内框收敛为 3px 小圆角，
+ * 恢复「方形复选框」语义；单选 .el-radio__inner 的圆形保持不变。
+ */
+.el-checkbox__inner {
+  border-radius: 3px;
 }

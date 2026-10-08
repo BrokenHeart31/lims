@@ -65,7 +65,33 @@ VALUES
   ('GB 31658.5', 'M-001', 'njsa000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
   ('GB 31658',   'M-002', 'njsa000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
   ('GB 2762-2017', 'M-003', 'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
-  ('GB 2733',    'M-004', 'njxa000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0);
+  ('GB 2733',    'M-004', 'njxa000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  -- F17 增量（2026-10-08，取证见 _logs/f17-analysis-2026-10-08.md）：
+  --   补 22 条 njna000（农残检验员）对「玉米库缺口方法号」的资质，使既有样品 18（鲜食玉米 62 项）
+  --   的自动分配命中率由 23/62 提升到 36/62。⚠️ 匹配按 method_no（见 AssignServiceImpl 的
+  --   `tester_method.method_no IN splitMethods(item.methods)`），故 method_no 必须为方法标准号本身。
+  ('GB 23200.112', 'GB 23200.112', 'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB 23200.34',  'GB 23200.34',  'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 23750',   'GB/T 23750',   'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.102','GB/T 5009.102','njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.114','GB/T 5009.114','njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.136','GB/T 5009.136','njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.143','GB/T 5009.143','njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.145','GB/T 5009.145','njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.155','GB/T 5009.155','njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.175','GB/T 5009.175','njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.19', 'GB/T 5009.19', 'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.20', 'GB/T 5009.20', 'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('GB/T 5009.21', 'GB/T 5009.21', 'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('NY/T 1680',    'NY/T 1680',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN 0139',      'SN 0139',      'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN/T 1923',    'SN/T 1923',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN/T 1968',    'SN/T 1968',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN/T 2151',    'SN/T 2151',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN/T 2228',    'SN/T 2228',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN/T 2915',    'SN/T 2915',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN/T 3769',    'SN/T 3769',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0),
+  ('SN/T 4264',    'SN/T 4264',    'njna000', 1, '演示数据', 'seed', NOW(), 'seed', NOW(), 0);
 
 -- -----------------------------------------------------------------------------
 -- 3. 演示样品 1：S10 已登记 → 给 R1 样品登记员做「登记确认」

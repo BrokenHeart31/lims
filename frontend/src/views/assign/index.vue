@@ -273,15 +273,6 @@ onMounted(() => {
       subtitle="阶段五：将已分解（S30）的样品检测单项指派给有资格检验员，确认后流转 S40。"
       :icon="'Histogram'"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
-          <el-breadcrumb-item>任务安排</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="loadPending"
@@ -378,6 +369,7 @@ onMounted(() => {
       >
         <el-table
           :data="tableData"
+          row-key="id"
           stripe
           @selection-change="handleSelectionChange"
         >

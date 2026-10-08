@@ -98,6 +98,13 @@ export interface SampleQuery {
   sampleName?: string
   taskNo?: string
   status?: number
+  /**
+   * 多状态筛选（F11，2026-10-08）。
+   * 后端 `@RequestParam(required=false) List<Integer> statuses` 原生支持逗号分隔，
+   * 但 axios 默认会把数组序列化成 `statuses[]=10&statuses[]=20`（后端收不到），
+   * 故在 pageSampleApi 中显式 `.join(',')` 拼成 `statuses=10,20`。
+   */
+  statuses?: number[]
 }
 
 /** 导入失败明细行 */
@@ -119,7 +126,13 @@ export interface SampleImportResult {
 
 /** 分页查询样品：GET /sample/page */
 export function pageSampleApi(params: SampleQuery): Promise<PageResult<Sample>> {
-  return get<PageResult<Sample>>('/sample/page', params as unknown as Record<string, unknown>)
+  const { statuses, ...rest } = params
+  const query: Record<string, unknown> = { ...rest }
+  if (statuses && statuses.length > 0) {
+    // 显式逗号分隔，避免 axios 默认的 `statuses[]=` 数组后缀后端解析不到
+    query.statuses = statuses.join(',')
+  }
+  return get<PageResult<Sample>>('/sample/page', query)
 }
 
 /** 样品详情：GET /sample/{id} */

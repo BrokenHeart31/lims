@@ -123,15 +123,6 @@ onMounted(() => {
       subtitle="产品标准库检索：按产品查看应检项目与判定依据"
       icon="Search"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>查询统计</el-breadcrumb-item>
-          <el-breadcrumb-item>项目库</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"

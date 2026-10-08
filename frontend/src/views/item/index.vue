@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { MagicStick, Operation, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
@@ -27,6 +27,28 @@ import DataTable from '@/components/common/DataTable.vue'
 // ---------------- AI 助手只读联动（事实层确定性，不代操作） ----------------
 /** 只读：查看「项目分解」这一步的流程引导 */
 const aiAssistant = useAiAssistantStore()
+
+// ---------------- 表格高度（数值 max-height） ----------------
+/**
+ * Element Plus 2.9.3 的 el-table `height` 只接受**数字或固定 px 字符串**，不识别 `calc()`。
+ * 原先写 `height="calc(100vh - 360px)"` 属于无效用法（计算后无高度 → 表体布局异常），
+ * 故改为响应式**数值** `:max-height`，并在窗口尺寸变化时重算。
+ * 数值口径与旧 calc 一致：列表页预留 360px（页头 + 查询卡 + 工具栏 + 分页），抽屉表预留 300px。
+ */
+const LIST_HEIGHT_OFFSET = 360
+const DRAWER_HEIGHT_OFFSET = 300
+
+function viewportMaxHeight(offset: number, min: number): number {
+  return Math.max(min, window.innerHeight - offset)
+}
+
+const tableMaxHeight = ref(viewportMaxHeight(LIST_HEIGHT_OFFSET, 320))
+const drawerTableMaxHeight = ref(viewportMaxHeight(DRAWER_HEIGHT_OFFSET, 240))
+
+function handleViewportResize(): void {
+  tableMaxHeight.value = viewportMaxHeight(LIST_HEIGHT_OFFSET, 320)
+  drawerTableMaxHeight.value = viewportMaxHeight(DRAWER_HEIGHT_OFFSET, 240)
+}
 
 function showFlowGuide(): void {
   void aiAssistant.openFlowGuide({ pageKey: 'item-index' })
@@ -322,7 +344,12 @@ function handleEditChange(): void {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', handleViewportResize)
   void loadPending()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleViewportResize)
 })
 </script>
 
@@ -355,7 +382,7 @@ onMounted(() => {
           <el-form-item label="样品编号">
             <el-input
               v-model="query.sampleNo"
-              placeholder="模糊查询"
+              placeholder="按编号包含匹配"
               clearable
               style="width: 180px"
               @keyup.enter="handleSearch"
@@ -364,7 +391,7 @@ onMounted(() => {
           <el-form-item label="样品名称">
             <el-input
               v-model="query.sampleName"
-              placeholder="模糊查询"
+              placeholder="按名称包含匹配"
               clearable
               style="width: 180px"
               @keyup.enter="handleSearch"
@@ -427,9 +454,10 @@ onMounted(() => {
       >
         <el-table
           :data="tableData"
+          row-key="id"
           border
           stripe
-          height="calc(100vh - 360px)"
+          :max-height="tableMaxHeight"
           @selection-change="handleSelectionChange"
         >
           <el-table-column
@@ -620,7 +648,7 @@ onMounted(() => {
           border
           stripe
           size="small"
-          height="calc(100vh - 300px)"
+          :max-height="drawerTableMaxHeight"
           class="editor-table"
         >
           <el-table-column

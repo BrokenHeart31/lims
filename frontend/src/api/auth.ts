@@ -58,6 +58,16 @@ export function loginApi(payload: LoginPayload): Promise<LoginResult> {
   return post<LoginResult>('/auth/login', payload)
 }
 
+/**
+ * 刷新令牌：POST /api/auth/refresh（F8）。
+ *
+ * 正常路径由 `utils/request.ts` 的 401 拦截器用裸 axios 调用（避免拦截器递归）；
+ * 本函数供显式场景（如状态恢复）使用，返回新的 accessToken + refreshToken。
+ */
+export function refreshApi(refreshToken: string): Promise<LoginResult> {
+  return post<LoginResult>('/auth/refresh', { refreshToken })
+}
+
 /** 当前登录用户信息：GET /api/auth/me */
 export function fetchMeApi(): Promise<MeResult> {
   return get<MeResult>('/auth/me')

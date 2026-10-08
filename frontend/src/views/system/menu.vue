@@ -240,15 +240,6 @@ onMounted(() => {
       subtitle="维护菜单树与 resource:action 权限标识（后端鉴权的权威来源）"
       icon="Menu"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>系统管理</el-breadcrumb-item>
-          <el-breadcrumb-item>菜单管理</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"

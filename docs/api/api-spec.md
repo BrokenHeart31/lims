@@ -308,9 +308,11 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 ### 3.3 分页查询
 
-`GET /api/sample/page?pageNum=1&pageSize=10&sampleNo=&sampleName=&taskNo=&status=`　权限：`sample:query`
+`GET /api/sample/page?pageNum=1&pageSize=10&sampleNo=&sampleName=&taskNo=&status=&statuses=`　权限：`sample:query`
 
 - sampleNo：前缀匹配；sampleName：模糊匹配；taskNo：精确匹配；status：精确匹配（状态 code）；均选填。按 id 倒序。
+- `statuses`：**多状态筛选**（F11 增量，2026-10-08），逗号分隔的多个状态 code，如 `statuses=10,20`（登记页「本环节」= 已登记 / 登记确认）。additive 设计：与 `status` 并存、均选填；两者都为空时不按状态过滤，都传时按 `statuses` 的 `IN` 语义取交集；任一 code 非法则 `code=400`。
+  - ⚠️ 前端须显式 `statuses.join(',')` 拼成逗号串后再传（不要直接传数组，避免 axios 序列化成 `statuses[]=10&statuses[]=20` 导致后端收不到）。
 - 响应 data：分页结构（见 0.3），records 元素为 3.1 字段模型。
 
 ### 3.4 详情
@@ -780,20 +782,43 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 
 `POST /api/report/audit/approve`　权限：`report:audit`
 
-- 请求体：
+- 请求体（**F20 增补 `adjudications`**，可空；存在待判定项时必填）：
 
 ```json
-{ "sampleId": 1, "opinion": "数据核对无误", "abnormalConfirmed": true }
+{
+  "sampleId": 21,
+  "opinion": "已逐条裁决",
+  "abnormalConfirmed": true,
+  "adjudications": [
+    { "itemId": 1, "conclusion": 1, "reason": "检出值低于最低检出限，按未检出判定合格" }
+  ]
+}
 ```
 
-- 校验：
-  - 样品存在且状态为 **S60**，否则 `code=400`；
-  - **放行红线**：若存在异常项（未录入 / 待判定）且 `abnormalConfirmed != true` →
-    `code=400`「该样品存在 N 个待判定/未录入项，请先逐项确认「异常项清单」后再审核通过」；
-  - 无异常项时 `abnormalConfirmed` 传值不影响结果。
+  - `adjudications[].itemId`：**检测单项ID**（`sample_item.id`，与 7.3 异常项清单 `itemId` 同口径）；
+  - `adjudications[].conclusion`：仅 `1=合格` / `2=不合格`（闭集，其他值 `code=400`）；
+  - `adjudications[].reason`：裁决说明，**必填**（≤200），落 `sample_result.judge_basis` 留痕。
+
+- 校验（顺序即优先级；F20 合规硬约束，CMA 报告不允许未决结论项）：
+  1. 样品存在且状态为 **S60**，否则 `code=400`；
+  2. **放行红线**：若存在异常项（未录入 / 待判定）且 `abnormalConfirmed != true` →
+     `code=400`「该样品存在 N 个待判定/未录入项，请先逐项确认「异常项清单」后再审核通过」；
+  3. **未录入项硬阻断（F20）**：存在「未录入（BLANK）」项 →
+     `code=400`「存在 N 个未录入项（无检验数据），不能审核通过；请退回检验员补录后再审」
+     （`abnormalConfirmed=true` **不能豁免**，必须走 7.5 退回补录）；
+  4. **待判定项逐条裁决（F20）**：对每个「待判定（PENDING）」项，`adjudications` 必须**恰好**提供一条裁决。
+     缺条 / 重复 `itemId` / `itemId` 不属于该样品待判定集 / `conclusion` 非 1、2 / `reason` 空白 → `code=400`
+     （消息如「共 N 个待判定项，请逐条选择裁决结论并填写说明（缺少 M 条）」）；
+  5. 无异常项时 `adjudications` 传值不影响结果。
 - 流转：`assertTransition(S60, S70)` + 乐观条件 UPDATE（`WHERE id=? AND status=60`），
   `updated==0` → `code=400`「样品状态已变更，请刷新后重试」。
-- 落库：`sample_info` 写 `auditBy/auditAt/auditOpinion`；追加流水 `action=1`。
+- 落库（**同一事务**）：
+  - `sample_info` 写 `auditBy/auditAt/auditOpinion`；追加流水 `action=1`；
+  - **F20 裁决落库**：每个待判定项按其 `sample_result` 行改写为人工结论——
+    `conclusion`=裁决值、`conclusion_source=2`（人工判定）、
+    `judge_basis` 追加「【审核人工裁决】合格|不合格：说明（裁决人 时间）」（截断 250 字）、`updated_by/updated_at`；
+  - **F20 整体结论重算**：有裁决时按 T-912 唯一聚合口径（`OverallConclusionPolicy`，与录入域**同一函数**）
+    重算并持久化 `sample_info.conclusion`，使整体结论聚合为确定值（保留 D3：全参考项 → 待判定）。
 - 响应 `data`：`{ sampleId, sampleNo, status, statusLabel, action, actionLabel, opinion, abnormalConfirmed, operatedBy, operatedAt }`
 
 ### 7.5 审核退回（S60 → S50）
@@ -870,7 +895,12 @@ JSON 字段一律 **camelCase**（终审结论，见 DECISIONS.md 2026-09-10）�
 - 请求体：`{ "sampleNo": "JK(2026)-SA-001", "reportType": 1 }`
   - **`reportType` 是数字 code：1=CMA、2=CMA-CATL；缺省按 1=CMA**（与 8.4 响应中的 `reportType` 同一口径，前后端只认数字）。
     非法 code → `code=400`「非法的报告类型编码」。
-- 校验：样品必须存在且 `status = S80`；否则 `code=400`「仅已签发样品可生成报告」
+- 校验：
+  - 样品必须存在且 `status = S80`；否则 `code=400`「仅已签发样品可生成报告」
+  - **F20 门禁**：逐一核对每个检测单项（**含参考项**）须**已有效录入**且单项结论 ∈ {合格(1), 不合格(2)}；
+    存在「未录入 / 待判定」项 →
+    `code=400`「存在 N 个未完成判定的检测单项（名称1、名称2…），请先完成审核裁决/补录后再生成报告」。
+    依据：CMA 报告是法律文书，**正文不得出现「待判定」行**——生成前必须已完成 7.4 逐条裁决（或退回补录）。
 - 流转：`assertTransition(S80, S90)` + 乐观条件 UPDATE（`WHERE id=? AND status=80`）；
   `updated==0` → `code=400`「样品状态已变更，请刷新后重试」
 - 落库：写 `reportType / reportGeneratedAt / reportGeneratedBy`

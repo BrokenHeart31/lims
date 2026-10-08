@@ -10,6 +10,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Close, Delete, Promotion } from '@element-plus/icons-vue'
 import { useAiAssistantStore } from '@/stores/aiAssistant'
+import { useAuthStore } from '@/stores/auth'
 import { sampleStatusInfo } from '@/utils/sampleStatus'
 import AppEmpty from '@/components/common/AppEmpty.vue'
 import AiStatusBadge from '@/components/ai/AiStatusBadge.vue'
@@ -18,6 +19,7 @@ import AiCompanionBar from '@/components/ai/AiCompanionBar.vue'
 import type { AiCompanionHint, AiSuggestion } from '@/types/ai'
 
 const store = useAiAssistantStore()
+const authStore = useAuthStore()
 const router = useRouter()
 
 const emit = defineEmits<{
@@ -35,10 +37,19 @@ function stopDragStart(e: Event): void {
 
 const draft = ref('')
 
+/**
+ * 是否向当前用户暴露「启动脚本路径」——F31（2026-10-08）。
+ * 仅具备 `ai:kb:import`（知识库导入，运维/管理员）权限的用户才显示 startScript；
+ * 普通业务用户只看到「AI 暂不可用，请联系管理员」，不暴露服务器脚本路径。
+ */
+const canManageAi = computed(() => authStore.hasPermission('ai:kb:import'))
+
 /** 输入区禁用原因（非空即禁用 + 展示原因） */
 const disabledReason = computed(() => {
   if (!store.online) {
-    return `AI 服务离线，请先启动本地模型：${store.startScript}`
+    return canManageAi.value
+      ? `AI 服务离线，请先启动本地模型：${store.startScript}`
+      : 'AI 暂不可用，请联系管理员'
   }
   return ''
 })

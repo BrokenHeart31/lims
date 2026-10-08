@@ -128,15 +128,6 @@ onMounted(() => {
       subtitle="已签发 / 已出报告样品的历史归档查询"
       icon="Search"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>查询统计</el-breadcrumb-item>
-          <el-breadcrumb-item>历史样品</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"

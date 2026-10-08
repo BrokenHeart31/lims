@@ -141,34 +141,45 @@ async function go(path?: string): Promise<void> {
 }
 
 /**
- * 面包屑：按当前路由在菜单树中的位置生成。
+ * 面包屑：按当前路由在菜单树中的位置生成（**全站唯一一处**，2026-10-08 F4 决策）。
  *
- * 规则（修 2026-09-13 豆包巡检 B6）：
- *   · 首项「LIMS」→ 可点击回工作台；
- *   · 在菜单树中找当前页的顶层祖先（分组）；若当前页本身就是顶层叶子
- *     （如工作台），不再重复加入分组名（避免「工作台/工作台」重复）；
- *   · 分组项若自身有 path 则可点击回该页，否则纯展示；
- *   · 末项（当前页）不可点击。
+ * 规则：
+ *   · 首项「工作台」→ 可点击回 /dashboard（不再用「LIMS」这种系统名，与页内层级一致）；
+ *   · 在菜单树中定位当前页所属分组（兼容「分组带 path」与「纯目录」两种形态）：
+ *       命中子节点 或 命中分组自身 path 前缀 → 展示「分组 / 当前页」；
+ *       当前页是顶层叶子（菜单里没有上级分组）→ 只展示「工作台 / 当前页」，不硬凑分组；
+ *       分组名与页面标题相同（如 /dashboard、/task 自身即顶层菜单）→ 不重复；
+ *   · 分组项为纯展示（目录 path 多为不可路由的虚拟前缀，点击会 404，故不给链接）；
+ *   · 末项（当前页）不可点击；
+ *   · navMenus 尚未加载时退化为「工作台 / 当前页」，/me 返回后 computed 自动补全（时序自愈）。
  */
 const breadcrumbItems = computed(() => {
   const title = (route.meta?.title as string | undefined) ?? ''
-  const items: { title: string; to?: string }[] = [{ title: 'LIMS', to: '/dashboard' }]
-  for (const group of navMenus.value) {
-    const isSelf = group.path === route.path
-    const isChild = group.children.some((c) => c.path === route.path)
-    if (isSelf) {
-      // 当前页本身就是顶层叶子：只加一次，不重复分组名
-      break
-    }
-    if (isChild) {
-      items.push({ title: group.title })
-      break
-    }
+  const items: { title: string; to?: string }[] = [{ title: '工作台', to: '/dashboard' }]
+  const group = findMenuGroup(route.path)
+  if (group && group !== title && group !== '工作台') {
+    items.push({ title: group })
   }
-  if (title) items.push({ title })
-  if (items.length === 1) items.push({ title: '首页', to: '/dashboard' })
+  if (title && title !== '工作台') {
+    items.push({ title })
+  }
   return items
 })
+
+/** 在菜单树中查找当前页所属的顶层分组标题（找不到返回 null —— 顶层叶子无分组） */
+function findMenuGroup(pagePath: string): string | null {
+  for (const node of navMenus.value) {
+    if (node.path && (pagePath === node.path || pagePath.startsWith(`${node.path}/`))) {
+      return node.title
+    }
+    for (const child of node.children) {
+      if (child.path && (pagePath === child.path || pagePath.startsWith(`${child.path}/`))) {
+        return node.title
+      }
+    }
+  }
+  return null
+}
 
 /** 顶部全局搜索：仅在已登记的导航页中检索（不编造业务数据） */
 const searchKeyword = ref('')
@@ -649,6 +660,12 @@ async function submitPassword(): Promise<void> {
                   刷新
                 </el-button>
               </div>
+              <p
+                v-if="todos.length > 0"
+                class="notif__hint"
+              >
+                点击任一条目可前往处理
+              </p>
               <ul
                 v-if="todos.length > 0"
                 class="notif__list"
@@ -668,7 +685,6 @@ async function submitPassword(): Promise<void> {
                     <p class="notif__msg">
                       <b class="notif__count">{{ todo.count }}</b> {{ todo.label }}
                     </p>
-                    <span class="notif__time">点击前往处理</span>
                   </div>
                 </li>
               </ul>
@@ -1437,6 +1453,12 @@ async function submitPassword(): Promise<void> {
   color: var(--lims-ink);
   font-weight: 600;
   font-size: var(--lims-fs-base);
+}
+.notif__hint {
+  margin: 0;
+  padding: 8px 14px 0;
+  color: var(--lims-faint);
+  font-size: 11px;
 }
 .notif__list {
   list-style: none;

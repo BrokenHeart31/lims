@@ -26,6 +26,7 @@ import com.lims.mapper.SampleResultMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.AuditService;
 import com.lims.service.SampleStatusLogService;
+import com.lims.service.result.OverallConclusionPolicy;
 import com.lims.service.result.ResultEntryPolicy;
 import com.lims.vo.AuditActionVO;
 import com.lims.vo.AuditDetailVO;
@@ -36,11 +37,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -83,6 +86,12 @@ public class AuditServiceImpl extends ServiceImpl<SampleAuditLogMapper, SampleAu
 
     /** 状态流水来源：审核域（双写统一流水用） */
     private static final String SOURCE_AUDIT = "AUDIT";
+
+    /** judge_basis 列宽 255；人工裁决留痕按规范截断到 250 字防溢出 */
+    private static final int BASIS_MAX = 250;
+
+    /** 人工裁决留痕落 judge_basis 的时间戳格式（分钟级即可，与流水一致性无关） */
+    private static final DateTimeFormatter BASIS_TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     // =========================================================================
     // 7.2 待审核 / 待签发列表
@@ -199,18 +208,50 @@ public class AuditServiceImpl extends ServiceImpl<SampleAuditLogMapper, SampleAu
         Sample sample = requireSample(dto.getSampleId());
         requireStatus(sample, SampleStatus.S60, "审核");
 
-        // 放行红线：有异常项必须先显式确认（T-912 口径落地）
-        List<AuditDetailVO.AbnormalItem> abnormal =
-                buildAbnormalItems(listItems(sample.getId()), resultsByItem(sample.getId()));
+        List<SampleItem> items = listItems(sample.getId());
+        Map<Long, SampleResult> results = resultsByItem(sample.getId());
+
+        // 放行红线（T-912 口径落地，原样保留且**先行**）：有异常项必须先显式确认
+        List<AuditDetailVO.AbnormalItem> abnormal = buildAbnormalItems(items, results);
         if (!abnormal.isEmpty() && !Boolean.TRUE.equals(dto.getAbnormalConfirmed())) {
             throw new BizException(400, "该样品存在 " + abnormal.size()
                     + " 个待判定/未录入项，请先逐项确认「异常项清单」后再审核通过");
         }
 
+        // F20 硬阻断①：存在「未录入项」（无检验数据）→ 不得审核通过，必须退回检验员补录
+        long blankCount = abnormal.stream().filter(a -> TYPE_BLANK.equals(a.getType())).count();
+        if (blankCount > 0) {
+            throw new BizException(400, "存在 " + blankCount
+                    + " 个未录入项（无检验数据），不能审核通过；请退回检验员补录后再审");
+        }
+
+        // F20 硬阻断②：待判定项必须逐条人工裁决（合格/不合格 + 必填说明），未逐条裁决 → 400
+        List<AuditDetailVO.AbnormalItem> pendingItems = abnormal.stream()
+                .filter(a -> TYPE_PENDING.equals(a.getType()))
+                .toList();
+        Map<Long, AuditApproveDTO.Adjudication> adjudications =
+                validateAdjudications(pendingItems, dto.getAdjudications());
+
         SampleStatusTransition.assertTransition(SampleStatus.S60, SampleStatus.S70);
 
         String operator = SecurityUtils.getUsername().orElse("system");
         LocalDateTime now = LocalDateTime.now();
+
+        // F20 裁决落库（与状态流转同事务）：把每个待判定项按其 sample_result 行显式改写为人工结论
+        for (AuditDetailVO.AbnormalItem pending : pendingItems) {
+            applyAdjudication(results.get(pending.getItemId()), adjudications.get(pending.getItemId()),
+                    operator, now);
+        }
+
+        // F20 重算整体结论并持久化（**仅有裁决发生时**执行）——复用 T-912 唯一聚合口径，禁止复制
+        if (!pendingItems.isEmpty()) {
+            ResultConclusion overall = OverallConclusionPolicy.computeOverall(items, results);
+            Sample conclusionUpd = new Sample();
+            conclusionUpd.setConclusion(overall);
+            sampleMapper.update(conclusionUpd, new LambdaUpdateWrapper<Sample>()
+                    .eq(Sample::getId, sample.getId()));
+            sample.setConclusion(overall);
+        }
 
         Sample upd = new Sample();
         upd.setStatus(SampleStatus.S70);
@@ -234,6 +275,98 @@ public class AuditServiceImpl extends ServiceImpl<SampleAuditLogMapper, SampleAu
 
         return buildActionVO(sample, SampleStatus.S70, AuditAction.APPROVE,
                 dto.getOpinion(), confirmed, operator, now);
+    }
+
+    /**
+     * 校验并索引「待判定项人工裁决清单」（F20）。
+     *
+     * <p><b>规则</b>：清单里每个待判定项必须恰好提供一条裁决——
+     * <ul>
+     *   <li>缺条 / 重复 itemId → 400；</li>
+     *   <li>itemId 不属于该样品的待判定集 → 400；</li>
+     *   <li>结论非 1（合格）/ 2（不合格） → 400；</li>
+     *   <li>说明空白 → 400（JSR-303 拦在 Web 层，服务层兜底）。</li>
+     * </ul>
+     * 无待判定项时忽略入参（返回空表），不影响「已录齐」样品的正常放行。</p>
+     *
+     * @return itemId → 裁决，键集合与待判定项一一对应
+     */
+    private Map<Long, AuditApproveDTO.Adjudication> validateAdjudications(
+            List<AuditDetailVO.AbnormalItem> pendingItems,
+            List<AuditApproveDTO.Adjudication> adjudications) {
+        Map<Long, AuditApproveDTO.Adjudication> byItem = new LinkedHashMap<>();
+        if (pendingItems.isEmpty()) {
+            return byItem;
+        }
+        Set<Long> pendingIds = pendingItems.stream()
+                .map(AuditDetailVO.AbnormalItem::getItemId)
+                .collect(Collectors.toSet());
+        if (adjudications != null) {
+            for (AuditApproveDTO.Adjudication adj : adjudications) {
+                if (adj == null || adj.getItemId() == null) {
+                    throw new BizException(400, "待判定项裁决缺少单项ID");
+                }
+                Long itemId = adj.getItemId();
+                if (byItem.containsKey(itemId)) {
+                    throw new BizException(400, "待判定项裁决重复：itemId=" + itemId);
+                }
+                if (!pendingIds.contains(itemId)) {
+                    throw new BizException(400, "裁决项不属于该样品的待判定项：itemId=" + itemId);
+                }
+                Integer code = adj.getConclusion();
+                if (code == null || (code != ResultConclusion.QUALIFIED.getCode()
+                        && code != ResultConclusion.UNQUALIFIED.getCode())) {
+                    throw new BizException(400, "裁决结论非法（仅 1=合格 / 2=不合格）：itemId=" + itemId);
+                }
+                if (!StringUtils.hasText(adj.getReason())) {
+                    throw new BizException(400, "待判定项裁决说明不能为空：itemId=" + itemId);
+                }
+                byItem.put(itemId, adj);
+            }
+        }
+        long missing = pendingItems.stream()
+                .filter(p -> !byItem.containsKey(p.getItemId()))
+                .count();
+        if (missing > 0) {
+            throw new BizException(400, "共 " + pendingItems.size()
+                    + " 个待判定项，请逐条选择裁决结论并填写说明（缺少 " + missing + " 条）");
+        }
+        return byItem;
+    }
+
+    /**
+     * 把一条人工裁决落到该待判定项的 {@code sample_result} 行（F20）。
+     *
+     * <p>改写内容：{@code conclusion}=裁决值、{@code conclusion_source}=2（人工判定）、
+     * {@code judge_basis} 追加「【审核人工裁决】」留痕（含裁决人/时间，截断到 {@link #BASIS_MAX} 字）、
+     * {@code updated_by}/{@code updated_at}。改写后同步内存对象，供整体结论重算使用（免二次查库）。</p>
+     */
+    private void applyAdjudication(SampleResult result, AuditApproveDTO.Adjudication adj,
+                                   String operator, LocalDateTime now) {
+        // 待判定项必然已有结果行（未录入项已在前面被硬阻断），此处仅兜底防御
+        if (result == null) {
+            throw new BizException(400, "待判定项缺少结果行，无法裁决：itemId="
+                    + (adj == null ? null : adj.getItemId()));
+        }
+        ResultConclusion verdict = ResultConclusion.of(adj.getConclusion());
+        String originalBasis = result.getJudgeBasis() == null ? "" : result.getJudgeBasis();
+        String trace = originalBasis + " ｜ 【审核人工裁决】" + verdict.getLabel()
+                + "：" + adj.getReason() + "（" + operator + " " + now.format(BASIS_TS) + "）";
+        String basis = trace.length() > BASIS_MAX ? trace.substring(0, BASIS_MAX) : trace;
+
+        SampleResult upd = new SampleResult();
+        upd.setConclusion(verdict);
+        upd.setConclusionSource(ConclusionSource.MANUAL);
+        upd.setJudgeBasis(basis);
+        upd.setUpdatedBy(operator);
+        upd.setUpdatedAt(now);
+        sampleResultMapper.update(upd, new LambdaUpdateWrapper<SampleResult>()
+                .eq(SampleResult::getId, result.getId()));
+
+        // 内存同步：整体结论重算须看到裁决后的结论
+        result.setConclusion(verdict);
+        result.setConclusionSource(ConclusionSource.MANUAL);
+        result.setJudgeBasis(basis);
     }
 
     // =========================================================================

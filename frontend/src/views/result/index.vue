@@ -421,15 +421,6 @@ onMounted(() => {
       subtitle="按检测单项录入检验结果，单项结论由判定引擎自动生成（感官项目由检验员判定）"
       icon="Promotion"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
-          <el-breadcrumb-item>结果录入</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Download"
         :loading="exporting"
@@ -450,7 +441,7 @@ onMounted(() => {
       <el-form-item label="样品编号">
         <el-input
           v-model="query.sampleNo"
-          placeholder="支持模糊查询"
+          placeholder="按编号包含匹配"
           clearable
           style="width: 200px"
           @keyup.enter="handleSearch"
@@ -459,7 +450,7 @@ onMounted(() => {
       <el-form-item label="样品名称">
         <el-input
           v-model="query.sampleName"
-          placeholder="支持模糊查询"
+          placeholder="按名称包含匹配"
           clearable
           style="width: 200px"
           @keyup.enter="handleSearch"
@@ -529,6 +520,7 @@ onMounted(() => {
               :status="row.enteredCount === row.itemTotal && row.itemTotal > 0 ? 'success' : ''"
               :stroke-width="14"
               :text-inside="true"
+              :show-text="false"
             />
             <span class="progress-text">{{ row.enteredCount }} / {{ row.itemTotal }}</span>
           </template>
@@ -639,6 +631,7 @@ onMounted(() => {
                     :percentage="detail.itemTotal === 0 ? 0 : Math.round((detail.enteredCount / detail.itemTotal) * 100)"
                     :stroke-width="14"
                     :text-inside="true"
+                    :show-text="false"
                   />
                   <span class="progress-text">{{ detail.enteredCount }} / {{ detail.itemTotal }}</span>
                 </div>
@@ -706,7 +699,7 @@ onMounted(() => {
           >
             <h3 class="section-title">
               检测单项（{{ detail.items.length }}）
-              <span class="section-hint">jt1/jt2 由引擎自动判定；jt3 感官项请选择结论</span>
+              <span class="section-hint">数值类项目由系统按限值自动判定结论；感官类项目（如滋味、气味）请人工选择结论</span>
             </h3>
             <el-table
               :data="detail.items"

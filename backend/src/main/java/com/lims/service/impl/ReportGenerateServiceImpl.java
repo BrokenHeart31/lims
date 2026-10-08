@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lims.common.PageResult;
 import com.lims.common.enums.ReportType;
+import com.lims.common.enums.ResultConclusion;
 import com.lims.common.enums.SampleStatus;
 import com.lims.common.enums.SampleStatusTransition;
 import com.lims.common.enums.StatusEventType;
@@ -12,14 +13,17 @@ import com.lims.common.exception.BizException;
 import com.lims.dto.ReportGenerateDTO;
 import com.lims.entity.Sample;
 import com.lims.entity.SampleItem;
+import com.lims.entity.SampleResult;
 import com.lims.entity.SysUser;
 import com.lims.mapper.SampleItemMapper;
 import com.lims.mapper.SampleMapper;
+import com.lims.mapper.SampleResultMapper;
 import com.lims.mapper.SysUserMapper;
 import com.lims.security.SecurityUtils;
 import com.lims.service.ReportGenerateService;
 import com.lims.service.SampleStatusLogService;
 import com.lims.service.report.ReportDataBuilder;
+import com.lims.service.result.ResultEntryPolicy;
 import com.lims.vo.ReportPendingVO;
 import com.lims.vo.ReportVO;
 import lombok.RequiredArgsConstructor;
@@ -28,9 +32,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -40,6 +46,11 @@ import java.util.stream.Collectors;
  * ①经 {@link SampleStatusTransition#assertTransition} 白名单校验、
  * ②用乐观条件 UPDATE（{@code WHERE id=? AND status=80}）落库，
  * 保证并发下同一份样品不会被生成两次报告（后到者 {@code updated==0} → 400）。</p>
+ *
+ * <p><b>F20 合规门禁</b>：CMA 报告是法律文书，<b>不允许出现未决结论项</b>。
+ * 故在状态校验之后、状态 UPDATE 之前，逐一核对每个检测单项（含参考项）：
+ * 必须已有效录入且单项结论 ∈ {合格(1), 不合格(2)}；否则 {@code code=400} 拒绝生成，
+ * 提示先完成审核裁决 / 补录。这样报告正文（实时聚合自 sample_result）永远不会印出「待判定」行。</p>
  *
  * <p>重打（{@link #detail}）是<b>只读</b>路径：不校验状态、不改库，仅聚合渲染模型，
  * 因此对 S90 历史样品与已生成报告可反复打印。</p>
@@ -53,6 +64,7 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
 
     private final SampleMapper sampleMapper;
     private final SampleItemMapper sampleItemMapper;
+    private final SampleResultMapper sampleResultMapper;
     private final SysUserMapper sysUserMapper;
     private final ReportDataBuilder reportDataBuilder;
     /** 统一状态流水写入口（feature B）：报告生成 S80→S90 埋点 */
@@ -136,6 +148,9 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
             throw new BizException(400, "仅已签发样品可生成报告");
         }
 
+        // F20 门禁：报告正文不得出现「待判定」行——逐项核对已裁决/已录入
+        assertAllItemsDecided(sample.getId());
+
         SampleStatusTransition.assertTransition(SampleStatus.S80, SampleStatus.S90);
 
         String operator = SecurityUtils.getUsername().orElse("system");
@@ -159,6 +174,45 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
                 "报告生成", null, SOURCE_REPORT, null, null);
 
         return reportDataBuilder.build(sample.getId(), type);
+    }
+
+    /**
+     * F20 门禁：每个检测单项（含参考项）必须已有效录入且单项结论 ∈ {合格, 不合格}。
+     *
+     * <p>失败时抛出 {@code code=400}，消息列出未决项名（顿号连接），提示先完成审核裁决 / 补录。
+     * 无检测单项时无从判定，直接放行（理论上已签发样品必有明细）。</p>
+     */
+    private void assertAllItemsDecided(Long sampleId) {
+        List<SampleItem> items = sampleItemMapper.selectList(new LambdaQueryWrapper<SampleItem>()
+                .eq(SampleItem::getSampleId, sampleId)
+                .orderByAsc(SampleItem::getItemOrder));
+        if (items.isEmpty()) {
+            return;
+        }
+        Map<Long, SampleResult> results = sampleResultMapper.selectList(
+                        new LambdaQueryWrapper<SampleResult>()
+                                .eq(SampleResult::getSampleId, sampleId))
+                .stream()
+                .filter(r -> r.getSampleItemId() != null)
+                .collect(Collectors.toMap(SampleResult::getSampleItemId,
+                        Function.identity(), (a, b) -> a));
+
+        List<String> unfinished = new ArrayList<>();
+        for (SampleItem item : items) {
+            SampleResult r = results.get(item.getId());
+            if (!ResultEntryPolicy.isEntered(item.getJudgeType(), r)) {
+                unfinished.add(item.getItemName());
+                continue;
+            }
+            ResultConclusion c = r.getConclusion();
+            if (c == null || c == ResultConclusion.PENDING) {
+                unfinished.add(item.getItemName());
+            }
+        }
+        if (!unfinished.isEmpty()) {
+            throw new BizException(400, "存在 " + unfinished.size() + " 个未完成判定的检测单项（"
+                    + String.join("、", unfinished) + "），请先完成审核裁决/补录后再生成报告");
+        }
     }
 
     // =========================================================================

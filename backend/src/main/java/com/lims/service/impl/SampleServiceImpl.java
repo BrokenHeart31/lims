@@ -35,6 +35,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -110,16 +111,31 @@ public class SampleServiceImpl extends ServiceImpl<SampleMapper, Sample> impleme
 
     @Override
     public Page<Sample> pageQuery(long pageNum, long pageSize,
-                                  String sampleNo, String sampleName, String taskNo, Integer status) {
+                                  String sampleNo, String sampleName, String taskNo,
+                                  Integer status, List<Integer> statuses) {
         SampleStatus statusEnum = SampleStatus.ofNullable(status);
         if (status != null && statusEnum == null) {
             throw new BizException(400, "非法的样品状态编码: " + status);
+        }
+        // F11（2026-10-08）：多状态筛选（如「本环节」= [10,20]），逐项校验后 IN 匹配。
+        // 与 status 均为空时不加状态条件（向后兼容）；两者都传时等价于 IN(statuses)。
+        List<SampleStatus> statusEnums = null;
+        if (statuses != null && !statuses.isEmpty()) {
+            statusEnums = new ArrayList<>(statuses.size());
+            for (Integer code : statuses) {
+                SampleStatus e = SampleStatus.ofNullable(code);
+                if (e == null) {
+                    throw new BizException(400, "非法的样品状态编码: " + code);
+                }
+                statusEnums.add(e);
+            }
         }
         LambdaQueryWrapper<Sample> wrapper = new LambdaQueryWrapper<Sample>()
                 .likeRight(StringUtils.hasText(sampleNo), Sample::getSampleNo, sampleNo)
                 .like(StringUtils.hasText(sampleName), Sample::getSampleName, sampleName)
                 .eq(StringUtils.hasText(taskNo), Sample::getTaskNo, taskNo)
                 .eq(statusEnum != null, Sample::getStatus, statusEnum)
+                .in(statusEnums != null, Sample::getStatus, statusEnums)
                 .orderByDesc(Sample::getId);
         return page(new Page<>(pageNum, pageSize), wrapper);
     }

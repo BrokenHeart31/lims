@@ -5,12 +5,12 @@
  * 结构：面包屑 + 标题 + 副标题 + 右侧操作区
  * 用法：
  *   <PageHeader title="样品登记" subtitle="采样单 Excel 导入与登记确认">
- *     <template #breadcrumb>
- *       <el-breadcrumb-item>...</el-breadcrumb-item>
- *     </template>
  *     <el-button>刷新</el-button>
  *     <el-button>导出</el-button>
  *   </PageHeader>
+ *
+ * ⚠️ 面包屑统一由顶栏（MainLayout）渲染（2026-10-08 F4 决策），
+ *    页面请勿再传 #breadcrumb（该 slot 仅为历史兼容保留）。
  */
 import type { Component } from 'vue'
 
@@ -37,6 +37,7 @@ defineProps<{
         </el-icon>
       </div>
       <div class="page-header__text">
+        <!-- 面包屑统一由顶栏渲染（2026-10-08 F4 决策），页面请勿再传 #breadcrumb -->
         <div
           v-if="$slots.breadcrumb"
           class="page-header__crumb"

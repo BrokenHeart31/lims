@@ -8,7 +8,7 @@ import {
 } from '@/api/auth'
 import type { MenuTreeNode } from '@/router/dynamicRoutes'
 import { resetDynamicRoutes } from '@/router'
-import { TOKEN_KEY } from '@/utils/request'
+import { REFRESH_TOKEN_KEY, TOKEN_KEY } from '@/utils/request'
 
 /**
  * 认证状态
@@ -43,11 +43,14 @@ export const useAuthStore = defineStore('auth', () => {
     return permissions.value.includes(code)
   }
 
-  /** 登录成功后保存 token */
+  /** 登录成功后保存 token（accessToken 用于鉴权，refreshToken 用于静默续期） */
   async function login(payload: LoginPayload): Promise<void> {
     const result = await loginApi(payload)
     token.value = result.accessToken
     localStorage.setItem(TOKEN_KEY, result.accessToken)
+    if (result.refreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
+    }
     // 切换账号必须清空旧导航状态，否则会沿用上一个角色的菜单/路由
     me.value = null
     navMenus.value = []
@@ -59,13 +62,14 @@ export const useAuthStore = defineStore('auth', () => {
     me.value = await fetchMeApi()
   }
 
-  /** 退出登录：清空本地状态 + 移除已注册的动态路由 */
+  /** 退出登录：清空本地状态 + 移除已注册的动态路由（accessToken / refreshToken 一并清除） */
   function logout(): void {
     token.value = ''
     me.value = null
     navMenus.value = []
     navReady.value = false
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
     resetDynamicRoutes()
   }
 

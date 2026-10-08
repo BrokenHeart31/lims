@@ -26,6 +26,7 @@ import {
   pagePendingSignApi,
   returnAuditApi,
   signReportApi,
+  type AuditAdjudication,
   type AuditDetail,
   type AuditItem,
   type AuditPendingRow,
@@ -184,6 +185,12 @@ const returnForm = reactive({ reason: '' })
 /** 签发表单 */
 const signForm = reactive({ opinion: '' })
 
+/**
+ * 待判定项人工裁决（F20）：itemId → { conclusion?, reason }。
+ * 审核通过前必须为每个待判定项给出确定结论（1=合格 / 2=不合格）+ 必填说明。
+ */
+const adjudications = ref<Record<number, { conclusion?: number; reason: string }>>({})
+
 const drawerTitle = computed(() =>
   detail.value ? `审核签发 — ${detail.value.sampleNo}（${detail.value.sampleName ?? ''}）` : '审核签发',
 )
@@ -191,7 +198,7 @@ const drawerTitle = computed(() =>
 /** 存在异常项（未录入 / 待判定） */
 const hasAbnormal = computed(() => (detail.value?.abnormalCount ?? 0) > 0)
 
-/** 未录入项（更严重：必须补录） */
+/** 未录入项（更严重：必须补录；F20 下审核通过直接停用） */
 const blankItems = computed(
   () => detail.value?.abnormalItems.filter((a) => a.type !== ABNORMAL_TYPE_PENDING) ?? [],
 )
@@ -201,10 +208,30 @@ const pendingItems = computed(
   () => detail.value?.abnormalItems.filter((a) => a.type === ABNORMAL_TYPE_PENDING) ?? [],
 )
 
-/** 「审核通过」按钮是否可点（有异常项时必须先勾选确认——放行红线） */
+/** 所有待判定项是否都已选择裁决结论（合格/不合格）并填写说明（F20 硬约束） */
+const allPendingAdjudicated = computed(() =>
+  pendingItems.value.every((a) => {
+    const adj = adjudications.value[a.itemId]
+    return !!adj && (adj.conclusion === 1 || adj.conclusion === 2) && adj.reason.trim().length > 0
+  }),
+)
+
+/** 「审核通过」按钮的禁用原因提示（放行红线 + F20） */
+const approveHint = computed(() => {
+  if (blankItems.value.length > 0) return '存在未录入项（无检验数据），请先退回检验员补录'
+  if (hasAbnormal.value && !approveForm.abnormalConfirmed) return '存在异常项，请先勾选确认'
+  if (pendingItems.value.length > 0 && !allPendingAdjudicated.value) {
+    return '请为每个待判定项选择裁决结论并填写说明'
+  }
+  return ''
+})
+
+/** 「审核通过」按钮是否可点（放行红线 + F20：未录入须退回、待判定须逐条裁决） */
 const approveEnabled = computed(() => {
   if (!detail.value?.allowAudit) return false
+  if (blankItems.value.length > 0) return false
   if (hasAbnormal.value && !approveForm.abnormalConfirmed) return false
+  if (pendingItems.value.length > 0 && !allPendingAdjudicated.value) return false
   return true
 })
 
@@ -257,6 +284,14 @@ async function openDrawer(row: AuditPendingRow): Promise<void> {
 async function loadDetail(sampleId: number): Promise<void> {
   try {
     const res = await getAuditDetailApi(sampleId)
+    // F20：为每个待判定项初始化裁决表单（明细变化时整体重置，避免跨样品残留）
+    const next: Record<number, { conclusion?: number; reason: string }> = {}
+    res.abnormalItems
+      .filter((a) => a.type === ABNORMAL_TYPE_PENDING)
+      .forEach((a) => {
+        next[a.itemId] = { conclusion: undefined, reason: '' }
+      })
+    adjudications.value = next
     detail.value = res
     approveForm.opinion = ''
     // 无异常项时默认视为已确认（不要求用户做无意义的勾选）
@@ -299,17 +334,37 @@ function rowAuditItem(row: unknown): AuditItem {
 
 async function handleApprove(): Promise<void> {
   if (!detail.value) return
-  if (hasAbnormal.value && !approveForm.abnormalConfirmed) {
-    ElMessage.warning('存在异常项，请先勾选「我已逐项确认异常项清单」')
+  if (blankItems.value.length > 0) {
+    ElMessage.warning('存在未录入项（无检验数据），请填「退回原因」后审核退回，让检验员补录')
     return
   }
-  const tip = hasAbnormal.value
-    ? `该样品存在 ${detail.value.abnormalCount} 个异常项（未录入/待判定），确认后仍要放行吗？`
-    : '确认审核通过？样品将流转为「已审核」。'
+  if (hasAbnormal.value && !approveForm.abnormalConfirmed) {
+    ElMessage.warning('存在异常项，请先勾选「我已逐条裁决/确认上述异常项」')
+    return
+  }
+  if (pendingItems.value.length > 0 && !allPendingAdjudicated.value) {
+    ElMessage.warning('请为每个待判定项选择裁决结论（合格/不合格）并填写说明')
+    return
+  }
+  const tip = pendingItems.value.length > 0
+    ? `已对 ${pendingItems.value.length} 个待判定项逐条裁决，裁决将作为该单项人工结论留痕。确认审核通过？`
+    : hasAbnormal.value
+      ? `该样品存在 ${detail.value.abnormalCount} 个异常项（未录入/待判定），确认后仍要放行吗？`
+      : '确认审核通过？样品将流转为「已审核」。'
   if (!(await askConfirm(tip, '审核通过', { type: 'warning' }))) return
   acting.value = true
   try {
-    const res = await approveAuditApi(detail.value.sampleId, approveForm.opinion || null, approveForm.abnormalConfirmed)
+    const payload: AuditAdjudication[] = pendingItems.value.map((a) => ({
+      itemId: a.itemId,
+      conclusion: adjudications.value[a.itemId].conclusion as number,
+      reason: adjudications.value[a.itemId].reason.trim(),
+    }))
+    const res = await approveAuditApi(
+      detail.value.sampleId,
+      approveForm.opinion || null,
+      approveForm.abnormalConfirmed,
+      payload,
+    )
     ElMessage.success(`审核通过：${res.statusLabel}`)
     drawerVisible.value = false
     await loadPending()
@@ -391,15 +446,6 @@ onMounted(() => {
       subtitle="检验数据全部录齐后转入审核；经审核无误由中心领导签发（签发后方可生成检验报告）"
       icon="Stamp"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
-          <el-breadcrumb-item>报告审核签发</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="loadPending"
@@ -754,22 +800,46 @@ onMounted(() => {
               class="abnormal-group"
             >
               <h4 class="group-title">
-                待判定（{{ pendingItems.length }}）
+                待判定（{{ pendingItems.length }}）—— 请逐条人工裁决
               </h4>
-              <ul class="abnormal-list">
+              <ul class="adjudicate-list">
                 <li
                   v-for="a in pendingItems"
                   :key="a.itemId"
+                  class="adjudicate-item"
                 >
-                  <el-tag
-                    type="warning"
-                    size="small"
-                    effect="plain"
-                  >
-                    待判定
-                  </el-tag>
-                  <span class="ab-item">项次 {{ a.itemOrder }} · {{ a.itemName }}</span>
-                  <span class="ab-reason">{{ a.reason }}</span>
+                  <div class="adjudicate-head">
+                    <el-tag
+                      type="warning"
+                      size="small"
+                      effect="plain"
+                    >
+                      待判定
+                    </el-tag>
+                    <span class="ab-item">项次 {{ a.itemOrder }} · {{ a.itemName }}</span>
+                    <span class="ab-reason">{{ a.reason }}</span>
+                  </div>
+                  <div class="adjudicate-form">
+                    <el-radio-group
+                      v-model="adjudications[a.itemId].conclusion"
+                      size="small"
+                    >
+                      <el-radio :value="1">
+                        合格
+                      </el-radio>
+                      <el-radio :value="2">
+                        不合格
+                      </el-radio>
+                    </el-radio-group>
+                    <el-input
+                      v-model="adjudications[a.itemId].reason"
+                      size="small"
+                      maxlength="200"
+                      show-word-limit
+                      class="adjudicate-reason"
+                      placeholder="裁决说明（必填，如：检出值低于最低检出限，按未检出判定合格）"
+                    />
+                  </div>
                 </li>
               </ul>
             </div>
@@ -778,9 +848,18 @@ onMounted(() => {
               v-if="detail.allowAudit"
               v-model="approveForm.abnormalConfirmed"
               class="confirm-check"
+              :disabled="blankItems.length > 0"
             >
-              我已逐项确认上述异常项，仍要审核通过（将留痕记录）
+              我已逐条裁决/确认上述异常项，仍要审核通过（将留痕记录）
             </el-checkbox>
+            <el-alert
+              v-if="detail.allowAudit && blankItems.length > 0"
+              class="confirm-check"
+              type="error"
+              :closable="false"
+              show-icon
+              title="存在未录入项（无检验数据）：审核通过已停用，请填「退回原因」并点「审核退回」，让检验员补录后再审。"
+            />
           </AppCard>
 
           <!-- 检测单项明细 -->
@@ -932,7 +1011,7 @@ onMounted(() => {
                 <div class="action-row">
                   <el-tooltip
                     :disabled="approveEnabled"
-                    content="存在异常项，请先勾选确认"
+                    :content="approveHint"
                     placement="top"
                   >
                     <span>
@@ -1191,6 +1270,36 @@ onMounted(() => {
 }
 .confirm-check {
   margin-top: var(--lims-r-sm);
+}
+.adjudicate-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+.adjudicate-item {
+  padding: var(--lims-r-xs) 0;
+  border-bottom: 1px dashed var(--lims-border-color);
+}
+.adjudicate-item:last-child {
+  border-bottom: none;
+}
+.adjudicate-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.adjudicate-form {
+  display: flex;
+  align-items: center;
+  gap: var(--lims-r-sm);
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.adjudicate-reason {
+  flex: 1 1 320px;
+  min-width: 220px;
 }
 .ref-tag {
   margin-left: 6px;

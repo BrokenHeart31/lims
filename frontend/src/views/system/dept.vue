@@ -78,6 +78,27 @@ async function load(): Promise<void> {
   }
 }
 
+/**
+ * 部门子树人数（含本级 + 所有下级，递归求和）——F26（2026-10-08）。
+ * 部门树是数据权限骨架，「能覆盖多少人」比「本级几个人」更贴近实际查看诉求。
+ */
+function subtreeUserCount(node: DeptRow): number {
+  const own = node.userCount ?? 0
+  if (!node.children?.length) return own
+  return node.children.reduce((sum, child) => sum + subtreeUserCount(child), 0) + own
+}
+
+/**
+ * 人数列展示文案（F26）：
+ *   · 有下级的部门 → 「本级 X · 含下级 Y」（Y 为子树递归求和）
+ *   · 叶子部门     → 「仅本级 X」
+ */
+function userCountLabel(node: DeptRow): string {
+  const own = node.userCount ?? 0
+  if (!node.children?.length) return `仅本级 ${own}`
+  return `本级 ${own} · 含下级 ${subtreeUserCount(node)}`
+}
+
 function resetForm(): void {
   Object.assign(form, {
     id: undefined,
@@ -169,15 +190,6 @@ onMounted(() => {
       subtitle="维护组织架构，支撑数据权限「本部门及下属部门」"
       icon="OfficeBuilding"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>系统管理</el-breadcrumb-item>
-          <el-breadcrumb-item>部门管理</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"
@@ -222,11 +234,11 @@ onMounted(() => {
         </el-table-column>
         <el-table-column
           label="人数"
-          width="90"
+          width="180"
           align="center"
         >
           <template #default="{ row }">
-            {{ row.userCount ?? 0 }}
+            {{ userCountLabel(row as DeptRow) }}
           </template>
         </el-table-column>
         <el-table-column

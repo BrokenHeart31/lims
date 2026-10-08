@@ -99,15 +99,6 @@ onMounted(() => {
       subtitle="查看助手会话与消息明细（含引用与拒答留痕），用于审计与质量回溯"
       icon="Monitor"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>AI 助手</el-breadcrumb-item>
-          <el-breadcrumb-item>会话审计</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         :loading="loading"

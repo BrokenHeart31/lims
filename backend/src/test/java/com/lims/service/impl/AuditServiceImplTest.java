@@ -133,6 +133,7 @@ class AuditServiceImplTest {
 
     private SampleResult result(Long itemId, String testValue, ResultConclusion conclusion) {
         SampleResult r = new SampleResult();
+        r.setId(itemId);
         r.setSampleId(SAMPLE_ID);
         r.setSampleItemId(itemId);
         r.setTestValue(testValue);
@@ -164,12 +165,38 @@ class AuditServiceImplTest {
                 result(13L, "  ", ResultConclusion.PENDING)));   // 空值行 → 未录入
     }
 
+    /** 已录齐，但一项「待判定」（有值判不出，需人工裁决）；无未录入项 */
+    private void stubWithPendingOnly() {
+        when(sampleItemMapper.selectList(any())).thenReturn(List.of(
+                item(11L, 1, "铅（以Pb计）", 1),
+                item(12L, 2, "孔雀石绿", 2)));
+        when(sampleResultMapper.selectList(any())).thenReturn(List.of(
+                result(11L, "0.10", ResultConclusion.QUALIFIED),
+                result(12L, "0.01", ResultConclusion.PENDING)));  // 待判定
+    }
+
     private AuditApproveDTO approveDto(Boolean confirmed) {
         AuditApproveDTO dto = new AuditApproveDTO();
         dto.setSampleId(SAMPLE_ID);
         dto.setOpinion("数据核对无误");
         dto.setAbnormalConfirmed(confirmed);
         return dto;
+    }
+
+    /** 带人工裁决清单的审核通过请求（F20） */
+    private AuditApproveDTO approveDto(Boolean confirmed, AuditApproveDTO.Adjudication... adjudications) {
+        AuditApproveDTO dto = approveDto(confirmed);
+        dto.setAdjudications(java.util.Arrays.asList(adjudications));
+        return dto;
+    }
+
+    /** 构造一条人工裁决 */
+    private AuditApproveDTO.Adjudication adj(Long itemId, Integer conclusion, String reason) {
+        AuditApproveDTO.Adjudication a = new AuditApproveDTO.Adjudication();
+        a.setItemId(itemId);
+        a.setConclusion(conclusion);
+        a.setReason(reason);
+        return a;
     }
 
     // ============================================================ 7.2 列表
@@ -272,17 +299,130 @@ class AuditServiceImplTest {
     }
 
     @Test
-    @DisplayName("放行红线：已显式确认异常项 → 放行，流水 abnormalConfirmed=1")
+    @DisplayName("放行红线：已显式确认 + 逐条裁决待判定项 → 放行，流水 abnormalConfirmed=1")
     void approve_withAbnormalConfirmed_ok() {
         when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S60));
-        stubWithAbnormal();
+        stubWithPendingOnly();
 
-        AuditActionVO vo = service.approve(approveDto(true));
+        AuditActionVO vo = service.approve(approveDto(true,
+                adj(12L, 1, "检出值低于最低检出限，按未检出判定合格")));
 
         assertAll(
                 () -> assertEquals(70, vo.getStatus()),
                 () -> assertEquals(1, logStore.size()),
                 () -> assertEquals(1, logStore.get(0).getAbnormalConfirmed())
+        );
+    }
+
+    // ------------------------------------------------ F20 人工裁决（合规硬阻断）
+
+    @Test
+    @DisplayName("★F20：存在待判定项但未提供裁决 → 400，不流转不留流水")
+    void approve_pendingWithoutAdjudication_rejected() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S60));
+        stubWithPendingOnly();
+
+        BizException ex = assertThrows(BizException.class,
+                () -> service.approve(approveDto(true, new AuditApproveDTO.Adjudication[0])));
+
+        assertAll(
+                () -> assertEquals(400, ex.getCode()),
+                () -> assertTrue(ex.getMessage().contains("待判定项"), ex.getMessage()),
+                () -> assertTrue(ex.getMessage().contains("缺少 1 条"), ex.getMessage())
+        );
+        verify(sampleMapper, never()).update(any(), any());
+        verify(sampleResultMapper, never()).update(any(), any());
+        assertTrue(logStore.isEmpty());
+    }
+
+    @Test
+    @DisplayName("★F20：裁决结论非法（=3 待判定）→ 400")
+    void approve_invalidAdjudicationConclusion_rejected() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S60));
+        stubWithPendingOnly();
+
+        BizException ex = assertThrows(BizException.class,
+                () -> service.approve(approveDto(true, adj(12L, 3, "还是判不出"))));
+
+        assertAll(
+                () -> assertEquals(400, ex.getCode()),
+                () -> assertTrue(ex.getMessage().contains("裁决结论非法"), ex.getMessage())
+        );
+        verify(sampleResultMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("★F20：裁决说明空白 → 400")
+    void approve_blankAdjudicationReason_rejected() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S60));
+        stubWithPendingOnly();
+
+        BizException ex = assertThrows(BizException.class,
+                () -> service.approve(approveDto(true, adj(12L, 1, "   "))));
+
+        assertAll(
+                () -> assertEquals(400, ex.getCode()),
+                () -> assertTrue(ex.getMessage().contains("裁决说明不能为空"), ex.getMessage())
+        );
+        verify(sampleResultMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("★F20：存在未录入项（无检验数据）→ 400，即使已勾选确认也不能放行")
+    void approve_withBlankItem_rejected() {
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(sample(SampleStatus.S60));
+        stubWithAbnormal(); // 含 1 待判定 + 1 未录入
+
+        BizException ex = assertThrows(BizException.class,
+                () -> service.approve(approveDto(true, adj(12L, 1, "按未检出判定合格"))));
+
+        assertAll(
+                () -> assertEquals(400, ex.getCode()),
+                () -> assertTrue(ex.getMessage().contains("未录入项"), ex.getMessage()),
+                () -> assertTrue(ex.getMessage().contains("退回检验员补录"), ex.getMessage())
+        );
+        verify(sampleMapper, never()).update(any(), any());
+        verify(sampleResultMapper, never()).update(any(), any());
+        assertTrue(logStore.isEmpty());
+    }
+
+    @Test
+    @DisplayName("★F20：正常逐条裁决 → sample_result 落人工结论、整体结论重算、S70、流水新增")
+    void approve_withAdjudication_ok() {
+        Sample s = sample(SampleStatus.S60);
+        s.setConclusion(ResultConclusion.PENDING); // 裁决前整体待判定
+        when(sampleMapper.selectById(SAMPLE_ID)).thenReturn(s);
+        stubWithPendingOnly();
+
+        AuditActionVO vo = service.approve(approveDto(true,
+                adj(12L, 1, "检出值低于最低检出限，按未检出判定合格")));
+
+        assertAll(
+                () -> assertEquals(70, vo.getStatus()),
+                () -> assertEquals(1, logStore.size())
+        );
+        // 裁决落库：sample_result 行改为人工结论 + 留痕依据
+        ArgumentCaptor<SampleResult> resultCaptor = ArgumentCaptor.forClass(SampleResult.class);
+        verify(sampleResultMapper, times(1)).update(resultCaptor.capture(), any());
+        SampleResult updated = resultCaptor.getValue();
+        assertAll(
+                () -> assertEquals(ResultConclusion.QUALIFIED, updated.getConclusion()),
+                () -> assertEquals(ConclusionSource.MANUAL, updated.getConclusionSource()),
+                () -> assertTrue(updated.getJudgeBasis().contains("【审核人工裁决】"),
+                        updated.getJudgeBasis()),
+                () -> assertTrue(updated.getJudgeBasis().contains("按未检出判定合格"),
+                        updated.getJudgeBasis())
+        );
+        // 整体结论重算：两次 sample.update（先整体结论、后状态流转）
+        ArgumentCaptor<Sample> sampleCaptor = ArgumentCaptor.forClass(Sample.class);
+        verify(sampleMapper, times(2)).update(sampleCaptor.capture(), any());
+        Sample conclusionUpd = sampleCaptor.getAllValues().get(0);
+        Sample statusUpd = sampleCaptor.getAllValues().get(1);
+        assertAll(
+                () -> assertEquals(ResultConclusion.QUALIFIED, conclusionUpd.getConclusion(),
+                        "裁决后整体结论应聚合为确定值"),
+                () -> assertNull(conclusionUpd.getStatus(), "整体结论重算不改状态"),
+                () -> assertEquals(SampleStatus.S70, statusUpd.getStatus())
         );
     }
 

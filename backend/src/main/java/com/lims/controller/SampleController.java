@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -56,9 +57,11 @@ public class SampleController {
             @RequestParam(required = false) String sampleNo,
             @RequestParam(required = false) String sampleName,
             @RequestParam(required = false) String taskNo,
-            @RequestParam(required = false) Integer status) {
+            @RequestParam(required = false) Integer status,
+            // F11（2026-10-08）：多状态筛选（逗号分隔，如 statuses=10,20 = 登记页「本环节」）
+            @RequestParam(required = false) List<Integer> statuses) {
         return R.ok(PageResult.of(
-                sampleService.pageQuery(pageNum, pageSize, sampleNo, sampleName, taskNo, status)));
+                sampleService.pageQuery(pageNum, pageSize, sampleNo, sampleName, taskNo, status, statuses)));
     }
 
     /** 详情 */

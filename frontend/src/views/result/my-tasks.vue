@@ -116,6 +116,22 @@ function gotoEntry(row: MyTaskRow): void {
   void router.push({ path: '/result/entry', query: { sampleNo: row.sampleNo } })
 }
 
+/**
+ * 可进入结果录入的样品状态：已安排(S40) / 检验中(S50) —— F29（2026-10-08）。
+ * 其余状态（已分解及以前、已审核及以后）本环节不再允许录入；
+ * 对应行改「查看」跳转在检查询页，避免用户点进去却录不了。
+ */
+const ENTRY_ALLOWED_STATUSES: ReadonlySet<number> = new Set([40, 50])
+
+function canGotoEntry(row: MyTaskRow): boolean {
+  return ENTRY_ALLOWED_STATUSES.has(row.sampleStatus)
+}
+
+/** 非本环节任务：跳「在检样品」查询页查看（带样品编号预筛） */
+function gotoView(row: MyTaskRow): void {
+  void router.push({ path: '/query/testing', query: { sampleNo: row.sampleNo } })
+}
+
 async function handleExport(): Promise<void> {
   exporting.value = true
   try {
@@ -145,15 +161,6 @@ onMounted(() => {
       subtitle="查看安排给自己的检验任务，可导出 Excel 或直接进入录入"
       icon="EditPen"
     >
-      <template #breadcrumb>
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{ path: '/dashboard' }">
-            工作台
-          </el-breadcrumb-item>
-          <el-breadcrumb-item>实验室业务</el-breadcrumb-item>
-          <el-breadcrumb-item>我的检验任务</el-breadcrumb-item>
-        </el-breadcrumb>
-      </template>
       <el-button
         :icon="Refresh"
         @click="load"
@@ -365,12 +372,22 @@ onMounted(() => {
         >
           <template #default="{ row }">
             <el-button
+              v-if="canGotoEntry(row as MyTaskRow)"
               type="primary"
               link
               :icon="EditPen"
               @click="gotoEntry(row as MyTaskRow)"
             >
               去录入
+            </el-button>
+            <el-button
+              v-else
+              link
+              type="info"
+              :icon="Search"
+              @click="gotoView(row as MyTaskRow)"
+            >
+              查看
             </el-button>
           </template>
         </el-table-column>
