@@ -18,6 +18,7 @@
   - **浏览器核查 6/6 PASS / console 0 错误**：登录页 → 工作台 → 样品登记（表体有行）→ 报告审核页 → AI 悬浮球；证据 `_logs/accept-*.png`。
 - **验收环境（供用户）**：http://localhost:5173 → `nj001 / nj001`（全权限）；
   演示数据 5 项 = S10/S30/S40/S60/S70（DEMO-2026-001~005，按 seed03 标准态）；Ollama 在线，可直接试右下角 AI 助手。
+- **Git**：`24ae1c5 → f56befa`（6 files，+244 −1；TODO/DECISIONS/STATUS/HANDOFF + 技能 + 日记）已推送三分支（**ls-remote 校验**：`agent/glm` = `develop` = `main` = `f56befa`）。
 - **进度：99% → 99%**（收尾轮，无新增业务范围；剩「用户人工体验终验」由用户执行）。
 
 ## 2026-10-08 全流程测试缺陷修复批次（T-930~T-940 全量闭环；SoftwareCompany 团队 SOP）

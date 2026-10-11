@@ -29,7 +29,8 @@
 
 - 门禁：后端 `mvn -o test` **261/261**（37s）；前端 `vue-tsc`/`eslint`/`vite build` 全绿（25.85s）；
 - API 冒烟：`sample/item/assign/result/report/stat/rollback` 7 接口全 `code=0`；AI `/api/ai/status` = `online / modelPresent / kbReady` 全 true；
-- 浏览器：`_logs/accept-check-2026-10-11.py` + `accept-*.png`（**6/6 PASS / console 0 错误**）。
+- 浏览器：`_logs/accept-check-2026-10-11.py` + `accept-*.png`（**6/6 PASS / console 0 错误**）；
+- **Git**：`24ae1c5 → f56befa`（6 files，+244 −1）已推送三分支 —— `agent/glm` = `develop` = `main` = **`f56befa`**（ls-remote 校验；`agent/copilot`/`agent/doubao` 未动）。
 
 ### 环境备忘（本轮实测更新）
 
