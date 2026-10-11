@@ -3,7 +3,7 @@
  *
  * 职责：
  *   · 三态开合状态机（collapsed 气泡 / expanded 面板 / conversation 对话）；
- *   · 拖拽位置记忆（`localStorage['lims_ai_panel_pos']`，键风格与 `lims_access_token` 一致）；
+ *   · 拖拽位置记忆（`localStorage['lims_ai_panel_pos']`，跨标签共享的 UI 偏好；会话令牌见 utils/authStorage）；
  *   · 服务健康状态（离线静默降级）；
  *   · 会话消息与流式生成（含「停止」）；
  *   · **跨页上下文联动**：`openWithContext({sampleNo,status,stdNo,presetQuestion})`，

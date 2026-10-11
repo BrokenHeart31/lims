@@ -2,6 +2,22 @@
 
 > 规则：开工前在此声明本轮占用的文件/模块；收工后更新。任何 Agent 30 秒读懂全局。
 
+## 2026-10-11（追加）认证令牌存储改造：localStorage → sessionStorage（多标签页会话隔离）（GLM + 团队）
+
+- **用户报告**：同一浏览器多标签页登录不同账号，状态相互覆盖；退出任一账号，所有标签页连带掉线。
+- **根因**：token 存 localStorage 固定键（`lims_access_token`/`lims_refresh_token`）——localStorage 作用域为**同源共享**（全部标签页一个键空间）：后登录覆盖前者；任一页清键 = 全体失效。
+- **改造**（8 文件）：新增 `frontend/src/utils/authStorage.ts`（sessionStorage 唯一封装 + 旧键幂等清理）；
+  迁移全部 6 个读写点（`utils/request.ts` / `stores/auth.ts` / `api/ai.ts` / `api/exportApi.ts` / `utils/aiStream.ts`）+ 2 处注释；
+  **刻意不做旧令牌迁移**（升级后重登一次）；UI 偏好键（`lims_ai_panel_pos` 等）保持 localStorage（**按数据性质分治**）。
+- **验证**：
+  - 前端三门禁 **两轮全绿**（工程师 + 主理人各自复跑：vue-tsc 0 / eslint 0 / build ✓）；
+  - **QA 真实浏览器 22/22 PASS**（`_logs/qa-session-isolation.py` 可重复 + 7 截图 + 结果 JSON）：
+    A 页登 nj001 / B 页登 nj002 **并存互不覆盖**；**B 退出 → A 刷新仍在线（核心）**；同账号双标签页也不牵连；
+    旧 localStorage 键被清理；console 0 错误；
+  - **主理人独立复跑 QA 脚本：22/22 PASS**。
+- **落档**：DECISIONS 4 条（会话存储选型 / 不做迁移 / UI 偏好保持 / 验收口径）；日记 `docs/journal/2026-10-11-glm-session-isolation.md`。
+- **进度：99% → 99%**（缺陷修复 + 质量提升轮，无新增业务范围）。
+
 ## 2026-10-11 验收收尾批次（遗留项复核登记 + 质量门禁复跑 + 全服务启动供验收）（GLM）
 
 - **本轮性质**：用户指令「完成项目优化以及剩余全部工作之后启动验收」。对上一轮如实说明的 4 条遗留项逐条复核收口（无新增业务范围），复跑质量门禁，启动全服务供用户人工体验终验。

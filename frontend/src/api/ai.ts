@@ -7,7 +7,8 @@
  *   · 其余接口走统一 `request`（携带 JWT、解包 `{code,msg,data}`、非 0 弹提示）。
  *   · 上传接口是 multipart，使用 axios 实例直发 FormData。
  */
-import instance, { get, post, del, TOKEN_KEY } from '@/utils/request'
+import instance, { get, post, del } from '@/utils/request'
+import { getAccessToken } from '@/utils/authStorage'
 import type { ApiResponse, PageResult } from '@/types/api'
 import type {
   AiAnswerVO,
@@ -33,7 +34,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 /** A1 服务健康检查（**静默**：不弹全局错误，失败由调用方降级处理） */
 export async function getAiStatusApi(): Promise<AiStatusVO> {
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = getAccessToken()
   const resp = await fetch(`${BASE_URL}/ai/status`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })

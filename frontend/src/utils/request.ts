@@ -6,12 +6,19 @@ import axios, {
 } from 'axios'
 import { ElMessage } from 'element-plus'
 import type { ApiResponse } from '@/types/api'
+import {
+  clearAuthTokens,
+  getAccessToken,
+  getRefreshToken,
+  setAccessToken,
+  setRefreshToken,
+} from '@/utils/authStorage'
 
-/** Access Token 在 localStorage 中的键名（禁止 Token 出现在 URL 中） */
-export const TOKEN_KEY = 'lims_access_token'
-
-/** Refresh Token 在 localStorage 中的键名（F8 静默续期用，与 TOKEN_KEY 成对读写） */
-export const REFRESH_TOKEN_KEY = 'lims_refresh_token'
+/**
+ * 令牌的读写已统一收敛到 `@/utils/authStorage`（会话存储，标签页私有作用域）。
+ * 本模块不再自行声明键名：所有 access / refresh token 的存取一律经该模块的函数，
+ * 以保证「改一处、全局一致」，并支持多标签页会话隔离（详见 authStorage.ts 头部说明）。
+ */
 
 /** 业务错误：携带后端统一响应的 code/msg */
 export class ApiError extends Error {
@@ -36,7 +43,7 @@ const instance: AxiosInstance = axios.create({
 
 // 请求拦截：附加 JWT（续期成功后会覆盖为最新 token）
 instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = getAccessToken()
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`)
   }
@@ -53,8 +60,7 @@ function isAuthEndpoint(url?: string): boolean {
 
 /** 401 未认证：清除本地凭证（access + refresh）并跳转登录页（带回跳地址） */
 function handleUnauthorized(): void {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  clearAuthTokens()
   if (!window.location.pathname.startsWith('/login')) {
     const redirect = encodeURIComponent(window.location.pathname + window.location.search)
     window.location.href = `/login?redirect=${redirect}`
@@ -78,7 +84,7 @@ let refreshPromise: Promise<string | null> | null = null
  * 响应拦截器造成递归；成功时写回两个 token（access + 轮换后的 refresh），失败返回 `null`。
  */
 async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+  const refreshToken = getRefreshToken()
   if (!refreshToken) return null
   try {
     const base = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -89,9 +95,9 @@ async function refreshAccessToken(): Promise<string | null> {
     )
     const body = res.data
     if (body.code !== 0 || !body.data?.accessToken) return null
-    localStorage.setItem(TOKEN_KEY, body.data.accessToken)
+    setAccessToken(body.data.accessToken)
     if (body.data.refreshToken) {
-      localStorage.setItem(REFRESH_TOKEN_KEY, body.data.refreshToken)
+      setRefreshToken(body.data.refreshToken)
     }
     return body.data.accessToken
   } catch {

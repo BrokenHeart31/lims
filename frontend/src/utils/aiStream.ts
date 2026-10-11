@@ -8,7 +8,7 @@
  * <p>为什么不用 EventSource：EventSource 只能发 GET，而 A3 是 POST 且要带 JWT 头 +
  * JSON body。故采用 fetch 手工切帧（SSE 帧以空行 `\n\n` 分隔）。</p>
  */
-import { TOKEN_KEY } from '@/utils/request'
+import { getAccessToken } from '@/utils/authStorage'
 import type {
   AiChatDTO,
   AiCitationVO,
@@ -132,7 +132,7 @@ export async function streamAiChat(
   handlers: AiStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = getAccessToken()
 
   // 内部中止控制器：把「调用方停止」与「静默超时」统一收敛到一个 signal 上，
   // 同时保留「谁中止的」这一信息，避免把用户主动停止误报成超时错误。

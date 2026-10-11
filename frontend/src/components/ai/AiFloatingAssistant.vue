@@ -5,7 +5,7 @@
  * - 宿主：仅挂在 `MainLayout`，通过 `Teleport to="body"` 渲染，**不新增外壳内 DOM 层级**，
  *   因此不影响既有三区贴合布局与多分辨率 `scrollWidth == clientWidth` 基线；
  * - 拖拽：原生 Pointer Events（窗口级 move/up 监听）+ 视口边界钳制（拖动/缩放/切换态都不出屏）；
- * - 位置记忆：`localStorage['lims_ai_panel_pos']`（键风格与 `lims_access_token` 一致）；
+ * - 位置记忆：`localStorage['lims_ai_panel_pos']`（跨标签共享的 UI 偏好；会话令牌见 utils/authStorage）；
  * - 三态：collapsed（气泡）/ expanded（欢迎）/ conversation（对话），由 store 状态机驱动。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'

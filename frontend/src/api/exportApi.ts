@@ -12,7 +12,7 @@
  */
 import axios, { AxiosError, type AxiosInstance } from 'axios'
 import { ElMessage } from 'element-plus'
-import { TOKEN_KEY } from '@/utils/request'
+import { getAccessToken } from '@/utils/authStorage'
 import { parseContentDispositionFilename, rememberFilename } from '@/utils/download'
 
 /** 下载专用 axios 实例（同源经 vite 代理 /api → 后端） */
@@ -22,7 +22,7 @@ const downloadInstance: AxiosInstance = axios.create({
 })
 
 downloadInstance.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = getAccessToken()
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`)
   }

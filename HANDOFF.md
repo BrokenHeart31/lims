@@ -1,5 +1,34 @@
 # LIMS HANDOFF（共享交接本）
 
+## 2026-10-11（追加）GLM → 用户（**多标签页会话隔离改造完成：localStorage→sessionStorage，22/22 真机验证通过**）
+
+### 一句话
+
+修复「多标签页登录不同账号互相覆盖、退出一个全部掉线」——会话令牌从 localStorage（同源共享）迁移到
+**sessionStorage（标签页私有）**，全部读写收敛到唯一封装 `frontend/src/utils/authStorage.ts`；
+QA 真实浏览器 **22/22 PASS**（含核心项：B 退出 → A 刷新仍在线），主理人独立复跑复核通过。
+
+### 你可以这样验（2 分钟）
+
+1. 打开 http://localhost:5173 → 标签页 A 登录 `nj001/nj001`；
+2. **新开一个标签页 B**（Ctrl+T）→ 访问 http://localhost:5173 → 会要求登录（隔离生效）→ 登录 `nj002/nj002`；
+3. 回到 A 刷新（F5）→ **仍是 nj001**（未被 B 覆盖）；
+4. 在 B 点「退出登录」（右上角头像 → 退出登录 → 确认）→ B 回登录页；**回到 A 刷新 → A 仍然在线**（核心：退出互不牵连）。
+5. 注意：升级后需**重新登录一次**（旧 localStorage 令牌被刻意清理、不做迁移——理由见 DECISIONS 2026-10-11）。
+
+### 关键设计（不得被后续改动破坏）
+
+- **令牌唯一入口** = `frontend/src/utils/authStorage.ts`；任何代码（含新增页面）禁止绕开它直接读写
+  `lims_access_token` / `lims_refresh_token` 两个键。
+- **UI 偏好键**（`lims_ai_panel_pos` / AI 陪伴开关等）保持 localStorage——跨标签共享是**刻意行为**，勿「顺手迁移」。
+- sessionStorage 语义：页内刷新保持会话、关闭标签页即会话结束（多账号场景的预期行为）。
+
+### 本轮证据
+
+- 脚本（可重复）：`_logs/qa-session-isolation.py`（22 断言）；截图 `_logs/qa-session-*.png`（7 张）；结果 `_logs/qa-session-isolation-result.json`；
+- 门禁：vue-tsc / eslint / vite build **两轮全绿**（工程师 + 主理人各复跑）；
+- 落档：DECISIONS 4 条 + 日记 `docs/journal/2026-10-11-glm-session-isolation.md` + STATUS 追加段。
+
 ## 2026-10-11 GLM → 用户（**验收收尾完成：遗留项复核登记 + 门禁复跑 + 全服务已启动，可直接验收**）
 
 ### 一句话
